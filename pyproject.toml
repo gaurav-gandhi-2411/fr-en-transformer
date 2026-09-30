@@ -1,0 +1,73 @@
+[project]
+name = "fr-en-transformer"
+version = "0.1.0"
+description = "FR->EN transformer trained from scratch on opus-100 (take-home challenge)."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "datasets==5.0.1",
+    "huggingface-hub==1.33.0",
+    "matplotlib==3.11.2",
+    "numpy==2.5.3",
+    "pandas==3.0.6",
+    "pyyaml==6.0.3",
+    "sacrebleu==2.6.0",
+    "safetensors==0.8.0",
+    "sentencepiece==0.2.2",
+    "statsmodels==0.15.0",
+    "torch==2.14.0",
+    "tqdm==4.70.1",
+    "wandb==0.30.0",
+]
+
+# unbabel-comet was NOT added: it does not resolve alongside the pinned torch==2.14.0 /
+# numpy==2.5.3 (comet<2.2.4 pins torch==1.4.0 or legacy sentencepiece; comet>=2.0.0 requires
+# numpy<2.0.0). See PLAN.md / P0 report for the exact `uv add` resolver error. Left empty.
+[project.optional-dependencies]
+comet = []
+
+[dependency-groups]
+dev = [
+    "ipykernel==7.4.0",
+    "nbclient==0.11.0",
+    "nbformat==5.11.1",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.16.9",
+]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nmt"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# official/score.py is vendored byte-identical (sha256-checked); never linted or reformatted.
+extend-exclude = ["official"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["nmt"]
+
+[tool.coverage.report]
+omit = ["scripts/*", "notebooks/*"]

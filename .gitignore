@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+wandb/
+data/processed/
+data/raw/
+data/shards/
+checkpoints/
+runs/
+Transformer_model/
+.ipynb_checkpoints/
+*.pt
+*.safetensors

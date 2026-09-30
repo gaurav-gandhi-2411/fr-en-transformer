@@ -1,0 +1,3 @@
+* text=auto eol=lf
+official/score.py -text
+data/** -text
