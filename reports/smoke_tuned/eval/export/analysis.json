@@ -1,0 +1,67 @@
+{
+  "n_e1": 1940,
+  "n_e3": 1000,
+  "n_dev": 150,
+  "gap_decomposition": {
+    "n": 2940,
+    "total_gap_chrf_e1_minus_e3": -0.29020016855875674,
+    "coefficients": {
+      "const": -12.472634482764999,
+      "length_dev": 0.5362350370139807,
+      "repetition_rate": 6.152484201085292,
+      "rarity": -1.9390471450224194,
+      "dialogue_punct_density": -25.71689401941918,
+      "domain_e3": 0.5403061417764832
+    },
+    "robust_se_HC3": {
+      "const": 1.363979004097488,
+      "length_dev": 0.1612516888971216,
+      "repetition_rate": 0.7910117112034557,
+      "rarity": 0.11106453984150565,
+      "dialogue_punct_density": 2.3782259388476734,
+      "domain_e3": 0.15930066752637542
+    },
+    "p_values": {
+      "const": 6.001676491254542e-20,
+      "length_dev": 0.0008827473755300983,
+      "repetition_rate": 7.368366850066648e-15,
+      "rarity": 2.9537168061256048e-68,
+      "dialogue_punct_density": 2.971843470212703e-27,
+      "domain_e3": 0.0006945079345399362
+    },
+    "contributions_chrf": {
+      "length_dev": 0.14532097728741364,
+      "repetition_rate": -0.2519656392334617,
+      "rarity": 0.13315736255221966,
+      "dialogue_punct_density": 0.22359327261155004,
+      "residual_domain": -0.5403061417764832
+    },
+    "share_of_gap": {
+      "length_dev": -0.5007611746372592,
+      "repetition_rate": 0.8682477356399133,
+      "rarity": -0.4588466065113926,
+      "dialogue_punct_density": -0.7704794718831433,
+      "residual_domain": 1.8618395173918982
+    },
+    "r_squared": 0.22678760949576027
+  },
+  "metric_artifact_share": {
+    "dev_unseen_domain": {
+      "n": 60,
+      "chrf_original": 9.750333539001733,
+      "chrf_ref_normalized": 9.726435579109765,
+      "delta_chrf": -0.023897959891968412
+    },
+    "e3": {
+      "n": 1000,
+      "chrf_original": 9.957589101208935,
+      "chrf_ref_normalized": 10.014440972558903,
+      "delta_chrf": 0.056851871349968164
+    }
+  },
+  "figures": {
+    "chrf_vs_length_bucket": "reports\\smoke_tuned\\eval\\export\\figures\\chrf_vs_length_bucket.png",
+    "chrf_vs_rarity_decile": "reports\\smoke_tuned\\eval\\export\\figures\\chrf_vs_rarity_decile.png",
+    "failure_mode_rates": "reports\\smoke_tuned\\eval\\export\\figures\\failure_mode_rates.png"
+  }
+}
