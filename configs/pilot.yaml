@@ -51,6 +51,7 @@ ckpt:
 logging:
   wandb_mode: offline
   wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
   log_every: 50
   run_dir: runs/pilot
 
