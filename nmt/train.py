@@ -7,7 +7,21 @@ from __future__ import annotations
 #
 # CLI: `python -m nmt.train --config configs/X.yaml [--resume] [--seed 1234] [--max-steps N]
 # [--wandb offline|online|disabled] [--cooldown-now] [--synthetic] [--precision P] [--device D]
-# [--ckpt-steps N] [--stop-after-first-ckpt]`.
+# [--ckpt-steps N] [--stop-after-first-ckpt] [--resume-count K] [--wait-seconds S]
+# [--debug-raise-oom-at-step N]`.
+#
+# Contention/OOM robustness (RTX 3070 ablation queue; the GPU is shared with other workloads):
+#   * cooperative stop: a file `<run_dir>/STOP_REQUESTED` is checked at every step boundary; when
+#     present the step-boundary state is checkpointed through the normal save path, then
+#     `STOPPED_ON_REQUEST step=N reason=...` is printed, the file removed and the process exits
+#     75 (EX_TEMPFAIL) -- the driver (scripts/ablation_3070.py) waits for the GPU and resumes.
+#   * OOM: a `torch.OutOfMemoryError` inside a training step is NOT checkpointed (grads and the
+#     sampler cursor are partial; a mid-step save would shift the data order on resume). It prints
+#     `OOM_ABORT step=N last_ckpt_step=M` and exits 75; the resume restarts from the last periodic
+#     checkpoint, so data order and step count equal an uninterrupted run (redo <= ckpt interval).
+#   * accounting: resume_count / wait_seconds_total / resumed / train_wall_seconds / redo_steps go
+#     to run_info.json and the W&B config + summary at the end of every invocation, and the W&B
+#     run id is persisted in `<run_dir>/wandb_run_id.txt` so one ablation is one W&B run.
 #
 # Precision (spec §6 said fp16-only because the Colab T4 has no bf16): `auto` picks bf16 on CUDA
 # when the GPU supports it (no GradScaler needed), else fp16 + GradScaler, and fp32 on CPU. TF32
@@ -39,6 +53,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 import warnings
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -56,6 +71,12 @@ from nmt.data.synthetic import write_synthetic_shard_dir
 from nmt.model.transformer import ModelConfig, Transformer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+EX_TEMPFAIL = 75  # sysexits.h "temporary failure, retry": exit code of a stop request or OOM abort
+STOP_FILE_NAME = "STOP_REQUESTED"
+WANDB_ID_FILE = "wandb_run_id.txt"
+LEDGER_FILE = "resume_ledger.json"  # cumulative redo_steps; survives an OOM exit (no ckpt written)
+DEBUG_OOM_MARKER = ".debug_oom_fired"  # makes --debug-raise-oom-at-step fire once per run dir
 
 # torch.compile stays off (see module preamble); recorded in the W&B config so a run's provenance
 # says so explicitly rather than by omission.
@@ -713,9 +734,15 @@ def init_wandb(
     model: Transformer,
     device: torch.device,
     provenance: dict[str, Any] | None = None,
+    run_dir: Path | None = None,
+    reuse_run_id: bool = False,
 ) -> Any:
     """Initialize a W&B run in the requested mode (offline/online/disabled), or return None when
     disabled or when the `wandb` package/init fails for any reason (never blocks training).
+
+    With `run_dir`, the run id is persisted in `<run_dir>/wandb_run_id.txt` and passed with
+    `resume="allow"`; `reuse_run_id` (a resumed invocation) reuses the stored id so one ablation
+    is one W&B run across interruptions, otherwise a fresh id replaces any stale file.
     """
     mode = _resolve_wandb_mode(mode)
     if mode == "disabled":
@@ -728,8 +755,19 @@ def init_wandb(
 
     wandb_dir = REPO_ROOT / "wandb"
     wandb_dir.mkdir(exist_ok=True)
+    id_kwargs: dict[str, Any] = {}
+    if run_dir is not None:
+        id_path = run_dir / WANDB_ID_FILE
+        run_id = None
+        if reuse_run_id and id_path.is_file():
+            run_id = id_path.read_text(encoding="utf-8").strip() or None
+        if run_id is None:
+            run_id = uuid.uuid4().hex[:8]
+            id_path.write_text(run_id, encoding="utf-8")
+        id_kwargs = {"id": run_id, "resume": "allow"}
     try:
         return wandb.init(
+            **id_kwargs,
             entity=cfg.logging.wandb_entity,
             project=cfg.logging.wandb_project,
             name=cfg.name,
@@ -752,6 +790,53 @@ def init_wandb(
     except Exception as exc:  # noqa: BLE001 - W&B failures must never abort training
         print(f"wandb: init failed ({exc!r}); continuing without W&B logging.")
         return None
+
+
+def _read_stop_request(run_dir: Path) -> str | None:
+    """Contents of `<run_dir>/STOP_REQUESTED` (the reason), or None when no stop is requested."""
+    stop_path = run_dir / STOP_FILE_NAME
+    if not stop_path.is_file():
+        return None
+    try:
+        return " ".join(stop_path.read_text(encoding="utf-8").split()) or "unspecified"
+    except OSError:
+        return "unreadable"  # present but mid-write/locked: still a request
+
+
+def _read_ledger_redo_steps(run_dir: Path) -> int:
+    path = run_dir / LEDGER_FILE
+    if not path.is_file():
+        return 0
+    return int(json.loads(path.read_text(encoding="utf-8")).get("redo_steps", 0))
+
+
+def _total_train_wall_seconds(metrics_path: Path) -> float:
+    """Sum of `wall_step_s` over every logged training step of every invocation (redone steps
+    included: that GPU time was really spent). Derived from metrics.jsonl, which is flushed per
+    step, so it is complete even for an invocation that died without a clean exit."""
+    total = 0.0
+    if metrics_path.is_file():
+        for line in metrics_path.read_text(encoding="utf-8").splitlines():
+            row = json.loads(line) if line.strip() else {}
+            if "wall_step_s" in row and "eval" not in row:
+                total += float(row["wall_step_s"])
+    return total
+
+
+def _record_invocation_summary(
+    run_dir: Path, wandb_run: Any, summary: dict[str, Any], config_keys: tuple[str, ...]
+) -> None:
+    """End-of-invocation accounting: merge `summary` into run_info.json and push it to the W&B
+    summary (and the listed keys to the W&B config). W&B failures never abort training."""
+    info_path = run_dir / "run_info.json"
+    info = json.loads(info_path.read_text(encoding="utf-8")) if info_path.is_file() else {}
+    info.update(summary)
+    info_path.write_text(json.dumps(info, indent=2), encoding="utf-8")
+    if wandb_run is not None:
+        with contextlib.suppress(Exception):
+            wandb_run.summary.update(summary)
+        with contextlib.suppress(Exception):
+            wandb_run.config.update({k: summary[k] for k in config_keys}, allow_val_change=True)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -888,6 +973,9 @@ def train(
     eval_fn: EvalFn = default_eval_fn,
     print_at_steps: tuple[int, ...] = (),
     stop_after_first_ckpt: bool = False,
+    resume_count: int = 0,
+    wait_seconds: float = 0.0,
+    debug_raise_oom_at_step: int | None = None,
 ) -> None:
     """Run (or resume) training for `cfg`. Every call builds a brand-new model/optimizer/sampler
     from scratch and, if `resume=True`, restores them from the latest checkpoint in
@@ -898,6 +986,12 @@ def train(
     first checkpoint save; a resumed invocation ignores the flag. The CKPT_SAVED / RESUMED /
     RESUME_CONTEXT / POST_RESUME / STOPPED_AFTER_FIRST_CKPT lines printed below are a fixed
     contract that the Colab notebook greps; do not reword them.
+
+    `resume_count` / `wait_seconds`: how many times the driver has relaunched this run and how long
+    it waited for the GPU in total; recorded only (run_info.json, W&B config + summary).
+    `debug_raise_oom_at_step` is TEST-ONLY: raises a `torch.OutOfMemoryError` at that step's
+    forward, once per run dir (a marker file stops the resumed invocation from re-firing it).
+    Exit 75 (`EX_TEMPFAIL`) is raised as SystemExit on a stop request and on an OOM abort.
     """
     seed = cfg.seed if seed is None else seed
     device = _resolve_device(cfg)
@@ -970,8 +1064,13 @@ def train(
     print(sdpa["summary"])
     provenance = collect_run_provenance(cfg, device, precision, tf32, sdpa, model, shard_dir)
     provenance["precision_requested"] = cfg.precision
+    provenance["resumed"] = resumed_ckpt is not None
+    provenance["resume_count"] = resume_count
+    provenance["wait_seconds_total"] = wait_seconds
     (run_dir / "run_info.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
-    wandb_run = init_wandb(cfg, wandb_mode, seed, model, device, provenance)
+    wandb_run = init_wandb(
+        cfg, wandb_mode, seed, model, device, provenance, run_dir=run_dir, reuse_run_id=resume
+    )
 
     target_steps = max_steps if max_steps is not None else cfg.optim.planned_steps
     eval_dataset: ShardDataset | None = None
@@ -1006,7 +1105,42 @@ def train(
         print("stop-after-first-ckpt ignored: resumed run")
     post_resume_losses: list[float] = []
     resume_step = step
+    last_ckpt_step = step  # what a restart after an OOM abort would resume from (0 = from scratch)
+    redo_steps = _read_ledger_redo_steps(run_dir)
+    wandb_finished = False
 
+    def end_invocation(reason: str) -> None:
+        """Record this invocation's accounting and close W&B (exactly once)."""
+        nonlocal wandb_finished
+        _record_invocation_summary(
+            run_dir,
+            wandb_run,
+            {
+                "resumed": resumed,
+                "resume_count": resume_count,
+                "wait_seconds_total": wait_seconds,
+                "train_wall_seconds": _total_train_wall_seconds(metrics_path),
+                "redo_steps": redo_steps,
+                "final_step": step,
+                "exit_reason": reason,
+            },
+            ("resume_count", "wait_seconds_total"),
+        )
+        if wandb_run is not None and not wandb_finished:
+            wandb_finished = True
+            wandb_run.finish()
+
+    def oom_abort() -> None:
+        """No checkpoint here: grads and the sampler cursor are partial mid-step, so a save would
+        change the data order on resume. The restart redoes `step - last_ckpt_step` steps."""
+        nonlocal redo_steps
+        print(f"OOM_ABORT step={step} last_ckpt_step={last_ckpt_step}", flush=True)
+        redo_steps += step - last_ckpt_step
+        (run_dir / LEDGER_FILE).write_text(json.dumps({"redo_steps": redo_steps}), encoding="utf-8")
+        end_invocation("oom_abort")
+        raise SystemExit(EX_TEMPFAIL)
+
+    oom_marker = run_dir / DEBUG_OOM_MARKER
     micro_iter = _iter_micro_batches(sampler)
     last_ckpt_time = time.monotonic()
     start_time = time.monotonic()
@@ -1028,43 +1162,57 @@ def train(
                 micro_batches.append(next(micro_iter))
                 tokens += batch_token_count(micro_batches[-1])
 
-            step += 1
-            lr_scale = wsd_lr_scale(
-                step - 1,
-                cfg.optim.warmup_steps,
-                cfg.optim.planned_steps,
-                cfg.optim.cooldown_frac,
-                decay_start_step,
-            )
-            lr = cfg.optim.lr * lr_scale
-            for group in optimizer.param_groups:
-                group["lr"] = lr
+            try:
+                step += 1
+                lr_scale = wsd_lr_scale(
+                    step - 1,
+                    cfg.optim.warmup_steps,
+                    cfg.optim.planned_steps,
+                    cfg.optim.cooldown_frac,
+                    decay_start_step,
+                )
+                lr = cfg.optim.lr * lr_scale
+                for group in optimizer.param_groups:
+                    group["lr"] = lr
 
-            total_ntokens = sum(
-                int((b.tgt_out != 0).sum().item()) for b in micro_batches if b.tgt_out is not None
-            )
-            optimizer.zero_grad(set_to_none=True)
-            step_loss = 0.0
-            step_start = time.monotonic()
-            for b in micro_batches:
-                assert b.tgt_in is not None and b.tgt_out is not None
-                src, tgt_in, tgt_out = b.src.to(device), b.tgt_in.to(device), b.tgt_out.to(device)
-                with autocast_context(device, precision):
-                    logits = model(src, tgt_in)
-                    loss = label_smoothed_nll_loss(logits, tgt_out, 0, cfg.label_smoothing)
-                ntokens = int((tgt_out != 0).sum().item())
-                weight = ntokens / max(1, total_ntokens)
-                scaler.scale(loss * weight).backward()
-                step_loss += loss.item() * weight
+                total_ntokens = sum(
+                    int((b.tgt_out != 0).sum().item())
+                    for b in micro_batches
+                    if b.tgt_out is not None
+                )
+                optimizer.zero_grad(set_to_none=True)
+                step_loss = 0.0
+                step_start = time.monotonic()
+                for b in micro_batches:
+                    assert b.tgt_in is not None and b.tgt_out is not None
+                    src, tgt_in, tgt_out = (
+                        b.src.to(device),
+                        b.tgt_in.to(device),
+                        b.tgt_out.to(device),
+                    )
+                    if debug_raise_oom_at_step == step and not oom_marker.exists():
+                        oom_marker.write_text(str(step), encoding="utf-8")
+                        raise torch.OutOfMemoryError(
+                            "CUDA out of memory. (injected by --debug-raise-oom-at-step; test-only)"
+                        )
+                    with autocast_context(device, precision):
+                        logits = model(src, tgt_in)
+                        loss = label_smoothed_nll_loss(logits, tgt_out, 0, cfg.label_smoothing)
+                    ntokens = int((tgt_out != 0).sum().item())
+                    weight = ntokens / max(1, total_ntokens)
+                    scaler.scale(loss * weight).backward()
+                    step_loss += loss.item() * weight
 
-            scaler.unscale_(optimizer)
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.optim.grad_clip)
-            stepped = bool(torch.isfinite(grad_norm))
-            if stepped:
-                scaler.step(optimizer)
-            else:
-                grad_skip_count += 1
-            scaler.update()
+                scaler.unscale_(optimizer)
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.optim.grad_clip)
+                stepped = bool(torch.isfinite(grad_norm))
+                if stepped:
+                    scaler.step(optimizer)
+                else:
+                    grad_skip_count += 1
+                scaler.update()
+            except torch.OutOfMemoryError:
+                oom_abort()
 
             tok_per_sec = tokens / max(1e-6, time.monotonic() - step_start)
             gpu_mem_mb = (
@@ -1112,29 +1260,34 @@ def train(
             if step % cfg.logging.log_every == 0 and wandb_run is not None:
                 wandb_run.log(row, step=step)
 
-            eval_due = eval_dataset is not None and cfg.eval.eval_every > 0
-            if eval_due and step % cfg.eval.eval_every == 0:
-                val_loss = _eval_val_loss(
-                    model,
-                    eval_dataset,  # type: ignore[arg-type]
-                    cfg,
-                    device,
-                    precision=precision,
-                )
-                # Autocast around the whole hook so its greedy decoding runs in the training
-                # precision too (the hook lives in nmt.evaluate and has no precision knob).
-                with autocast_context(device, precision):
-                    extra = eval_fn(model, step, wandb_run)
-                eval_row = {"step": step, "val_loss": val_loss, **extra}
-                metrics_file.write(json.dumps({"eval": eval_row}) + "\n")
-                metrics_file.flush()
-                if wandb_run is not None:
-                    log_row = {f"eval/{k}": v for k, v in eval_row.items() if k != "step"}
-                    wandb_run.log(log_row, step=step)
+            try:
+                eval_due = eval_dataset is not None and cfg.eval.eval_every > 0
+                if eval_due and step % cfg.eval.eval_every == 0:
+                    val_loss = _eval_val_loss(
+                        model,
+                        eval_dataset,  # type: ignore[arg-type]
+                        cfg,
+                        device,
+                        precision=precision,
+                    )
+                    # Autocast around the whole hook so its greedy decoding runs in the training
+                    # precision too (the hook lives in nmt.evaluate and has no precision knob).
+                    with autocast_context(device, precision):
+                        extra = eval_fn(model, step, wandb_run)
+                    eval_row = {"step": step, "val_loss": val_loss, **extra}
+                    metrics_file.write(json.dumps({"eval": eval_row}) + "\n")
+                    metrics_file.flush()
+                    if wandb_run is not None:
+                        log_row = {f"eval/{k}": v for k, v in eval_row.items() if k != "step"}
+                        wandb_run.log(log_row, step=step)
+            except torch.OutOfMemoryError:
+                oom_abort()
 
             due_by_time = (time.monotonic() - last_ckpt_time) / 60.0 >= cfg.ckpt.ckpt_minutes
             due_by_steps = cfg.ckpt.ckpt_steps is not None and step % cfg.ckpt.ckpt_steps == 0
-            if due_by_time or due_by_steps or step >= target_steps:
+            # A finished run wins over a stop request (its final checkpoint is saved anyway).
+            stop_reason = _read_stop_request(run_dir) if step < target_steps else None
+            if due_by_time or due_by_steps or step >= target_steps or stop_reason is not None:
                 # Fingerprint the state save_checkpoint is about to capture (nothing between here
                 # and its `_rng_state()` call consumes RNG).
                 fp = rng_fingerprint(_rng_state(), sampler.state_dict())
@@ -1154,6 +1307,12 @@ def train(
                     ckpt_dir, cfg.ckpt.keep_last, decay_start_step, cfg.ckpt.keep_decay_phase
                 )
                 last_ckpt_time = time.monotonic()
+                last_ckpt_step = step
+                if stop_reason is not None:
+                    print(f"STOPPED_ON_REQUEST step={step} reason={stop_reason}", flush=True)
+                    (run_dir / STOP_FILE_NAME).unlink(missing_ok=True)
+                    end_invocation("stopped_on_request")
+                    raise SystemExit(EX_TEMPFAIL)
                 if stop_after_first_ckpt and not resumed:
                     print(f"STOPPED_AFTER_FIRST_CKPT step={step} path={ckpt_path}", flush=True)
                     break
@@ -1161,8 +1320,7 @@ def train(
     if resumed and 0 < len(post_resume_losses) < 3:
         print(f"POST_RESUME losses={post_resume_losses}")  # run ended before 3 post-resume steps
 
-    if wandb_run is not None:
-        wandb_run.finish()
+    end_invocation("completed" if step >= target_steps else "stopped_early")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1228,6 +1386,27 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Forced-resume test: a FRESH run exits 0 right after its first checkpoint save "
         "(prints STOPPED_AFTER_FIRST_CKPT); a resumed run ignores this flag.",
     )
+    parser.add_argument(
+        "--resume-count",
+        type=int,
+        default=0,
+        help="How many times the driver has relaunched this run (recorded in run_info.json and "
+        "the W&B config/summary only).",
+    )
+    parser.add_argument(
+        "--wait-seconds",
+        type=float,
+        default=0.0,
+        help="Cumulative seconds the driver waited for the GPU before this invocation (recorded "
+        "only, as wait_seconds_total).",
+    )
+    parser.add_argument(
+        "--debug-raise-oom-at-step",
+        type=int,
+        default=None,
+        help="TEST-ONLY: raise torch.OutOfMemoryError in the forward pass of step N, once per run "
+        "dir (a marker file stops the resumed run from re-firing). Exercises the OOM-abort path.",
+    )
     return parser.parse_args(argv)
 
 
@@ -1287,6 +1466,9 @@ def main(argv: list[str] | None = None) -> None:
         seed=args.seed,
         print_at_steps=print_steps,
         stop_after_first_ckpt=args.stop_after_first_ckpt,
+        resume_count=args.resume_count,
+        wait_seconds=args.wait_seconds,
+        debug_raise_oom_at_step=args.debug_raise_oom_at_step,
         eval_fn=default_eval_fn if args.synthetic else build_eval_fn(cfg, args.seed),
     )
 
