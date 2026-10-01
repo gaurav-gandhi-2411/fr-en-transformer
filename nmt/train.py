@@ -258,7 +258,27 @@ def autocast_context(device: torch.device, precision: str) -> contextlib.Abstrac
     return torch.autocast(device_type=device.type, dtype=_AUTOCAST_DTYPES[precision])
 
 
-CUDA_MEMORY_FRACTION = 0.95  # see the set_per_process_memory_fraction call in train()
+CUDA_MEMORY_MARGIN_MB = 768.0  # VRAM left free beyond the allocator cap (see cap_cuda_allocator)
+
+
+def cap_cuda_allocator(device: torch.device, margin_mb: float = CUDA_MEMORY_MARGIN_MB) -> float:
+    """Cap PyTorch's caching allocator so allocator + CUDA context + other processes stay inside
+    physical VRAM, and return the fraction applied.
+
+    Windows/WDDM spills over-budget device allocations into shared system RAM instead of raising
+    OOM. A fixed 0.95 cap was not enough: it bounds only the allocator, and the CUDA context sits
+    outside it. In the first full RTX 3070 pilot, reserved memory grew to the cap, the device
+    total hit 8014 of 8192 MiB, and one step ran at 19 tok/s (~22 min) instead of ~60k. The cap
+    is therefore sized from the memory actually free once the context exists, minus a margin.
+    Over-budget allocations then raise OutOfMemoryError (after the allocator frees its cache and
+    retries) instead of silently crawling.
+    """
+    index = device.index if device.index is not None else torch.cuda.current_device()
+    torch.cuda.init()
+    free, total = torch.cuda.mem_get_info(index)
+    fraction = max(0.1, min(0.95, (free - margin_mb * 1024**2) / total))
+    torch.cuda.set_per_process_memory_fraction(fraction, index)
+    return fraction
 
 
 def enable_tf32(device: torch.device) -> bool:
@@ -885,12 +905,8 @@ def train(
     precision = resolve_precision(cfg.precision, device)
     tf32 = enable_tf32(device)
     if device.type == "cuda":
-        # Windows/WDDM spills over-budget allocations into shared system RAM instead of raising
-        # OOM, which silently turns a too-large micro-batch into a many-times-slower run. Capping
-        # the caching allocator makes that case fail loudly instead (same cap as the probe).
-        torch.cuda.set_per_process_memory_fraction(
-            CUDA_MEMORY_FRACTION, device.index if device.index is not None else 0
-        )
+        fraction = cap_cuda_allocator(device)
+        print(f"cuda allocator cap: {fraction:.3f} of device memory (see cap_cuda_allocator)")
     print(f"precision: {precision} (config: {cfg.precision}), tf32: {tf32}, device: {device}")
 
     run_dir = Path(cfg.logging.run_dir)
@@ -1001,7 +1017,8 @@ def train(
             metrics_file.write(json.dumps({"eval_disabled_reason": eval_disabled_reason}) + "\n")
             metrics_file.flush()
         while step < target_steps:
-            elapsed_minutes = (time.monotonic() - start_time) / 60.0
+            iter_start = time.monotonic()
+            elapsed_minutes = (iter_start - start_time) / 60.0
             if cfg.optim.max_minutes is not None and elapsed_minutes >= cfg.optim.max_minutes:
                 break
 
@@ -1053,6 +1070,11 @@ def train(
             gpu_mem_mb = (
                 torch.cuda.max_memory_allocated() / (1024**2) if device.type == "cuda" else 0.0
             )
+            # Reserved (cached) memory is what counts against the allocator cap and physical VRAM;
+            # max_allocated alone hid the growth that triggered a WDDM spill in the first pilot.
+            gpu_reserved_mb = (
+                torch.cuda.memory_reserved() / (1024**2) if device.type == "cuda" else 0.0
+            )
             epoch_fraction = sampler.epoch + (sampler.batch_cursor / max(1, len(sampler)))
             row = {
                 "step": step,
@@ -1063,6 +1085,9 @@ def train(
                 "loss_scale": float(scaler.get_scale()),
                 "tok_per_sec": tok_per_sec,
                 "gpu_mem_mb": gpu_mem_mb,
+                "gpu_reserved_mb": gpu_reserved_mb,
+                # Whole iteration incl. micro-batch assembly; tok_per_sec covers compute only.
+                "wall_step_s": time.monotonic() - iter_start,
                 "epoch_fraction": epoch_fraction,
                 "grad_skip_count": grad_skip_count,
                 "optimizer_stepped": stepped,

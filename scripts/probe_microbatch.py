@@ -32,6 +32,7 @@ if str(_REPO_ROOT) not in sys.path:  # direct-script invocation puts scripts/, n
 from nmt.model.transformer import ModelConfig, Transformer  # noqa: E402 - needs the path above
 from nmt.train import (  # noqa: E402
     autocast_context,
+    cap_cuda_allocator,
     enable_tf32,
     label_smoothed_nll_loss,
     resolve_precision,
@@ -43,10 +44,9 @@ DEFAULT_HEADROOM = 0.15  # spec §14 P5: "reports the max that fits with 15% hea
 # forward+backward, so the reported safe max deliberately undershoots the raw OOM boundary.
 DEFAULT_CANDIDATE_TOKEN_COUNTS = (1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576, 32768)
 DEFAULT_SEQ_LEN = 64  # synthetic sequence length per example; token_count // seq_len -> batch size
-DEFAULT_MEMORY_FRACTION = 0.95  # hard cap on the caching allocator. On Windows (WDDM) the driver
-# spills over-budget allocations into shared system RAM instead of raising OOM, so without a cap
-# the probe "fit" 16384 tokens at an 8493 MB peak on an 8192 MB card -- a micro-batch that would
-# train at system-RAM speed. With the cap, crossing it raises OutOfMemoryError like real OOM.
+# The allocator is capped exactly as in training (nmt.train.cap_cuda_allocator). Uncapped on
+# Windows/WDDM, the probe "fit" 16384 tokens at an 8493 MB peak on an 8192 MB card, because the
+# driver spills to system RAM instead of raising OOM.
 
 
 @dataclass
@@ -60,7 +60,7 @@ class ProbeResult:
     max_fitting_tokens: int | None
     max_fitting_with_headroom_tokens: int | None
     peak_memory_at_max_mb: float | None
-    memory_fraction: float = DEFAULT_MEMORY_FRACTION
+    memory_fraction: float
     includes_optimizer_step: bool = True
 
 
@@ -111,7 +111,8 @@ def _try_one_step(
         # a forward+backward-only probe would under-count peak memory by that much.
         optimizer.step()
     torch.cuda.synchronize(device)
-    return torch.cuda.max_memory_allocated(device) / (1024**2)
+    # Reserved, not allocated: reserved is what occupies VRAM and counts against the cap.
+    return torch.cuda.max_memory_reserved(device) / (1024**2)
 
 
 def probe(
@@ -120,7 +121,6 @@ def probe(
     headroom: float = DEFAULT_HEADROOM,
     device: torch.device | None = None,
     precision: str = "auto",
-    memory_fraction: float = DEFAULT_MEMORY_FRACTION,
 ) -> ProbeResult:
     """Try `candidates` (ascending) until CUDA OOM or the cap; report the max that fit at all and
     the max that fit within `headroom` of total device memory. Requires CUDA (raises otherwise --
@@ -133,9 +133,7 @@ def probe(
     resolved = resolve_precision(precision, device)
     tf32 = enable_tf32(device)
     total_mb = torch.cuda.get_device_properties(device).total_memory / (1024**2)
-    torch.cuda.set_per_process_memory_fraction(
-        memory_fraction, device.index if device.index is not None else 0
-    )
+    memory_fraction = cap_cuda_allocator(device)
     model = _build_or_reuse_model(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
 
