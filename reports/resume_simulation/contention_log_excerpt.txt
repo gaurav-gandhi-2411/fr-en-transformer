@@ -1,0 +1,11 @@
+CKPT_SAVED step=10 rng_fingerprint=8694fa00fa9e path=<work>\contention\ckpt\step_00000010.pt
+CKPT_SAVED step=20 rng_fingerprint=c2027e4e9f29 path=<work>\contention\ckpt\step_00000020.pt
+CKPT_SAVED step=26 rng_fingerprint=53b50c140e77 path=<work>\contention\ckpt\step_00000026.pt
+STOPPED_ON_REQUEST step=26 reason=foreign GPU pids [999999] at 2026-10-01T08:31:17+00:00
+RESUMED step=26 rng_fingerprint=53b50c140e77 matches_saved=True
+RESUME_CONTEXT last_losses=[9.711097, 9.649362, 9.703123]
+POST_RESUME losses=[9.600613, 9.556731, 9.763755]
+CKPT_SAVED step=30 rng_fingerprint=48763fc66baf path=<work>\contention\ckpt\step_00000030.pt
+CKPT_SAVED step=40 rng_fingerprint=0bde8d258817 path=<work>\contention\ckpt\step_00000040.pt
+CKPT_SAVED step=50 rng_fingerprint=06021f138c91 path=<work>\contention\ckpt\step_00000050.pt
+CKPT_SAVED step=60 rng_fingerprint=960d2fe5d11b path=<work>\contention\ckpt\step_00000060.pt

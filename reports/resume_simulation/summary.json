@@ -1,0 +1,190 @@
+{
+  "contention": {
+    "all_losses_finite": true,
+    "checks": {
+      "exit_codes_75_then_0": true,
+      "finished_at_planned_steps": true,
+      "redo_steps_0": true,
+      "resume_count_1": true,
+      "resumed_exact_state": true,
+      "stop_file_consumed": true,
+      "stop_requested_logged": true,
+      "trainer_stopped_on_request": true,
+      "trajectory_matches_1e-4": true,
+      "wait_seconds_recorded": true,
+      "waited_before_resume": true
+    },
+    "events": [
+      "start",
+      "foreign",
+      "stop_requested",
+      "foreign",
+      "foreign",
+      "foreign",
+      "foreign",
+      "foreign",
+      "foreign",
+      "foreign",
+      "end",
+      "resume",
+      "wait_start",
+      "wait",
+      "wait",
+      "wait",
+      "wait",
+      "wait",
+      "wait",
+      "wait_end",
+      "start",
+      "end"
+    ],
+    "exit_codes": [
+      75,
+      0
+    ],
+    "key_lines": [
+      "CKPT_SAVED step=10 rng_fingerprint=8694fa00fa9e path=<work>\\contention\\ckpt\\step_00000010.pt",
+      "CKPT_SAVED step=20 rng_fingerprint=c2027e4e9f29 path=<work>\\contention\\ckpt\\step_00000020.pt",
+      "CKPT_SAVED step=26 rng_fingerprint=53b50c140e77 path=<work>\\contention\\ckpt\\step_00000026.pt",
+      "STOPPED_ON_REQUEST step=26 reason=foreign GPU pids [999999] at 2026-10-01T08:31:17+00:00",
+      "RESUMED step=26 rng_fingerprint=53b50c140e77 matches_saved=True",
+      "RESUME_CONTEXT last_losses=[9.711097, 9.649362, 9.703123]",
+      "POST_RESUME losses=[9.600613, 9.556731, 9.763755]",
+      "CKPT_SAVED step=30 rng_fingerprint=48763fc66baf path=<work>\\contention\\ckpt\\step_00000030.pt",
+      "CKPT_SAVED step=40 rng_fingerprint=0bde8d258817 path=<work>\\contention\\ckpt\\step_00000040.pt",
+      "CKPT_SAVED step=50 rng_fingerprint=06021f138c91 path=<work>\\contention\\ckpt\\step_00000050.pt",
+      "CKPT_SAVED step=60 rng_fingerprint=960d2fe5d11b path=<work>\\contention\\ckpt\\step_00000060.pt"
+    ],
+    "max_abs_loss_diff_vs_uninterrupted": 0.0,
+    "n_steps": 60,
+    "passed": true,
+    "run_info": {
+      "device": null,
+      "exit_reason": "completed",
+      "final_step": 60,
+      "precision": "fp32",
+      "redo_steps": 0,
+      "resume_count": 1,
+      "resumed": true,
+      "train_wall_seconds": 12.203999999997905,
+      "wait_seconds_total": 0.782
+    },
+    "runner": {
+      "resumes": 1,
+      "status": "completed",
+      "wait_seconds": 0.7819999999992433
+    },
+    "scenario": "contention",
+    "trajectory_steps_match": true
+  },
+  "cuda": {
+    "all_losses_finite": true,
+    "checks": {
+      "ckpt_saved_lines": true,
+      "exit_codes_75_then_0": true,
+      "finished_at_planned_steps": true,
+      "loss_finite": true,
+      "oom_abort_line": true,
+      "ran_on_cuda": true,
+      "redo_steps": true,
+      "resumed_from_10_exact_state": true
+    },
+    "events": [
+      "start",
+      "end",
+      "resume",
+      "start",
+      "end"
+    ],
+    "exit_codes": [
+      75,
+      0
+    ],
+    "key_lines": [
+      "CKPT_SAVED step=10 rng_fingerprint=c917be362b34 path=<work>\\cuda\\ckpt\\step_00000010.pt",
+      "OOM_ABORT step=17 last_ckpt_step=10",
+      "RESUMED step=10 rng_fingerprint=c917be362b34 matches_saved=True",
+      "RESUME_CONTEXT last_losses=[10.339033, 10.364298, 10.233318]",
+      "POST_RESUME losses=[10.290013, 10.24109, 10.282877]",
+      "CKPT_SAVED step=20 rng_fingerprint=7fbd8e5e0b5a path=<work>\\cuda\\ckpt\\step_00000020.pt",
+      "CKPT_SAVED step=30 rng_fingerprint=c297652e9260 path=<work>\\cuda\\ckpt\\step_00000030.pt",
+      "CKPT_SAVED step=40 rng_fingerprint=5aaa946ae320 path=<work>\\cuda\\ckpt\\step_00000040.pt"
+    ],
+    "n_steps": 40,
+    "passed": true,
+    "run_info": {
+      "device": null,
+      "exit_reason": "completed",
+      "final_step": 40,
+      "precision": "bf16",
+      "redo_steps": 7,
+      "resume_count": 1,
+      "resumed": true,
+      "train_wall_seconds": 5.299000000000888,
+      "wait_seconds_total": 0.0
+    },
+    "runner": {
+      "resumes": 1,
+      "status": "completed",
+      "wait_seconds": 0.0
+    },
+    "scenario": "cuda"
+  },
+  "oom": {
+    "all_losses_finite": true,
+    "checks": {
+      "exit_codes_75_then_0": true,
+      "finished_at_planned_steps": true,
+      "oom_abort_line": true,
+      "redo_steps_7": true,
+      "resume_count_1": true,
+      "resumed_from_30_exact_state": true,
+      "resumed_true": true,
+      "trajectory_matches_1e-4": true
+    },
+    "events": [
+      "start",
+      "end",
+      "resume",
+      "start",
+      "end"
+    ],
+    "exit_codes": [
+      75,
+      0
+    ],
+    "key_lines": [
+      "CKPT_SAVED step=10 rng_fingerprint=8694fa00fa9e path=<work>\\oom\\ckpt\\step_00000010.pt",
+      "CKPT_SAVED step=20 rng_fingerprint=c2027e4e9f29 path=<work>\\oom\\ckpt\\step_00000020.pt",
+      "CKPT_SAVED step=30 rng_fingerprint=48763fc66baf path=<work>\\oom\\ckpt\\step_00000030.pt",
+      "OOM_ABORT step=37 last_ckpt_step=30",
+      "RESUMED step=30 rng_fingerprint=48763fc66baf matches_saved=True",
+      "RESUME_CONTEXT last_losses=[9.556731, 9.763755, 9.704678]",
+      "POST_RESUME losses=[9.693916, 9.621381, 9.522081]",
+      "CKPT_SAVED step=40 rng_fingerprint=0bde8d258817 path=<work>\\oom\\ckpt\\step_00000040.pt",
+      "CKPT_SAVED step=50 rng_fingerprint=06021f138c91 path=<work>\\oom\\ckpt\\step_00000050.pt",
+      "CKPT_SAVED step=60 rng_fingerprint=960d2fe5d11b path=<work>\\oom\\ckpt\\step_00000060.pt"
+    ],
+    "max_abs_loss_diff_vs_uninterrupted": 0.0,
+    "n_steps": 60,
+    "passed": true,
+    "run_info": {
+      "device": null,
+      "exit_reason": "completed",
+      "final_step": 60,
+      "precision": "fp32",
+      "redo_steps": 7,
+      "resume_count": 1,
+      "resumed": true,
+      "train_wall_seconds": 14.422000000004118,
+      "wait_seconds_total": 0.0
+    },
+    "runner": {
+      "resumes": 1,
+      "status": "completed",
+      "wait_seconds": 0.0
+    },
+    "scenario": "oom",
+    "trajectory_steps_match": true
+  }
+}

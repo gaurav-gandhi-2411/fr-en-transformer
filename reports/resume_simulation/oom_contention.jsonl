@@ -1,0 +1,5 @@
+{"time": "2026-10-01T08:30:42+00:00", "event": "start", "cmd": ["<repo>\\.venv\\Scripts\\python.exe", "-m", "nmt.train", "--config", "configs/smoke.yaml", "--synthetic", "--wandb", "disabled", "--planned-steps", "60", "--ckpt-steps", "10", "--run-dir", "<work>\\oom", "--ckpt-dir", "<work>\\oom\\ckpt", "--device", "cpu", "--debug-raise-oom-at-step", "37", "--resume", "--resume-count", "0", "--wait-seconds", "0.000"], "resume": 0, "wait_seconds_total": 0.0}
+{"time": "2026-10-01T08:30:53+00:00", "event": "end", "exit_code": 75}
+{"time": "2026-10-01T08:30:53+00:00", "event": "resume", "resume": 1}
+{"time": "2026-10-01T08:30:53+00:00", "event": "start", "cmd": ["<repo>\\.venv\\Scripts\\python.exe", "-m", "nmt.train", "--config", "configs/smoke.yaml", "--synthetic", "--wandb", "disabled", "--planned-steps", "60", "--ckpt-steps", "10", "--run-dir", "<work>\\oom", "--ckpt-dir", "<work>\\oom\\ckpt", "--device", "cpu", "--debug-raise-oom-at-step", "37", "--resume", "--resume-count", "1", "--wait-seconds", "0.000"], "resume": 1, "wait_seconds_total": 0.0}
+{"time": "2026-10-01T08:31:07+00:00", "event": "end", "exit_code": 0}
