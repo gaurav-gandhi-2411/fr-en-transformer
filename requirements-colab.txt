@@ -1,7 +1,12 @@
-# Derived from requirements.txt (uv export --no-hashes --no-dev --format requirements-txt)
-# with the torch pin rewritten to a plain PyPI `torch==<version>` (no `+cpu`, no explicit
-# index): Colab installs the CUDA wheel of the same pinned version from PyPI directly.
--e .
+# Derived from requirements.txt (uv export --no-hashes --no-dev --format requirements-txt) with
+# two deliberate removals, so Colab keeps its OWN preinstalled torch (never reinstalled):
+#   * `torch==...`: Colab ships a CUDA torch build matched to its driver/runtime (e.g.
+#     2.x+cuXXX on Python 3.13). The notebook pins that exact build with a constraints file
+#     (colab/make_torch_constraints.py) so pip cannot swap it; torch's own dependency pins
+#     (filelock, fsspec, jinja2, networkx, setuptools, sympy, typing-extensions) stay below.
+#   * `-e .`: the project is installed afterwards with `pip install -e . --no-deps`; leaving it
+#     here would make pip resolve the project's `torch==2.14.0` pin against the constraint.
+# Usage: pip install -r requirements-colab.txt -c <constraints file with torch==<installed>>
 aiohappyeyeballs==2.7.1
     # via aiohttp
 aiohttp==3.14.3
@@ -216,8 +221,6 @@ sympy==1.14.0
     # via torch
 tabulate==0.10.0
     # via sacrebleu
-torch==2.14.0
-    # via fr-en-transformer
 tqdm==4.70.1
     # via
     #   datasets
