@@ -1,2 +1,60 @@
 name: s3_rope_concat
-# filled in P3
+group: ablation
+seed: 1234
+device: auto
+label_smoothing: 0.1
+
+# Main architecture at small scale (spec §9 S3, optional: RoPE + concat augmentation on — does
+# concatenation help long inputs without hurting seen, on top of s2_rope's RoPE-only baseline).
+model:
+  vocab_size: 16000
+  d_model: 512
+  n_heads: 8
+  enc_layers: 8
+  dec_layers: 4
+  d_ff: 2048
+  dropout: 0.1
+  pos: rope
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 4096  # TBD from pilot
+  tokens_per_step: 25000
+  concat_prob: 0.15  # spec §6 default, s3/main only
+  concat_max_len: 256
+  chunk_size: 512
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  warmup_steps: 500  # see s1_sin.yaml: smaller than main's 4000 for a 40-min budget
+  planned_steps: 3000  # TBD from pilot
+  cooldown_frac: 0.2
+  max_minutes: 40
+
+ckpt:
+  dir: runs/s3_rope_concat/ckpt
+  ckpt_minutes: 15
+  ckpt_steps: null
+  keep_last: 5
+  keep_decay_phase: true
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/s3_rope_concat
+
+eval:
+  eval_every: 500

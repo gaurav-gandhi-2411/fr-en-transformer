@@ -1,2 +1,62 @@
 name: s1_sin
-# filled in P3
+group: ablation
+seed: 1234
+device: auto
+label_smoothing: 0.1
+
+# Main architecture at small scale (spec §9 S1: sinusoidal positions, no concat augmentation —
+# the ablation baseline). Same data/seed as s2_rope/s3_rope_concat so the pair is comparable.
+model:
+  vocab_size: 16000
+  d_model: 512
+  n_heads: 8
+  enc_layers: 8
+  dec_layers: 4
+  d_ff: 2048
+  dropout: 0.1
+  pos: sinusoidal
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 4096  # TBD from pilot: replace with the pilot's measured safe micro-batch size
+  tokens_per_step: 25000
+  concat_prob: 0.0
+  chunk_size: 512
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  # Smaller than main's 4000: a 40-min run reaches far fewer optimizer steps than main's ~4h
+  # run, so a 4000-step warmup could consume most or all of the budget. Revisit once pilot
+  # throughput gives a real planned_steps estimate.
+  warmup_steps: 500
+  planned_steps: 3000  # TBD from pilot
+  cooldown_frac: 0.2
+  max_minutes: 40  # spec §1/§9: ablation budget
+
+ckpt:
+  dir: runs/s1_sin/ckpt
+  ckpt_minutes: 15
+  ckpt_steps: null
+  keep_last: 5
+  keep_decay_phase: true
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/s1_sin
+
+eval:
+  eval_every: 500

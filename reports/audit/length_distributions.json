@@ -1,0 +1,83 @@
+{
+  "unit": "characters of the raw French source (len of the inputs.jsonl `source`)",
+  "percentile_method": "numpy.percentile, linear interpolation",
+  "sets": {
+    "e2": {
+      "n": 1000,
+      "min": 201,
+      "median": 270.0,
+      "p90": 420.0,
+      "max": 1118
+    },
+    "dev_long_slice": {
+      "n": 30,
+      "min": 203,
+      "median": 246.0,
+      "p90": 337.2,
+      "max": 411
+    },
+    "dev_all": {
+      "n": 150,
+      "min": 14,
+      "median": 75.0,
+      "p90": 245.2,
+      "max": 411
+    },
+    "dev_seen_slice": {
+      "n": 60,
+      "min": 14,
+      "median": 52.5,
+      "p90": 122.5,
+      "max": 133
+    },
+    "dev_unseen_domain_slice": {
+      "n": 60,
+      "min": 19,
+      "median": 67.5,
+      "p90": 114.2,
+      "max": 137
+    },
+    "test": {
+      "n": 330,
+      "min": 12,
+      "median": 64.0,
+      "p90": 273.20000000000005,
+      "max": 815
+    },
+    "e1": {
+      "n": 1940,
+      "min": 5,
+      "median": 77.0,
+      "p90": 271.10000000000014,
+      "max": 1537
+    },
+    "e3": {
+      "n": 1000,
+      "min": 3,
+      "median": 91.0,
+      "p90": 230.10000000000002,
+      "max": 850
+    },
+    "e2synth_400_600": {
+      "n": 100,
+      "min": 423,
+      "median": 521.5,
+      "p90": 580.0,
+      "max": 597
+    },
+    "e2synth_600_800": {
+      "n": 100,
+      "min": 603,
+      "median": 709.5,
+      "p90": 784.2,
+      "max": 799
+    },
+    "e2synth_800_900": {
+      "n": 100,
+      "min": 800,
+      "median": 844.5,
+      "p90": 885.1,
+      "max": 899
+    }
+  }
+}

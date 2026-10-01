@@ -1,0 +1,65 @@
+# RTX 3070 (8 GB, bf16) variant of pilot.yaml. CONFIG-ONLY differences from the original:
+# name/group/dirs, `precision: bf16`, and the items marked below. Same model, data, seed,
+# tokens_per_step and schedule shape.
+name: pilot_3070
+group: pilot_3070
+seed: 1234
+device: auto
+precision: bf16  # 3070 (Ampere) supports bf16; no GradScaler
+label_smoothing: 0.1
+
+# Main architecture (spec §5): 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
+# ~50.2M params (measured: 50,229,248).
+model:
+  vocab_size: 16000
+  d_model: 512
+  n_heads: 8
+  enc_layers: 8
+  dec_layers: 4
+  d_ff: 2048
+  dropout: 0.1
+  pos: rope
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 8192  # probe (bf16, real label-smoothed loss, AdamW step, seq 256, 0.95 VRAM cap): 12288 peaks 7238 MB, inside the 15% margin; runs/pilot_3070/probe_seq256.json
+  tokens_per_step: 25000
+  concat_prob: 0.0  # pilot measures throughput only, not quality — no augmentation needed
+  chunk_size: 512
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  warmup_steps: 4000
+  planned_steps: 100000  # TBD from pilot — placeholder; the pilot's own run is wall-clock bounded
+  cooldown_frac: 0.2
+  max_minutes: 15  # spec §1: pilot budget
+
+ckpt:
+  dir: runs/pilot_3070/ckpt
+  ckpt_minutes: 15
+  # Same as pilot.yaml (time-based only): saving ~0.6 GB every 100 steps would pollute the
+  # throughput measurement. The forced-resume test passes --ckpt-steps on the CLI instead.
+  ckpt_steps: null
+  keep_last: 1  # disk-limited laptop; the pilot measures throughput, its weights are not used
+  keep_decay_phase: true
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/pilot_3070
+
+eval:
+  eval_every: 100000  # pilot doesn't run long enough to reach an eval interval; effectively off

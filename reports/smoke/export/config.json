@@ -1,0 +1,15 @@
+{
+  "bos_id": 2,
+  "d_ff": 512,
+  "d_model": 128,
+  "dec_layers": 1,
+  "dropout": 0.1,
+  "enc_layers": 2,
+  "eos_id": 3,
+  "max_len": 512,
+  "n_heads": 4,
+  "pad_id": 0,
+  "pos": "rope",
+  "rope_base": 10000,
+  "vocab_size": 16000
+}

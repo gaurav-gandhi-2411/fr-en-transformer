@@ -13,3 +13,10 @@ Transformer_model/
 .ipynb_checkpoints/
 *.pt
 *.safetensors
+reports/**/ckpt/
+reports/**/export/*.safetensors
+
+envs/cuda/.venv/
+
+# Export dirs copy tokenizer/spm.model (identical sha256); the committed tokenizer is the source of truth.
+reports/**/export/spm.model

@@ -1,0 +1,130 @@
+{
+  "seed": 1234,
+  "limit": null,
+  "created_utc": "2026-09-30T07:59:26.112717+00:00",
+  "python_version": "3.12.12",
+  "datasets_version": "5.0.1",
+  "wall_clock_seconds": 167.438,
+  "datasets": {
+    "opus100": {
+      "repo_id": "Helsinki-NLP/opus-100",
+      "config": "en-fr",
+      "revision_sha": "805090dc28bf78897da9641cdf08b61287580df9",
+      "raw_train_count": 1000000,
+      "raw_validation_count": 2000
+    },
+    "opus_books": {
+      "repo_id": "Helsinki-NLP/opus_books",
+      "config": "en-fr",
+      "revision_sha": "1f9f6191d0e91a3c539c2595e2fe48fc1420de9b",
+      "raw_train_count": 127085
+    }
+  },
+  "normalization": "NFKC normalization; apostrophe variants (\u2019 \u2018 \u02bc) unified to \"'\"; quote variants (\u00ab \u00bb \u201c \u201d) unified to '\"'; runs of whitespace collapsed to a single space and the result stripped; casing preserved. See nmt/data/normalize.py:normalize_text.",
+  "opus100_test_split_note": "The opus-100 `test` split is never requested by this code (only 'train'/'validation' are passed to datasets.load_dataset; see _OPUS100_ALLOWED_SPLITS). Note that the `datasets` library's opus-100 loading script regenerates all three splits' local Arrow cache files as a side effect of loading any single split -- this code never reads or uses the test split's rows.",
+  "filters": [
+    {
+      "step": "normalize",
+      "removed": 0,
+      "remaining": 1000000
+    },
+    {
+      "step": "drop_empty_side",
+      "removed": 0,
+      "remaining": 1000000
+    },
+    {
+      "step": "drop_exact_duplicate_pairs",
+      "removed": 37122,
+      "remaining": 962878
+    },
+    {
+      "step": "drop_fr_eq_en",
+      "removed": 13061,
+      "remaining": 949817
+    },
+    {
+      "step": "drop_length_ratio_out_of_bounds",
+      "removed": 13116,
+      "remaining": 936701
+    },
+    {
+      "step": "drop_high_non_letter_fraction",
+      "removed": 10412,
+      "remaining": 926289
+    },
+    {
+      "step": "leakage_guard_vs_dev_test_e1_e3",
+      "removed": 2540,
+      "remaining": 923749
+    },
+    {
+      "step": "e2_holdout_and_near_dup_removal",
+      "removed": 1001,
+      "remaining": 922748
+    }
+  ],
+  "leakage_guard": {
+    "exact_hits": 44,
+    "near_dup_only_hits": 2496,
+    "per_source_hits": {
+      "dev_src": 30,
+      "test_src": 75,
+      "dev_ref": 58,
+      "e1": 754,
+      "e3": 1684
+    }
+  },
+  "e2": {
+    "candidates_len_fr_gt_200": 147474,
+    "sampled": 1000,
+    "removed_as_e2_holdout": 1000,
+    "removed_as_e2_near_dup_or_duplicate": 1
+  },
+  "eval_sets": {
+    "e1": {
+      "raw": 2000,
+      "dropped_empty": 0,
+      "dropped_leak_exact": 60,
+      "dropped_leak_near_dup": 0,
+      "kept": 1940,
+      "sampled": 1940
+    },
+    "e2": {
+      "kept": 1000
+    },
+    "e3": {
+      "raw": 127085,
+      "dropped_empty": 0,
+      "dropped_leak_exact": 176,
+      "dropped_leak_near_dup": 4,
+      "kept": 126905,
+      "sampled": 1000
+    }
+  },
+  "final_train_pair_count": 922748,
+  "length_cap_note": "The 256-subword-token-per-side length cap (spec \u00a73) is applied in P2 tokenize.py, not here; train.jsonl rows produced by this module are unbounded by subword length.",
+  "share_of_opus100_train_used": 0.922748,
+  "output_files_sha256": {
+    "data/processed/train.jsonl": "5f89f13c482cc000e2aea4f10b19a0bca81c5b3d9deefac4fb9b940a27808673",
+    "data/eval/e1/inputs.jsonl": "f66cf448b09bacee41a45bb77cd12a61fa5f4d9f821f005cd9da8e35da41c6be",
+    "data/eval/e1/labels.jsonl": "6187337411098dcb663378867e2b17182f1e0d118aacdc09cbba5f3df1fd0fc9",
+    "data/eval/e2/inputs.jsonl": "a0ecfe96974c9c01eba2043fb9e3ceb046cfc1da523b10890ec3f46003e1bf27",
+    "data/eval/e2/labels.jsonl": "d5d122bd57ba9f49e9d65a7a9092a7053a949893091553c49001e78a3133cdb3",
+    "data/eval/e3/inputs.jsonl": "e06bf6dccd915495dc5a3fed06305dada145d6d6828f7a836ad9e8a9178f6f67",
+    "data/eval/e3/labels.jsonl": "e3123a14e66aa73136b67f3745454f6e1b4f254bd98cf5b25d3f3591aae8075a"
+  },
+  "post_check": {
+    "exact_hits": 0,
+    "near_dup_only_hits": 0,
+    "total_removed": 0,
+    "per_source_hits": {
+      "dev_src": 0,
+      "test_src": 0,
+      "dev_ref": 0,
+      "e1": 0,
+      "e2": 0,
+      "e3": 0
+    }
+  }
+}

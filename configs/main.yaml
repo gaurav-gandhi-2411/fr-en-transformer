@@ -1,2 +1,60 @@
 name: main
-# filled in P3
+group: main
+seed: 1234
+device: auto
+label_smoothing: 0.1
+
+# Deep-encoder / shallow-decoder (spec §5): 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
+# ~50.2M params (measured: 50,229,248).
+model:
+  vocab_size: 16000
+  d_model: 512
+  n_heads: 8
+  enc_layers: 8
+  dec_layers: 4
+  d_ff: 2048
+  dropout: 0.1
+  pos: rope
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 4096  # TBD from pilot: replace with the pilot's measured safe micro-batch size
+  tokens_per_step: 25000  # spec §6: ~25k target tokens per optimizer step
+  concat_prob: 0.15  # spec §6 default, s3/main only
+  concat_max_len: 256
+  chunk_size: 512
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  warmup_steps: 4000  # spec §6
+  planned_steps: 50000  # TBD from pilot — pilot throughput x §1's ~4h budget sets the real value
+  cooldown_frac: 0.2  # final 20% of planned_steps (spec §6)
+  max_minutes: 240  # spec §1: ~4h main-run budget, as a wall-clock safety cap alongside planned_steps
+
+ckpt:
+  dir: runs/main/ckpt  # Drive path on Colab; overridden via the colab notebook, not here (P5)
+  ckpt_minutes: 15  # spec §6
+  ckpt_steps: null
+  keep_last: 5
+  keep_decay_phase: true  # needed for checkpoint averaging over the decay phase (spec §6, §9)
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/main
+
+eval:
+  eval_every: 500  # spec §11: "about every 20 min"; revisit once real tok/s is known from pilot

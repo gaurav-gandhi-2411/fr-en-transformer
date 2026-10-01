@@ -1,0 +1,193 @@
+{
+  "created_utc": "2026-09-30T08:18:45.028610+00:00",
+  "vocab_summary": {
+    "vocab_size": 16000,
+    "n_byte_fallback_pieces": 256,
+    "n_word_initial_pieces": 10062,
+    "share_word_initial_pieces": 0.628875
+  },
+  "per_set": {
+    "train_sample": {
+      "fr": {
+        "n_sentences": 50000,
+        "tokens_per_word": 1.5447796769383757,
+        "tokens_per_char": 0.2489636621047664,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 1065,
+        "mean_token_length": 26.3777,
+        "p95_token_length": 76.0
+      },
+      "en": {
+        "n_sentences": 50000,
+        "tokens_per_word": 1.4708117877467788,
+        "tokens_per_char": 0.24180345388381358,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 632,
+        "mean_token_length": 22.96552,
+        "p95_token_length": 63.0
+      }
+    },
+    "e1": {
+      "fr": {
+        "n_sentences": 1940,
+        "tokens_per_word": 1.551333596110892,
+        "tokens_per_char": 0.2480035287445651,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 394,
+        "mean_token_length": 30.430927835051545,
+        "p95_token_length": 81.04999999999995
+      },
+      "en": {
+        "n_sentences": 1940,
+        "tokens_per_word": 1.469901559369283,
+        "tokens_per_char": 0.239418233416105,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 345,
+        "mean_token_length": 26.092268041237112,
+        "p95_token_length": 69.0
+      }
+    },
+    "e2": {
+      "fr": {
+        "n_sentences": 1000,
+        "tokens_per_word": 1.5095782991327324,
+        "tokens_per_char": 0.2335309009876185,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 387,
+        "mean_token_length": 70.843,
+        "p95_token_length": 125.09999999999991
+      },
+      "en": {
+        "n_sentences": 1000,
+        "tokens_per_word": 1.4137088974854932,
+        "tokens_per_char": 0.22146260538894486,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 383,
+        "mean_token_length": 58.471,
+        "p95_token_length": 106.0
+      }
+    },
+    "e3": {
+      "fr": {
+        "n_sentences": 1000,
+        "tokens_per_word": 1.705171388943927,
+        "tokens_per_char": 0.29149660439988484,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 240,
+        "mean_token_length": 34.424,
+        "p95_token_length": 84.0
+      },
+      "en": {
+        "n_sentences": 1000,
+        "tokens_per_word": 1.5460602549246814,
+        "tokens_per_char": 0.27957045573598743,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 222,
+        "mean_token_length": 32.022,
+        "p95_token_length": 79.09999999999991
+      }
+    },
+    "test": {
+      "fr": {
+        "n_sentences": 330,
+        "tokens_per_word": 1.579481010482901,
+        "tokens_per_char": 0.25801471001066756,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 246,
+        "mean_token_length": 27.85151515151515,
+        "p95_token_length": 79.0
+      }
+    },
+    "dev_seen": {
+      "fr": {
+        "n_sentences": 60,
+        "tokens_per_word": 1.6084142394822007,
+        "tokens_per_char": 0.2691578662334146,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 37,
+        "mean_token_length": 16.566666666666666,
+        "p95_token_length": 32.099999999999994
+      },
+      "en": {
+        "n_sentences": 60,
+        "tokens_per_word": 1.5762987012987013,
+        "tokens_per_char": 0.26321496340471673,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 66,
+        "mean_token_length": 16.183333333333334,
+        "p95_token_length": 31.14999999999999
+      }
+    },
+    "dev_long": {
+      "fr": {
+        "n_sentences": 30,
+        "tokens_per_word": 1.535426731078905,
+        "tokens_per_char": 0.23695328031809146,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 110,
+        "mean_token_length": 63.56666666666667,
+        "p95_token_length": 89.55
+      },
+      "en": {
+        "n_sentences": 30,
+        "tokens_per_word": 1.503968253968254,
+        "tokens_per_char": 0.2290376189756761,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 109,
+        "mean_token_length": 50.53333333333333,
+        "p95_token_length": 86.94999999999992
+      }
+    },
+    "dev_unseen_domain": {
+      "fr": {
+        "n_sentences": 60,
+        "tokens_per_word": 1.6725067385444743,
+        "tokens_per_char": 0.2917940277451211,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 47,
+        "mean_token_length": 20.683333333333334,
+        "p95_token_length": 40.05
+      },
+      "en": {
+        "n_sentences": 60,
+        "tokens_per_word": 1.4321475625823452,
+        "tokens_per_char": 0.27708386438949784,
+        "byte_fallback_token_rate": 0.0,
+        "unk_rate": 0.0,
+        "share_sentences_with_byte_fallback": 0.0,
+        "max_token_length": 43,
+        "mean_token_length": 18.116666666666667,
+        "p95_token_length": 34.14999999999999
+      }
+    }
+  },
+  "top_byte_fallback_chars_dev_test_e3": []
+}

@@ -1,2 +1,61 @@
 name: smoke
-# filled in P3
+group: smoke
+seed: 1234
+device: cpu  # spec §14 P3 gate: smoke runs on CPU regardless of what's locally available
+label_smoothing: 0.1
+
+# ~2.7M params (measured: `Transformer(ModelConfig(**model)).param_count()` == 2,709,632).
+# vocab=16000 alone makes the tied embedding 2.05M (spec §5 fixes vocab at 16k), so "about 2M"
+# from spec §14's P3 gate is read as "as small as sensible above that floor" — d=128/2 enc/1 dec
+# keeps the rest of the network small relative to the embedding.
+model:
+  vocab_size: 16000
+  d_model: 128
+  n_heads: 4
+  enc_layers: 2
+  dec_layers: 1
+  d_ff: 512
+  dropout: 0.1
+  pos: rope
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 512
+  tokens_per_step: 1024
+  concat_prob: 0.0
+  chunk_size: 64
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  warmup_steps: 30
+  planned_steps: 300
+  cooldown_frac: 0.2
+  max_minutes: null
+
+ckpt:
+  dir: runs/smoke/ckpt
+  ckpt_minutes: 15
+  ckpt_steps: null
+  keep_last: 3
+  keep_decay_phase: true
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/smoke
+
+eval:
+  eval_every: 100

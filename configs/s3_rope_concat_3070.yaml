@@ -1,0 +1,68 @@
+# RTX 3070 (8 GB, bf16) variant of s3_rope_concat.yaml. CONFIG-ONLY differences from the original:
+# name/group/dirs, `precision: bf16`, and the items marked below. Same model, data, seed,
+# tokens_per_step and schedule shape.
+name: s3_rope_concat_3070
+group: ablation_3070
+seed: 1234
+device: auto
+precision: bf16  # 3070 (Ampere) supports bf16; no GradScaler
+label_smoothing: 0.1
+
+# Main architecture at small scale (spec §9 S3, optional: RoPE + concat augmentation on — does
+# concatenation help long inputs without hurting seen, on top of s2_rope's RoPE-only baseline).
+model:
+  vocab_size: 16000
+  d_model: 512
+  n_heads: 8
+  enc_layers: 8
+  dec_layers: 4
+  d_ff: 2048
+  dropout: 0.1
+  pos: rope
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 8192  # probe (bf16, real label-smoothed loss, AdamW step, seq 256, 0.95 VRAM cap): 12288 peaks 7238 MB, inside the 15% margin; runs/pilot_3070/probe_seq256.json
+  tokens_per_step: 25000
+  concat_prob: 0.15  # spec §6 default, s3/main only
+  concat_max_len: 256
+  chunk_size: 512
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  warmup_steps: 500  # see s1_sin.yaml: smaller than main's 4000 for a 40-min budget
+  planned_steps: 2889  # pilot_3070 (9e36831): 0.706 s/step mean wall x 40 min x 0.85 margin; runs/pilot_3070/plan.json
+  # (--profile 3070); identical across s1/s2/s3 so all three finish their WSD decay.
+  cooldown_frac: 0.2
+  # SAFETY cap only. The 40-min budget is enforced via planned_steps (derived from the
+  # pilot's tok/s at 40 min), so all three ablations reach identical planned steps and
+  # complete their WSD decay; this wall cap must never be what ends a run.
+  max_minutes: 60
+
+ckpt:
+  dir: runs/s3_rope_concat_3070/ckpt
+  ckpt_minutes: 15
+  ckpt_steps: null
+  keep_last: 1  # PREREG compares final checkpoints only; disk-limited laptop (see tests/test_configs_3070.py)
+  keep_decay_phase: false
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/s3_rope_concat_3070
+
+eval:
+  eval_every: 1000  # ~12 min at 0.706 s/step; 2 periodic evals per ablation
