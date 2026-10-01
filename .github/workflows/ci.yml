@@ -11,23 +11,90 @@ concurrency:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      # Run both interpreters to completion: a 3.13 failure must not hide a 3.12 result.
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
+      # ---- 3.12: the locked uv environment (what the ablations and the local env use) -------
       - name: Install uv
+        if: matrix.python-version == '3.12'
         uses: astral-sh/setup-uv@v10.2.0
 
       - name: Install Python 3.12
+        if: matrix.python-version == '3.12'
         run: uv python install 3.12
 
+      - name: Check uv.lock is up to date
+        if: matrix.python-version == '3.12'
+        run: uv lock --check
+
       - name: Sync dependencies (frozen)
-        run: uv sync --frozen
+        if: matrix.python-version == '3.12'
+        run: uv sync --frozen --python 3.12
 
       - name: Lint (ruff check)
+        if: matrix.python-version == '3.12'
         run: uv run ruff check .
 
       - name: Format check (ruff format)
+        if: matrix.python-version == '3.12'
         run: uv run ruff format --check .
 
       - name: Test (pytest)
+        if: matrix.python-version == '3.12'
         run: uv run pytest -q
+
+      # ---- 3.13: Colab's interpreter, reproduced the way the Colab notebook installs ---------
+      # Plain pip in a venv (no uv): preinstalled torch + `requirements-colab.txt` under a torch
+      # constraint + `pip install -e . --no-deps`, i.e. the exact sequence of the notebook's
+      # install cell, then the full test suite and the notebook itself.
+      - name: Set up Python 3.13
+        if: matrix.python-version == '3.13'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Create venv and install the Colab-style environment
+        if: matrix.python-version == '3.13'
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          PY="$RUNNER_TEMP/venv/bin/python"
+          "$PY" -m pip install --disable-pip-version-check pip==26.2.1
+          # Stand-in for Colab's preinstalled torch: the CPU wheel of the version pinned in
+          # pyproject.toml (the same version uv.lock resolves for CPU/CI).
+          TORCH_VERSION=$(sed -n 's/^ *"torch==\([0-9.]*\)",$/\1/p' pyproject.toml)
+          test -n "$TORCH_VERSION"
+          "$PY" -m pip install --disable-pip-version-check "torch==${TORCH_VERSION}" \
+            --index-url https://download.pytorch.org/whl/cpu
+          # Same helper as the notebook's install cell, so the two cannot drift.
+          "$PY" colab/make_torch_constraints.py "$RUNNER_TEMP/torch_constraints.txt"
+          "$PY" -m pip install --disable-pip-version-check \
+            -r requirements-colab.txt -c "$RUNNER_TEMP/torch_constraints.txt"
+          "$PY" -m pip install --disable-pip-version-check -e . --no-deps
+          # Test + notebook-execution tooling, pinned to the versions in the uv dev group.
+          "$PY" -m pip install --disable-pip-version-check \
+            pytest==9.1.1 nbclient==0.11.0 nbformat==5.11.1 ipykernel==7.4.0
+          # pip must not have swapped the preinstalled torch.
+          "$PY" -c "import torch; print('torch', torch.__version__)"
+          grep -qx "torch==$("$PY" -c 'import torch; print(torch.__version__)')" \
+            "$RUNNER_TEMP/torch_constraints.txt"
+          "$PY" -m pip check
+
+      - name: Test (pytest, Python 3.13)
+        if: matrix.python-version == '3.13'
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q
+
+      # The real shards are gitignored (145 MB, private HF dataset), so CI builds tiny SYNTHETIC
+      # copy-task shards + manifest: this proves every notebook cell and the training subprocess
+      # execute on 3.13; it says nothing about model quality (colab/make_synthetic_shards.py).
+      - name: Execute colab/train.ipynb in smoke mode (synthetic shards, Python 3.13)
+        if: matrix.python-version == '3.13'
+        run: |
+          PY="$RUNNER_TEMP/venv/bin/python"
+          "$PY" colab/make_synthetic_shards.py .
+          "$PY" colab/execute_notebook.py colab/train.ipynb 1800
