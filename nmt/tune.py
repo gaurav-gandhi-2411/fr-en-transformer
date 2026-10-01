@@ -2,7 +2,8 @@ from __future__ import annotations
 
 # Decoding-tuning CLI (spec section 7): alpha in {0.6, 0.8, 1.0, 1.2} x beam in {1, 4, 5} is
 # searched first, then the segmentation threshold T is tuned separately (holding the winning
-# alpha/beam fixed) over a small T grid, compared against no segmentation at all. Every candidate
+# alpha/beam fixed) over the T grid {64, 128, 192, 256}, compared against "off" (no segmentation
+# at all, always decoded and scored as the candidate named `no_segmentation`). Every candidate
 # is decoded with `nmt.translate.Translator` and scored exclusively through
 # `nmt.selection.select`/`selection_objective` -- this module loads its eval sentences ONLY via
 # `nmt.selection.load_selection_set`/`limited_selection_set`, never a path or loader of its own,
@@ -10,7 +11,7 @@ from __future__ import annotations
 # `tests/test_selection.py`'s source scan, extended to cover this file).
 #
 # CLI: `python -m nmt.tune --model DIR --out reports/<run>/selection_grid.json
-#   [--alphas 0.6 0.8 1.0 1.2] [--beams 1 4 5] [--seg-thresholds 32 64 128]
+#   [--alphas 0.6 0.8 1.0 1.2] [--beams 1 4 5] [--seg-thresholds 64 128 192 256]
 #   [--limit-e1 N --limit-e2 N] [--batch-size 16]`
 import argparse
 import hashlib
@@ -34,7 +35,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_ALPHAS: tuple[float, ...] = (0.6, 0.8, 1.0, 1.2)
 DEFAULT_BEAMS: tuple[int, ...] = (1, 4, 5)
-DEFAULT_SEG_THRESHOLDS: tuple[int, ...] = (32, 64, 128)
+# T in {64, 128, 192, 256} source subword tokens; "off" is not a number here: it is the
+# always-present `no_segmentation` candidate of `_segmentation_tune` (NO_SEGMENTATION_KEY), so
+# the full grid is T in {64, 128, 192, 256, off}.
+DEFAULT_SEG_THRESHOLDS: tuple[int, ...] = (64, 128, 192, 256)
+NO_SEGMENTATION_KEY = "no_segmentation"
 
 
 def _git_sha() -> str | None:
@@ -178,10 +183,11 @@ def _segmentation_tune(
 ) -> dict[str, Any]:
     """Tune the segmentation threshold T on E2 only, after alpha/beam are already chosen: E1's
     predictions are held fixed (decoded once, at the winning alpha/beam, no segmentation), and
-    only E2 is redecoded per candidate T -- "no segmentation at all" is included as one of the
-    compared candidates, not assumed better or worse. Still scored via `selection_objective`
-    (which needs both E1 and E2), so a T change's effect on the objective is attributable to E2
-    alone."""
+    only E2 is redecoded per candidate T -- "off" (no segmentation at all, key
+    `NO_SEGMENTATION_KEY`) is ALWAYS included as one of the compared candidates, whatever
+    `seg_thresholds` holds, and is not assumed better or worse. Still scored via
+    `selection_objective` (which needs both E1 and E2), so a T change's effect on the objective is
+    attributable to E2 alone."""
     scores: dict[str, dict[str, float]] = {}
     timings: dict[str, float] = {}
     key_to_threshold: dict[str, int | None] = {}
@@ -196,7 +202,7 @@ def _segmentation_tune(
     e2_preds_none, elapsed_none = _decode_ids(
         translator, e2.ids, e2.sources, best_beam, best_alpha, batch_size, segment_threshold=None
     )
-    _score("no_segmentation", e2_preds_none, None, elapsed_none)
+    _score(NO_SEGMENTATION_KEY, e2_preds_none, None, elapsed_none)
 
     for threshold in seg_thresholds:
         e2_preds_t, elapsed_t = _decode_ids(
@@ -294,7 +300,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--alphas", type=float, nargs="+", default=list(DEFAULT_ALPHAS))
     parser.add_argument("--beams", type=int, nargs="+", default=list(DEFAULT_BEAMS))
     parser.add_argument(
-        "--seg-thresholds", type=int, nargs="+", default=list(DEFAULT_SEG_THRESHOLDS)
+        "--seg-thresholds",
+        type=int,
+        nargs="+",
+        default=list(DEFAULT_SEG_THRESHOLDS),
+        help="Segmentation thresholds T (source subword tokens) to compare; the 'off' candidate "
+        f"({NO_SEGMENTATION_KEY}) is always added. Default: %(default)s.",
     )
     parser.add_argument("--limit-e1", type=int, default=None)
     parser.add_argument("--limit-e2", type=int, default=None)
