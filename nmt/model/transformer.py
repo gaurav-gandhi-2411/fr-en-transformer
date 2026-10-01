@@ -318,6 +318,15 @@ class Transformer(nn.Module):
 
     def _pos_add(self, x: Tensor, positions: Tensor) -> Tensor:
         if self.cfg.pos == "sinusoidal":
+            # Decoding uses max_len = floor(1.5*src_len) + 10 (spec §7), which on a long source
+            # can exceed cfg.max_len (the training-time table size) and index past the end of a
+            # fixed-size buffer. Grow the table on demand rather than crash: re-registering a
+            # larger buffer is a few KB and happens at most once per decode call that needs it.
+            needed = int(positions.max().item()) + 1 if positions.numel() else 0
+            if needed > self.pos_table.size(0):
+                self.pos_table = _sinusoidal_table(needed, self.cfg.d_model).to(
+                    device=self.pos_table.device, dtype=self.pos_table.dtype
+                )
             return x + self.pos_table[positions].unsqueeze(0)
         return x  # RoPE is applied inside attention, not added to the embedding
 

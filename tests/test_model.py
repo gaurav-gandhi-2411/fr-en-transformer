@@ -123,6 +123,28 @@ def test_rope_and_sinusoidal_configs_both_produce_finite_logits() -> None:
         assert torch.isfinite(logits).all()
 
 
+def test_sinusoidal_positions_beyond_max_len_do_not_crash() -> None:
+    """decode.py's max_len = floor(1.5*src_len) + 10 can exceed cfg.max_len on a long source;
+    the sinusoidal table must grow to cover it instead of an index-out-of-bounds crash.
+    """
+    torch.manual_seed(6)
+    cfg = _tiny_config(pos="sinusoidal", max_len=16)  # table starts far smaller than 600
+    model = Transformer(cfg).eval()
+
+    src = torch.randint(4, cfg.vocab_size, (1, 5))
+    src_mask = torch.ones_like(src, dtype=torch.bool)
+    with torch.no_grad():
+        memory = model.encode(src, src_mask)
+        cache = model.init_decode_cache(memory, src_mask)
+        token = torch.randint(4, cfg.vocab_size, (1, 1))
+        logits = None
+        for _ in range(600):
+            logits = model.decode_step(token, cache)
+            assert torch.isfinite(logits).all()
+    assert model.pos_table.size(0) >= 600
+    assert logits is not None
+
+
 def test_tiny_model_overfits_one_batch() -> None:
     """A tiny model trained on a single fixed batch with plain CE (epsilon=0 — label smoothing's
     floor above 0 would make a hard 0.1 threshold arbitrary/unreachable by construction) should

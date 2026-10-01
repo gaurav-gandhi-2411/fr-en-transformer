@@ -13,3 +13,5 @@ Transformer_model/
 .ipynb_checkpoints/
 *.pt
 *.safetensors
+reports/**/ckpt/
+reports/**/export/*.safetensors

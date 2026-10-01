@@ -108,6 +108,13 @@ class LoggingSection:
 @dataclass
 class EvalSection:
     eval_every: int = 500
+    # Fixed seeded subset sizes for the periodic eval hook (spec §11: "E1[500], E2[300]" for the
+    # main run; "keep it cheap and configurable ... smoke uses small subsets"). The official dev
+    # set is always evaluated whole (150 sentences), never subset, so it has no size field here.
+    e1_n: int = 500
+    e2_n: int = 300
+    e3_n: int = 300
+    n_samples_table: int = 20
 
 
 @dataclass
@@ -411,19 +418,23 @@ def init_wandb(
 
 
 # ---------------------------------------------------------------------------------------------
-# Eval hook (P4 fills this in)
+# Eval hook (P4: nmt.evaluate.build_train_eval_fn builds the real one)
 # ---------------------------------------------------------------------------------------------
 
-EvalFn = Callable[[nn.Module, int], dict[str, float]]
+# The third parameter is the active W&B run (or None) -- a hook that logs a W&B Table (e.g. the
+# spec §11 sample-translations table) needs the run object directly, since a Table isn't
+# JSON-serializable and so can't travel through the returned dict (which IS written verbatim to
+# metrics.jsonl via json.dumps below).
+EvalFn = Callable[[nn.Module, int, Any], dict[str, float]]
 
 
-def default_eval_fn(model: nn.Module, step: int) -> dict[str, float]:
-    """No-op eval hook placeholder. TODO(P4 owner): replace with `nmt.evaluate`'s greedy
-    BLEU/chrF computation on E1/E2/dev (spec §8, §11). Validation loss on E1 is computed directly
-    in the train loop below (`_eval_val_loss`), not through this hook, since it's needed for
-    checkpoint-selection sanity even before P4 exists.
+def default_eval_fn(model: nn.Module, step: int, wandb_run: Any = None) -> dict[str, float]:
+    """No-op eval hook placeholder (used when the caller doesn't pass one, e.g. most tests).
+    `nmt.evaluate.build_train_eval_fn` builds the real spec §8/§11 greedy BLEU/chrF hook.
+    Validation loss on E1 is computed directly in the train loop below (`_eval_val_loss`), not
+    through this hook, since it's needed for checkpoint-selection sanity independent of it.
     """
-    del model, step
+    del model, step, wandb_run
     return {}
 
 
@@ -583,9 +594,22 @@ def train(
 
     target_steps = max_steps if max_steps is not None else cfg.optim.planned_steps
     eval_dataset: ShardDataset | None = None
-    # eval split not present yet (e.g. real P2 shards not built); skip eval-loss logging.
-    with contextlib.suppress(FileNotFoundError):
+    eval_disabled_reason: str | None = None
+    try:
         eval_dataset = ShardDataset(shard_dir, cfg.data.eval_split)
+    except FileNotFoundError as exc:
+        # Non-fatal (a missing eval split must not abort training), but silent-suppression here
+        # previously hid validation entirely with no trace anywhere it ran — loud print plus a
+        # durable record in both metrics.jsonl and the W&B run config, so absence is visible.
+        eval_disabled_reason = (
+            f"eval split {cfg.data.eval_split!r} not found under {shard_dir}: {exc}"
+        )
+        print(f"WARNING: {eval_disabled_reason}; validation loss/eval_fn disabled this run.")
+    if eval_disabled_reason is not None and wandb_run is not None:
+        with contextlib.suppress(Exception):  # W&B failures must never abort training
+            wandb_run.config.update(
+                {"eval_disabled_reason": eval_disabled_reason}, allow_val_change=True
+            )
 
     micro_iter = _iter_micro_batches(sampler)
     last_ckpt_time = time.monotonic()
@@ -593,6 +617,9 @@ def train(
     model.train()
 
     with metrics_path.open("a", encoding="utf-8") as metrics_file:
+        if eval_disabled_reason is not None:
+            metrics_file.write(json.dumps({"eval_disabled_reason": eval_disabled_reason}) + "\n")
+            metrics_file.flush()
         while step < target_steps:
             elapsed_minutes = (time.monotonic() - start_time) / 60.0
             if cfg.optim.max_minutes is not None and elapsed_minutes >= cfg.optim.max_minutes:
@@ -675,7 +702,7 @@ def train(
             eval_due = eval_dataset is not None and cfg.eval.eval_every > 0
             if eval_due and step % cfg.eval.eval_every == 0:
                 val_loss = _eval_val_loss(model, eval_dataset, cfg, device)  # type: ignore[arg-type]
-                extra = eval_fn(model, step)
+                extra = eval_fn(model, step, wandb_run)
                 eval_row = {"step": step, "val_loss": val_loss, **extra}
                 metrics_file.write(json.dumps({"eval": eval_row}) + "\n")
                 metrics_file.flush()
