@@ -128,6 +128,25 @@ def test_stage_tune_writes_selection_grid_with_limits(tmp_path: Path) -> None:
     assert on_disk == result
 
 
+def test_stage_tune_greedy_winner_reuses_its_shared_decode(tmp_path: Path) -> None:
+    """Regression: when greedy wins, its predictions are stored under the shared decode key
+    ("beam=1"), not the grid key ("alpha=0.6_beam=1") -- the segmentation stage must still find
+    them. A beam=1-only grid forces a greedy winner."""
+    export_dir = _export_tiny(tmp_path)
+    result = stage_tune(
+        export_dir,
+        tmp_path / "selection_grid.json",
+        alphas=(0.6, 1.0),
+        beams=(1,),
+        seg_thresholds=(16,),
+        limit_e1=2,
+        limit_e2=2,
+        batch_size=4,
+    )
+    assert result["winner"]["beam"] == 1
+    assert result["alpha_beam"]["deduped_as"][result["alpha_beam"]["best"]] == "beam=1"
+
+
 def test_stage_predict_writes_and_validates(tmp_path: Path) -> None:
     export_dir = _export_tiny(tmp_path)
     input_path = tmp_path / "inputs.jsonl"

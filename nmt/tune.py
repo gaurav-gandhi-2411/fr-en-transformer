@@ -243,7 +243,9 @@ def run_tune(
     translator = Translator.from_pretrained(str(model_dir))
 
     ab = _alpha_beam_grid_search(translator, e1, e2, alphas, beams, batch_size)
-    fixed_e1_preds = {i: ab.decoded[ab.best_key][i] for i in e1.ids}
+    # A greedy winner's predictions live under its shared decode key ("beam=1"), not its grid key.
+    best_decode_key = ab.deduped_as.get(ab.best_key, ab.best_key)
+    fixed_e1_preds = {i: ab.decoded[best_decode_key][i] for i in e1.ids}
     seg = _segmentation_tune(
         translator, e1, e2, fixed_e1_preds, ab.best_alpha, ab.best_beam, seg_thresholds, batch_size
     )
