@@ -17,7 +17,7 @@ from nmt import evaluate as evaluate_mod
 from nmt import submission as submission_mod
 from nmt.analysis import run_analysis
 from nmt.hub import export_checkpoint
-from nmt.train import EvalFn, TrainConfig, _build_model_config, default_eval_fn, load_config, train
+from nmt.train import _build_model_config, build_eval_fn, default_eval_fn, load_config, train
 from nmt.translate import Translator
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -63,26 +63,6 @@ def stage_tokenize(seed: int) -> int:
 # ---------------------------------------------------------------------------------------------
 
 
-def _build_eval_fn(cfg: TrainConfig, seed: int) -> EvalFn:
-    """The real spec §11 eval hook when the tokenizer exists (P2 output); otherwise the no-op
-    placeholder, so `train` still runs standalone (e.g. before P2 has produced a tokenizer)."""
-    if not DEFAULT_TOKENIZER_PATH.is_file():
-        return default_eval_fn
-    from nmt.evaluate import TrainEvalConfig, build_train_eval_fn
-
-    eval_cfg = TrainEvalConfig(
-        tokenizer_path=DEFAULT_TOKENIZER_PATH,
-        e1_n=cfg.eval.e1_n,
-        e2_n=cfg.eval.e2_n,
-        e3_n=cfg.eval.e3_n,
-        n_samples_table=cfg.eval.n_samples_table,
-        seed=seed,
-        device="cpu" if cfg.device == "cpu" else "cpu",  # eval hook always runs on CPU: cheap,
-        # keeps it off the GPU memory budget the training step itself is using.
-    )
-    return build_train_eval_fn(eval_cfg)
-
-
 def stage_train(
     config_path: Path,
     seed: int,
@@ -100,7 +80,7 @@ def stage_train(
         # fresh gate-run directory distinct from the committed configs/smoke.yaml's runs/smoke/.
         cfg.logging.run_dir = str(run_dir)
         cfg.ckpt.dir = str(Path(run_dir) / "ckpt")
-    eval_fn = _build_eval_fn(cfg, seed)
+    eval_fn = default_eval_fn if synthetic else build_eval_fn(cfg, seed)
     train(
         cfg,
         resume=resume,

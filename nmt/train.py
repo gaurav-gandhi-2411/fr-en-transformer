@@ -744,7 +744,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--resume", action="store_true", help="Resume from the latest checkpoint in ckpt.dir."
     )
     parser.add_argument("--seed", type=int, default=None, help="Override config.seed.")
-    parser.add_argument("--max-steps", type=int, default=None, help="Override optim.planned_steps.")
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="Cap this invocation's step count below optim.planned_steps (the WSD schedule "
+        "itself still targets planned_steps; use --planned-steps to change that).",
+    )
     parser.add_argument("--wandb", choices=["offline", "online", "disabled"], default="offline")
     parser.add_argument(
         "--cooldown-now", action="store_true", help="Start WSD decay at the current step."
@@ -754,12 +760,62 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Train on a generated copy-task instead of real shards.",
     )
+    parser.add_argument(
+        "--run-dir", default=None, help="Override logging.run_dir (metrics.jsonl location)."
+    )
+    parser.add_argument("--ckpt-dir", default=None, help="Override ckpt.dir (checkpoint location).")
+    parser.add_argument(
+        "--data-dir", default=None, help="Override data.shard_dir (where train/eval shards live)."
+    )
+    parser.add_argument(
+        "--planned-steps",
+        type=int,
+        default=None,
+        help="Override optim.planned_steps (the WSD schedule's total step budget), e.g. from "
+        "the pilot's scripts/plan_steps.py recommendation.",
+    )
     return parser.parse_args(argv)
+
+
+def build_eval_fn(cfg: TrainConfig, seed: int) -> EvalFn:
+    """The real spec §11 periodic eval hook (greedy BLEU/chrF + W&B sample table), or the no-op
+    placeholder when the committed tokenizer is absent. Lives here, not only in nmt.pipeline,
+    so `python -m nmt.train` (what the Colab notebook runs) logs the BLEU/chrF curves too.
+
+    The hook decodes on the TRAINING device: it builds its input tensors on `device` and uses
+    the model in place, so a CPU device with a CUDA model would crash, and CPU greedy decoding
+    of ~1.2k sentences with the 50M model on Colab's 2 vCPUs would eat the GPU budget.
+    """
+    tokenizer_path = Path(__file__).resolve().parents[1] / "tokenizer" / "spm.model"
+    if not tokenizer_path.is_file():
+        print(f"WARNING: {tokenizer_path} missing; BLEU/chrF eval hook disabled this run.")
+        return default_eval_fn
+    from nmt.evaluate import TrainEvalConfig, build_train_eval_fn  # lazy: heavy imports
+
+    return build_train_eval_fn(
+        TrainEvalConfig(
+            tokenizer_path=tokenizer_path,
+            e1_n=cfg.eval.e1_n,
+            e2_n=cfg.eval.e2_n,
+            e3_n=cfg.eval.e3_n,
+            n_samples_table=cfg.eval.n_samples_table,
+            seed=seed if seed is not None else cfg.seed,
+            device=_resolve_device(cfg).type,
+        )
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     cfg = load_config(args.config)
+    if args.run_dir is not None:
+        cfg.logging.run_dir = args.run_dir
+    if args.ckpt_dir is not None:
+        cfg.ckpt.dir = args.ckpt_dir
+    if args.data_dir is not None:
+        cfg.data.shard_dir = args.data_dir
+    if args.planned_steps is not None:
+        cfg.optim.planned_steps = args.planned_steps
     print_steps = (1, 50, 100, 150, 200, 250, 300) if cfg.name == "smoke" else ()
     train(
         cfg,
@@ -770,6 +826,7 @@ def main(argv: list[str] | None = None) -> None:
         synthetic=args.synthetic,
         seed=args.seed,
         print_at_steps=print_steps,
+        eval_fn=default_eval_fn if args.synthetic else build_eval_fn(cfg, args.seed),
     )
 
 
