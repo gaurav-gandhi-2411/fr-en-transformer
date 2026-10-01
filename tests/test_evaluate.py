@@ -5,6 +5,9 @@ from __future__ import annotations
 # on synthetic systems, the length-bucket view, and a small end-to-end run_evaluation using a
 # tiny model. Spec §8, §12.
 import json
+import math
+import random
+import time
 from pathlib import Path
 
 import pytest
@@ -12,10 +15,18 @@ import torch
 
 from nmt.evaluate import (
     EvalRunConfig,
+    _bleu_from_aggregated,
+    _bleu_resample,
+    _bleu_sentence_stats,
+    _chrf_resample,
+    _chrf_sentence_stats,
+    _official_metric_fn,
+    _resample_indices,
     bootstrap_ci_official,
     compute_official_metrics,
     length_bucket_label,
     length_bucket_view,
+    load_official_module,
     paired_bootstrap,
     run_evaluation,
     run_official_scorer_cli,
@@ -218,3 +229,215 @@ def test_run_evaluation_end_to_end_tiny(tmp_path: Path, monkeypatch: pytest.Monk
     assert "length_buckets_e1_e2_e3" in result
     on_disk = json.loads((out_dir / "eval.json").read_text(encoding="utf-8"))
     assert on_disk == result
+
+
+# ---- vectorized bootstrap: sufficient statistics must equal the official functions exactly ----
+# (performance fix, spec §8 -- recomputing BLEU/chrF from strings on every resample is what made
+# 1000 resamples on E1 (1940 sentences) take several minutes per split per metric; see PLAN.md's
+# smoke-gate deviation note.)
+
+_BLEU_STATS_CASES = {
+    "normal text": (
+        [
+            "the quick brown fox jumps over the lazy dog",
+            "hello world how are you",
+            "a much shorter sentence entirely different",
+            "short ref",
+            "une petite phrase simple",
+        ],
+        [
+            "the quick brown fox jumps over the lazy dog",
+            "hello world how are you today",
+            "a much longer reference sentence to vary bleu behavior a bit more than the others",
+            "short ref",
+            "une petite phrase simple pour tester",
+        ],
+    ),
+    "empty hypothesis among the set": (
+        [
+            "",
+            "hello world how are you",
+            "a much shorter sentence",
+            "short ref",
+            "une petite phrase",
+        ],
+        [
+            "the quick brown fox jumps over the lazy dog",
+            "hello world how are you today",
+            "a much longer reference sentence to vary bleu behavior a bit more than the others",
+            "short ref",
+            "une petite phrase simple pour tester",
+        ],
+    ),
+    "all-empty hyps": (
+        ["", "", "", "", ""],
+        [
+            "the quick brown fox jumps over the lazy dog",
+            "hello world how are you today",
+            "a much longer reference sentence to vary bleu behavior a bit more than the others",
+            "short ref",
+            "une petite phrase simple pour tester",
+        ],
+    ),
+    "hyps shorter than refs (BP<1)": (
+        ["the quick", "hello world", "a much", "short", "une petite"],
+        [
+            "the quick brown fox jumps over the lazy dog",
+            "hello world how are you today",
+            "a much longer reference sentence to vary bleu behavior a bit more than the others",
+            "short ref",
+            "une petite phrase simple pour tester",
+        ],
+    ),
+    "hyps longer than refs": (
+        [
+            "the quick brown fox jumps over the lazy dog and then some extra words appended",
+            "hello world how are you today and here is more filler text",
+            "a much longer reference sentence to vary bleu behavior a bit more than the others "
+            "plus even more padding words at the end",
+            "short ref with extra padding words tacked on",
+            "une petite phrase simple pour tester avec des mots en plus a la fin",
+        ],
+        [
+            "the quick brown fox jumps over the lazy dog",
+            "hello world how are you today",
+            "a much longer reference sentence to vary bleu behavior a bit more than the others",
+            "short ref",
+            "une petite phrase simple pour tester",
+        ],
+    ),
+    "zero 4-gram matches": (
+        [
+            "zzz yyy xxx www vvv uuu",
+            "qqq rrr sss ttt uuu vvv",
+            "mmm nnn ooo ppp qqq rrr sss",
+            "aaa bbb ccc ddd",
+            "eee fff ggg hhh iii",
+        ],
+        [
+            "the quick brown fox jumps over the lazy dog",
+            "hello world how are you today",
+            "a much longer reference sentence to vary bleu behavior a bit more than the others",
+            "short ref",
+            "une petite phrase simple pour tester",
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(_BLEU_STATS_CASES), ids=list(_BLEU_STATS_CASES))
+def test_bleu_sufficient_stats_identity_equals_official_corpus_bleu(case: str) -> None:
+    """Summing the per-sentence sufficient statistics over the full (identity) index set and
+    applying `_bleu_from_aggregated` must equal `official.corpus_bleu` exactly (to 1e-9), for the
+    normal case plus every edge case the formula special-cases (spec's fix description)."""
+    hyps, refs = _BLEU_STATS_CASES[case]
+    module = load_official_module()
+    stats = _bleu_sentence_stats(hyps, refs)
+    got = float(
+        _bleu_from_aggregated(
+            stats.match.sum(axis=0),
+            stats.total.sum(axis=0),
+            stats.hyp_len.sum(),
+            stats.ref_len.sum(),
+        )
+    )
+    want = module.corpus_bleu(hyps, refs)
+    assert math.isclose(got, want, abs_tol=1e-9), f"{case}: got {got} want {want}"
+
+
+@pytest.mark.parametrize("case", list(_BLEU_STATS_CASES), ids=list(_BLEU_STATS_CASES))
+def test_chrf_sufficient_stats_identity_equals_official_mean(case: str) -> None:
+    """`_chrf_sentence_stats(...).mean()` over the full set must equal the official corpus chrF
+    (`module.score_slice(...)["chrf"]`, a sentence average) exactly (to 1e-9)."""
+    hyps, refs = _BLEU_STATS_CASES[case]
+    module = load_official_module()
+    chrf_vals = _chrf_sentence_stats(hyps, refs)
+    got = float(chrf_vals.mean())
+    want = module.score_slice(hyps, refs)["chrf"]
+    assert math.isclose(got, want, abs_tol=1e-9), f"{case}: got {got} want {want}"
+
+
+def _synthetic_corpus(n: int, seed: int) -> tuple[list[str], list[str]]:
+    vocab = [f"w{i}" for i in range(60)]
+    rng = random.Random(seed)
+    hyps, refs = [], []
+    for _ in range(n):
+        ref_len = rng.randint(4, 30)
+        ref = " ".join(rng.choice(vocab) for _ in range(ref_len))
+        if rng.random() < 0.1:
+            hyp = ""  # occasional empty hypothesis, exercising the hyp_len==0 edge case
+        else:
+            hyp_words = ref.split()
+            # perturb: drop/duplicate/shuffle a few tokens so hyp != ref most of the time
+            if rng.random() < 0.5 and len(hyp_words) > 2:
+                del hyp_words[rng.randrange(len(hyp_words))]
+            hyp_words += [rng.choice(vocab) for _ in range(rng.randint(0, 3))]
+            rng.shuffle(hyp_words)
+            hyp = " ".join(hyp_words)
+        hyps.append(hyp)
+        refs.append(ref)
+    return hyps, refs
+
+
+def test_vectorized_bleu_resamples_match_official_on_resampled_strings() -> None:
+    """For 30 random resamples, the vectorized BLEU resample must equal calling
+    `official.corpus_bleu` directly on the resampled string lists (to 1e-9) -- spec's required
+    test of the vectorization itself, not just the identity/full-set case."""
+    module = load_official_module()
+    hyps, refs = _synthetic_corpus(40, seed=11)
+    stats = _bleu_sentence_stats(hyps, refs)
+    idx = _resample_indices(len(hyps), 30, seed=2024)
+    vectorized = _bleu_resample(stats, idx)
+    for row in range(idx.shape[0]):
+        sampled = idx[row].tolist()
+        want = module.corpus_bleu([hyps[i] for i in sampled], [refs[i] for i in sampled])
+        assert math.isclose(float(vectorized[row]), want, abs_tol=1e-9), f"resample {row}"
+
+
+def test_vectorized_chrf_resamples_match_official_on_resampled_strings() -> None:
+    """Same as above, for chrF."""
+    module = load_official_module()
+    hyps, refs = _synthetic_corpus(40, seed=12)
+    chrf_vals = _chrf_sentence_stats(hyps, refs)
+    idx = _resample_indices(len(hyps), 30, seed=2025)
+    vectorized = _chrf_resample(chrf_vals, idx)
+    for row in range(idx.shape[0]):
+        sampled = idx[row].tolist()
+        want = module.score_slice([hyps[i] for i in sampled], [refs[i] for i in sampled])["chrf"]
+        assert math.isclose(float(vectorized[row]), want, abs_tol=1e-9), f"resample {row}"
+
+
+def test_paired_bootstrap_vectorized_fast_path_matches_manual_official_resampling() -> None:
+    """`paired_bootstrap` with the official `_VectorizableMetric` (the fast numpy path) must
+    produce the same per-resample deltas as manually resampling with the same indices and calling
+    `official.corpus_bleu` on the resulting string lists for both systems."""
+    module = load_official_module()
+    hyps_a, refs = _synthetic_corpus(30, seed=21)
+    hyps_b, _ = _synthetic_corpus(30, seed=22)
+    n_resamples = 30
+    seed = 777
+    idx = _resample_indices(len(refs), n_resamples, seed)
+    want_deltas = sorted(
+        module.corpus_bleu([hyps_a[i] for i in row], [refs[i] for i in row])
+        - module.corpus_bleu([hyps_b[i] for i in row], [refs[i] for i in row])
+        for row in idx.tolist()
+    )
+    result = paired_bootstrap(
+        hyps_a, hyps_b, refs, _official_metric_fn("bleu"), n_resamples=n_resamples, seed=seed
+    )
+    lo_idx = int(0.025 * n_resamples)
+    hi_idx = min(n_resamples - 1, int(0.975 * n_resamples))
+    assert math.isclose(result["ci_low"], want_deltas[lo_idx], abs_tol=1e-9)
+    assert math.isclose(result["ci_high"], want_deltas[hi_idx], abs_tol=1e-9)
+
+
+def test_bootstrap_1000_resamples_on_2000_sentences_is_fast() -> None:
+    """Spec's performance requirement: 1000 resamples on ~2000 sentences must run in well under a
+    few seconds, not the several minutes the old string-recomputing implementation took on E1's
+    1940 sentences. Generous 5s bound (this repo's CPU-only CI gate, not a tight perf assertion)."""
+    hyps, refs = _synthetic_corpus(2000, seed=99)
+    for metric in ("bleu", "chrf"):
+        t0 = time.perf_counter()
+        bootstrap_ci_official(hyps, refs, metric, n_resamples=1000, seed=1234)
+        elapsed = time.perf_counter() - t0
+        assert elapsed < 5.0, f"{metric} bootstrap took {elapsed:.2f}s, expected well under 5s"

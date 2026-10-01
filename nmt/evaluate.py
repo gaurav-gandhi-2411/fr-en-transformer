@@ -19,6 +19,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import numpy as np
 import sacrebleu
 import sentencepiece as spm
 import torch
@@ -124,19 +125,158 @@ def sacrebleu_metrics(hyps: list[str], refs: list[str]) -> dict[str, Any]:
 # -------------------------------------------------------------------------------------------
 # Bootstrap statistics
 # -------------------------------------------------------------------------------------------
+# Bootstrap CIs resample *sentence indices* with replacement and recompute a corpus-level metric
+# on each resample. Recomputing BLEU/chrF from raw strings (retokenizing, rebuilding n-gram
+# Counters) on every resample is what made 1000 resamples on E1 (1940 sentences) take several
+# minutes per split per metric (see PLAN.md's smoke-gate deviation note -- `n_bootstrap` had to be
+# cut to 200/100 there). The fix: compute per-sentence *sufficient statistics* ONCE, using
+# `official/score.py`'s own `wtok`/`ngrams`/`chrf_sentence` (via `load_official_module`, never
+# reimplemented), then each resample is a vectorized numpy gather-and-sum/mean over those
+# precomputed statistics instead of a re-tokenization.
 
 
-def _official_metric_fn(metric: str) -> Callable[[list[str], list[str]], float]:
+@dataclass(frozen=True)
+class _BleuStats:
+    """Per-sentence BLEU sufficient statistics, accumulated exactly as `official/score.py`'s
+    `corpus_bleu` accumulates them (same `wtok`/`ngrams` calls) but kept *per sentence* instead of
+    summed across the whole corpus, so a bootstrap resample only needs to sum the sampled rows."""
+
+    hyp_len: np.ndarray  # (n,) int64
+    ref_len: np.ndarray  # (n,) int64
+    match: np.ndarray  # (n, 4) int64 -- matched n-gram counts, n=1..4
+    total: np.ndarray  # (n, 4) int64 -- total hyp n-gram counts, n=1..4
+
+
+def _bleu_sentence_stats(hyps: list[str], refs: list[str], max_n: int = 4) -> _BleuStats:
+    """Per-sentence `(hyp_len, ref_len, match[1..max_n], total[1..max_n])`, computed with the
+    official module's own `wtok`/`ngrams` so tokenization is byte-for-byte identical to
+    `corpus_bleu` -- this is the per-sentence breakdown of exactly what `corpus_bleu`'s loop
+    accumulates into its corpus-level `match`/`total` arrays."""
     module = load_official_module()
+    n = len(hyps)
+    hyp_len = np.empty(n, dtype=np.int64)
+    ref_len = np.empty(n, dtype=np.int64)
+    match = np.empty((n, max_n), dtype=np.int64)
+    total = np.empty((n, max_n), dtype=np.int64)
+    for i, (h, r) in enumerate(zip(hyps, refs, strict=True)):
+        ht, rt = module.wtok(h), module.wtok(r)
+        hyp_len[i] = len(ht)
+        ref_len[i] = len(rt)
+        for k in range(max_n):
+            n_gram = k + 1
+            hn, rn = module.ngrams(ht, n_gram), module.ngrams(rt, n_gram)
+            match[i, k] = sum(min(c, rn[g]) for g, c in hn.items())
+            total[i, k] = max(len(ht) - n_gram + 1, 0)
+    return _BleuStats(hyp_len=hyp_len, ref_len=ref_len, match=match, total=total)
+
+
+def _bleu_from_aggregated(
+    match: np.ndarray, total: np.ndarray, hyp_len: np.ndarray, ref_len: np.ndarray
+) -> np.ndarray:
+    """The exact `corpus_bleu` formula (official/score.py), vectorized over an arbitrary leading
+    batch shape: `match`/`total` are `(..., 4)`, `hyp_len`/`ref_len` are `(...,)`. Reproduces every
+    edge case verbatim: n==1's `1e-9` zero-match floor, the `+1` smoothing for n>=2, `total==0 ->
+    0.0`, `min(precs) <= 0 -> 0`, and the brevity penalty's strict `hyp_len > ref_len` / `hyp_len
+    == 0 -> 0.0` cases.
+    """
+    hyp_len = hyp_len.astype(np.float64)
+    ref_len = ref_len.astype(np.float64)
+    match = match.astype(np.float64)
+    total = total.astype(np.float64)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t0, m0 = total[..., 0], match[..., 0]
+        p0 = np.where(t0 == 0, 0.0, np.where(m0 > 0, m0 / np.where(t0 == 0, 1.0, t0), 1e-9))
+        tn, mn = total[..., 1:], match[..., 1:]
+        pn = np.where(tn == 0, 0.0, (mn + 1.0) / np.where(tn == 0, 1.0, tn + 1.0))
+        precs = np.concatenate([p0[..., None], pn], axis=-1)
+
+        min_precs = precs.min(axis=-1)
+        valid = (hyp_len > 0) & (min_precs > 0)
+        safe_precs = np.where(valid[..., None], precs, 1.0)  # avoid log(0); masked out below
+        geo = np.exp(np.mean(np.log(safe_precs), axis=-1))
+        safe_hyp_len = np.where(hyp_len > 0, hyp_len, 1.0)  # avoid /0; masked out below
+        bp = np.where(hyp_len > ref_len, 1.0, np.exp(1.0 - ref_len / safe_hyp_len))
+
+    return np.where(valid, 100.0 * bp * geo, 0.0)
+
+
+def _bleu_resample(stats: _BleuStats, idx: np.ndarray) -> np.ndarray:
+    """`idx`: `(n_resamples, n)` sentence indices drawn with replacement. Gathers and sums each
+    resample's per-sentence stats, then applies `_bleu_from_aggregated` -- the vectorized
+    equivalent of calling `corpus_bleu` on each resampled string list."""
+    return _bleu_from_aggregated(
+        stats.match[idx].sum(axis=1),
+        stats.total[idx].sum(axis=1),
+        stats.hyp_len[idx].sum(axis=1),
+        stats.ref_len[idx].sum(axis=1),
+    )
+
+
+def _chrf_sentence_stats(hyps: list[str], refs: list[str]) -> np.ndarray:
+    """Per-sentence `chrf_sentence` values (official chrF is a plain sentence average, so this
+    *is* the sufficient statistic -- no further reduction is needed to resample it)."""
+    module = load_official_module()
+    if not refs:
+        return np.zeros(0, dtype=np.float64)
+    return np.array(
+        [module.chrf_sentence(h, r) for h, r in zip(hyps, refs, strict=True)], dtype=np.float64
+    )
+
+
+def _chrf_resample(chrf_vals: np.ndarray, idx: np.ndarray) -> np.ndarray:
+    """`idx`: `(n_resamples, n)`. Official chrF is a sentence average, so a resample's corpus chrF
+    is just the mean of the resampled per-sentence values."""
+    return chrf_vals[idx].mean(axis=1)
+
+
+@dataclass(frozen=True)
+class _VectorizableMetric:
+    """A metric function paired with the sufficient-statistics machinery needed to vectorize its
+    own bootstrap resampling. `bootstrap_ci`/`paired_bootstrap` use the fast numpy path below
+    whenever `metric_fn` is one of these (the official BLEU/chrF metrics, spec §8); any other
+    callable (e.g. a caller's own ad hoc scorer, as used directly in some tests) falls back to the
+    generic, slower, always-correct per-resample Python loop -- the public bootstrap API is
+    unchanged either way.
+    """
+
+    name: str
+    point_fn: Callable[[list[str], list[str]], float]
+    stats_fn: Callable[[list[str], list[str]], Any]
+    resample_fn: Callable[[Any, np.ndarray], np.ndarray]
+
+    def __call__(self, hyps: list[str], refs: list[str]) -> float:
+        return self.point_fn(hyps, refs)
+
+
+def _chrf_point(hyps: list[str], refs: list[str]) -> float:
+    if not refs:
+        return 0.0
+    return float(_chrf_sentence_stats(hyps, refs).mean())
+
+
+_BLEU_METRIC = _VectorizableMetric(
+    name="bleu",
+    point_fn=lambda h, r: load_official_module().corpus_bleu(h, r),
+    stats_fn=_bleu_sentence_stats,
+    resample_fn=_bleu_resample,
+)
+_CHRF_METRIC = _VectorizableMetric(
+    name="chrf", point_fn=_chrf_point, stats_fn=_chrf_sentence_stats, resample_fn=_chrf_resample
+)
+
+
+def _official_metric_fn(metric: str) -> _VectorizableMetric:
     if metric == "bleu":
-        return module.corpus_bleu
+        return _BLEU_METRIC
     if metric == "chrf":
-        return lambda h, r: (
-            sum(module.chrf_sentence(a, b) for a, b in zip(h, r, strict=True)) / len(r)
-            if r
-            else 0.0
-        )
+        return _CHRF_METRIC
     raise ValueError(f"unknown metric: {metric!r}")
+
+
+def _resample_indices(n: int, n_resamples: int, seed: int) -> np.ndarray:
+    """`(n_resamples, n)` sentence indices drawn with replacement (spec §8)."""
+    return np.random.default_rng(seed).integers(0, n, size=(n_resamples, n))
 
 
 def bootstrap_ci(
@@ -149,8 +289,10 @@ def bootstrap_ci(
     """Bootstrap 95% CI (spec §8: 1000 resamples, seeded) for a corpus-level metric. Resamples
     *sentence indices* (paired hyp/ref) with replacement and recomputes the corpus metric on each
     resample -- correct for non-additive corpus metrics like BLEU, unlike averaging per-sentence
-    values."""
-    rng = random.Random(seed)
+    values. When `metric_fn` is a `_VectorizableMetric` (the official BLEU/chrF), resampling is
+    fully vectorized via precomputed sufficient statistics (1000 resamples on ~2000 sentences
+    runs in well under a second); any other callable falls back to a plain Python loop.
+    """
     n = len(refs)
     point = metric_fn(hyps, refs)
     if n == 0:
@@ -161,13 +303,23 @@ def bootstrap_ci(
             "n_resamples": n_resamples,
             "n": 0,
         }
-    samples = []
-    for _ in range(n_resamples):
-        idx = [rng.randrange(n) for _ in range(n)]
-        samples.append(metric_fn([hyps[i] for i in idx], [refs[i] for i in idx]))
-    samples.sort()
-    lo = samples[int(0.025 * n_resamples)]
-    hi = samples[min(n_resamples - 1, int(0.975 * n_resamples))]
+    if isinstance(metric_fn, _VectorizableMetric):
+        stats = metric_fn.stats_fn(hyps, refs)
+        idx = _resample_indices(n, n_resamples, seed)
+        samples = np.sort(metric_fn.resample_fn(stats, idx))
+        lo = float(samples[int(0.025 * n_resamples)])
+        hi = float(samples[min(n_resamples - 1, int(0.975 * n_resamples))])
+    else:
+        rng = random.Random(seed)
+        samples_list = []
+        for _ in range(n_resamples):
+            resampled = [rng.randrange(n) for _ in range(n)]
+            samples_list.append(
+                metric_fn([hyps[i] for i in resampled], [refs[i] for i in resampled])
+            )
+        samples_list.sort()
+        lo = samples_list[int(0.025 * n_resamples)]
+        hi = samples_list[min(n_resamples - 1, int(0.975 * n_resamples))]
     return {"point": point, "ci_low": lo, "ci_high": hi, "n_resamples": n_resamples, "n": n}
 
 
@@ -184,37 +336,51 @@ def bootstrap_official_overall(
     """Bootstrap 95% CI for the official OVERALL formula (0.4*BLEU + 0.4*chrF + 0.2*chrF(unseen))
     -- each resample draws sentence indices jointly (paired across slices) and recomputes OVERALL
     on that resample, so the CI reflects the actual composite metric, not three independent CIs.
+    Vectorized via precomputed BLEU/chrF sufficient statistics (same mechanism as `bootstrap_ci`).
     """
-    module = load_official_module()
     ids = [r["id"] for r in gold_rows]
     n = len(ids)
     hyps_all = [pred.get(i, "") for i in ids]
     refs_all = [r.get("reference", "") for r in gold_rows]
-    slices = [r.get("slice", "unspecified") for r in gold_rows]
+    is_unseen = np.array([r.get("slice", "unspecified") == "unseen_domain" for r in gold_rows])
 
-    def overall_for(idxs: list[int]) -> float:
-        h = [hyps_all[i] for i in idxs]
-        r = [refs_all[i] for i in idxs]
-        s = [slices[i] for i in idxs]
-        all_scores = module.score_slice(h, r)
-        ud_h = [h[i] for i in range(len(idxs)) if s[i] == "unseen_domain"]
-        ud_r = [r[i] for i in range(len(idxs)) if s[i] == "unseen_domain"]
-        ud_chrf = module.score_slice(ud_h, ud_r)["chrf"] if ud_h else all_scores["chrf"]
-        return 0.40 * all_scores["bleu"] + 0.40 * all_scores["chrf"] + 0.20 * ud_chrf
-
-    rng = random.Random(seed)
-    point = overall_for(list(range(n)))
     if n == 0:
-        return {
-            "point": point,
-            "ci_low": point,
-            "ci_high": point,
-            "n_resamples": n_resamples,
-            "n": 0,
-        }
-    samples = sorted(overall_for([rng.randrange(n) for _ in range(n)]) for _ in range(n_resamples))
-    lo = samples[int(0.025 * n_resamples)]
-    hi = samples[min(n_resamples - 1, int(0.975 * n_resamples))]
+        # The original per-resample implementation crashed here (`module.score_slice([], [])`
+        # returns `None`, then `None["bleu"]` raises `TypeError`) -- never exercised in practice
+        # (dev is never empty), but there is no reason to keep that crash; return a flat 0.0 CI.
+        return {"point": 0.0, "ci_low": 0.0, "ci_high": 0.0, "n_resamples": n_resamples, "n": 0}
+
+    bleu_stats = _bleu_sentence_stats(hyps_all, refs_all)
+    chrf_vals = _chrf_sentence_stats(hyps_all, refs_all)
+
+    bleu_point = float(
+        _bleu_from_aggregated(
+            bleu_stats.match.sum(axis=0),
+            bleu_stats.total.sum(axis=0),
+            bleu_stats.hyp_len.sum(),
+            bleu_stats.ref_len.sum(),
+        )
+    )
+    chrf_all_point = float(chrf_vals.mean())
+    chrf_unseen_point = float(chrf_vals[is_unseen].mean()) if is_unseen.any() else chrf_all_point
+    point = 0.40 * bleu_point + 0.40 * chrf_all_point + 0.20 * chrf_unseen_point
+
+    idx = _resample_indices(n, n_resamples, seed)
+    bleu_samples = _bleu_resample(bleu_stats, idx)
+    chrf_gathered = chrf_vals[idx]  # (n_resamples, n)
+    chrf_all_samples = chrf_gathered.mean(axis=1)
+    unseen_mask = is_unseen[idx]  # (n_resamples, n) -- same resample indices, per spec §8
+    unseen_count = unseen_mask.sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        chrf_unseen_masked = (chrf_gathered * unseen_mask).sum(axis=1) / np.where(
+            unseen_count == 0, 1, unseen_count
+        )
+    chrf_unseen_samples = np.where(unseen_count > 0, chrf_unseen_masked, chrf_all_samples)
+    overall_samples = np.sort(
+        0.40 * bleu_samples + 0.40 * chrf_all_samples + 0.20 * chrf_unseen_samples
+    )
+    lo = float(overall_samples[int(0.025 * n_resamples)])
+    hi = float(overall_samples[min(n_resamples - 1, int(0.975 * n_resamples))])
     return {"point": point, "ci_low": lo, "ci_high": hi, "n_resamples": n_resamples, "n": n}
 
 
@@ -229,9 +395,12 @@ def paired_bootstrap(
     """Paired bootstrap resampling (Koehn 2004) for an A/B comparison: Delta = metric(A) -
     metric(B), a 95% CI on Delta, and a one-sided p-value (the fraction of resamples where B's
     score meets or exceeds A's -- evidence *against* "A is better"). Used for ablations and
-    decoding-option comparisons (spec §8/§9).
+    decoding-option comparisons (spec §8/§9). The SAME resample indices are used for both systems
+    in every resample (required for a valid paired test) -- true of both the vectorized and the
+    generic fallback path below. Fast-pathed via sufficient statistics when `metric_fn` is a
+    `_VectorizableMetric` (the official BLEU/chrF); any other callable falls back to a plain
+    Python loop.
     """
-    rng = random.Random(seed)
     n = len(refs)
     point_a = metric_fn(hyps_a, refs)
     point_b = metric_fn(hyps_b, refs)
@@ -244,20 +413,31 @@ def paired_bootstrap(
             "p_value": 1.0,
             "n_resamples": n_resamples,
         }
-    deltas = []
-    count_b_ge_a = 0
-    for _ in range(n_resamples):
-        idx = [rng.randrange(n) for _ in range(n)]
-        ha = [hyps_a[i] for i in idx]
-        hb = [hyps_b[i] for i in idx]
-        r = [refs[i] for i in idx]
-        d = metric_fn(ha, r) - metric_fn(hb, r)
-        deltas.append(d)
-        if d <= 0:
-            count_b_ge_a += 1
-    deltas.sort()
-    lo = deltas[int(0.025 * n_resamples)]
-    hi = deltas[min(n_resamples - 1, int(0.975 * n_resamples))]
+    if isinstance(metric_fn, _VectorizableMetric):
+        idx = _resample_indices(n, n_resamples, seed)
+        stats_a = metric_fn.stats_fn(hyps_a, refs)
+        stats_b = metric_fn.stats_fn(hyps_b, refs)
+        deltas_arr = metric_fn.resample_fn(stats_a, idx) - metric_fn.resample_fn(stats_b, idx)
+        count_b_ge_a = int(np.sum(deltas_arr <= 0))
+        deltas_arr = np.sort(deltas_arr)
+        lo = float(deltas_arr[int(0.025 * n_resamples)])
+        hi = float(deltas_arr[min(n_resamples - 1, int(0.975 * n_resamples))])
+    else:
+        rng = random.Random(seed)
+        deltas = []
+        count_b_ge_a = 0
+        for _ in range(n_resamples):
+            resampled = [rng.randrange(n) for _ in range(n)]
+            ha = [hyps_a[i] for i in resampled]
+            hb = [hyps_b[i] for i in resampled]
+            r = [refs[i] for i in resampled]
+            d = metric_fn(ha, r) - metric_fn(hb, r)
+            deltas.append(d)
+            if d <= 0:
+                count_b_ge_a += 1
+        deltas.sort()
+        lo = deltas[int(0.025 * n_resamples)]
+        hi = deltas[min(n_resamples - 1, int(0.975 * n_resamples))]
     p_value = count_b_ge_a / n_resamples
     return {
         "delta": delta_point,
