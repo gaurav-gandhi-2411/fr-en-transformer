@@ -1,0 +1,5 @@
+{"time": "2026-10-01T08:31:31+00:00", "event": "start", "cmd": ["uv", "run", "--project", "envs/cuda", "python", "-m", "nmt.train", "--config", "configs/smoke.yaml", "--synthetic", "--wandb", "disabled", "--planned-steps", "40", "--ckpt-steps", "10", "--run-dir", "<work>\\cuda", "--ckpt-dir", "<work>\\cuda\\ckpt", "--device", "cuda", "--debug-raise-oom-at-step", "17", "--resume", "--resume-count", "0", "--wait-seconds", "0.000"], "resume": 0, "wait_seconds_total": 0.0}
+{"time": "2026-10-01T08:31:39+00:00", "event": "end", "exit_code": 75}
+{"time": "2026-10-01T08:31:39+00:00", "event": "resume", "resume": 1}
+{"time": "2026-10-01T08:31:39+00:00", "event": "start", "cmd": ["uv", "run", "--project", "envs/cuda", "python", "-m", "nmt.train", "--config", "configs/smoke.yaml", "--synthetic", "--wandb", "disabled", "--planned-steps", "40", "--ckpt-steps", "10", "--run-dir", "<work>\\cuda", "--ckpt-dir", "<work>\\cuda\\ckpt", "--device", "cuda", "--debug-raise-oom-at-step", "17", "--resume", "--resume-count", "1", "--wait-seconds", "0.000"], "resume": 1, "wait_seconds_total": 0.0}
+{"time": "2026-10-01T08:31:48+00:00", "event": "end", "exit_code": 0}
