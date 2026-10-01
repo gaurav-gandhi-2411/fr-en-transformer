@@ -116,3 +116,21 @@ def test_main_cli_writes_plan_json_next_to_metrics(
     assert plan_path.is_file()
     captured = capsys.readouterr()
     assert "PLANNED_STEPS for main:" in captured.out
+
+
+def test_main_cli_3070_profile_plans_the_3070_runs_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """1 s/step synthetic pilot: 40-min ablations plan int(40*60*0.85) steps, identical across
+    s1/s2/s3_3070; main_ext_3070 plans 2x main's 240-minute budget; colab labels are absent."""
+    metrics_path = tmp_path / "metrics.jsonl"
+    _write_synthetic_metrics(metrics_path, n_steps=50, tok_per_sec=25000.0, gpu_mem_mb=9000.0)
+
+    assert main(["--metrics", str(metrics_path), "--profile", "3070"]) == 0
+
+    planned = json.loads((tmp_path / "plan.json").read_text())["planned_steps"]
+    assert set(planned) == {"s1_sin_3070", "s2_rope_3070", "s3_rope_concat_3070", "main_ext_3070"}
+    assert planned["s1_sin_3070"] == planned["s2_rope_3070"] == planned["s3_rope_concat_3070"]
+    assert planned["s1_sin_3070"] == int(40 * 60 * 0.85)
+    assert planned["main_ext_3070"] == int(480 * 60 * 0.85)
+    assert "PLANNED_STEPS for main_ext_3070:" in capsys.readouterr().out

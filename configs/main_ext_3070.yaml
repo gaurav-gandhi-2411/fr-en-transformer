@@ -1,0 +1,65 @@
+# RTX 3070 (8 GB, bf16) variant of main.yaml. CONFIG-ONLY differences from the original:
+# name/group/dirs, `precision: bf16`, and the items marked below. Same model, data, seed,
+# tokens_per_step and schedule shape.
+name: main_ext_3070
+group: main_ext_3070
+seed: 1234
+device: auto
+precision: bf16  # 3070 (Ampere) supports bf16; no GradScaler
+label_smoothing: 0.1
+
+# Deep-encoder / shallow-decoder (spec §5): 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
+# ~50.2M params (measured: 50,229,248).
+model:
+  vocab_size: 16000
+  d_model: 512
+  n_heads: 8
+  enc_layers: 8
+  dec_layers: 4
+  d_ff: 2048
+  dropout: 0.1
+  pos: rope
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 12288  # probe (bf16, AdamW step, seq 256, 0.95 VRAM cap): peak 6862 MB of 8192, runs/pilot_3070/probe_seq256.json
+  tokens_per_step: 25000  # spec §6: ~25k target tokens per optimizer step
+  concat_prob: 0.15  # spec §6 default, s3/main only
+  concat_max_len: 256
+  chunk_size: 512
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  warmup_steps: 4000  # spec §6
+  # ~2x planned tokens of main.yaml (2 x 50000). Do NOT run without GG approval.
+  planned_steps: 100000
+  cooldown_frac: 0.2  # final 20% of planned_steps (spec §6)
+  max_minutes: 480  # 2x main's 240: wall-clock SAFETY cap only (must not truncate the decay)
+
+ckpt:
+  dir: runs/main_ext_3070/ckpt  # Drive path on Colab; overridden via the colab notebook, not here (P5)
+  ckpt_minutes: 15  # spec §6
+  ckpt_steps: null
+  keep_last: 5
+  keep_decay_phase: true  # needed for checkpoint averaging over the decay phase (spec §6, §9)
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/main_ext_3070
+
+eval:
+  eval_every: 500  # spec §11: "about every 20 min"; revisit once real tok/s is known from pilot

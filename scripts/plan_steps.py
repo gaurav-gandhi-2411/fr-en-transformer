@@ -10,7 +10,7 @@ from __future__ import annotations
 #
 # CLI: `python scripts/plan_steps.py --metrics runs/pilot/metrics.jsonl
 #   [--out runs/pilot/plan.json] [--tokens-per-step 25000] [--warmup-steps 20]
-#   [--safety-margin 0.85]`
+#   [--safety-margin 0.85] [--profile colab|3070]`
 import argparse
 import json
 import statistics
@@ -32,6 +32,18 @@ BUDGETS_MINUTES: dict[str, float] = {
     "s3_rope_concat": 40.0,
     "main": 240.0,
 }
+
+# Local RTX 3070 profile (`--profile 3070`): same 40-min ablation budget, planned from the
+# pilot_3070 run's throughput, so s1/s2/s3_3070 all get one identical planned_steps and complete
+# their WSD decay (their max_minutes is only a safety cap). main_ext_3070 is "~2x planned tokens"
+# of main, i.e. 2x main's 240-minute budget. Do NOT run main_ext without GG approval.
+BUDGETS_MINUTES_3070: dict[str, float] = {
+    "s1_sin_3070": 40.0,
+    "s2_rope_3070": 40.0,
+    "s3_rope_concat_3070": 40.0,
+    "main_ext_3070": 480.0,
+}
+PROFILES: dict[str, dict[str, float]] = {"colab": BUDGETS_MINUTES, "3070": BUDGETS_MINUTES_3070}
 
 
 @dataclass
@@ -126,6 +138,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tokens-per-step", type=int, default=DEFAULT_TOKENS_PER_STEP)
     parser.add_argument("--warmup-steps", type=int, default=DEFAULT_WARMUP_STEPS)
     parser.add_argument("--safety-margin", type=float, default=DEFAULT_SAFETY_MARGIN)
+    parser.add_argument(
+        "--profile",
+        choices=sorted(PROFILES),
+        default="colab",
+        help="Which runs to plan: colab (s1/s2/s3 at 40 min + main at 240) or 3070 "
+        "(s1/s2/s3_3070 at 40 min + main_ext_3070 at 480).",
+    )
     return parser.parse_args(argv)
 
 
@@ -137,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         tokens_per_step=args.tokens_per_step,
         warmup_steps=args.warmup_steps,
         safety_margin=args.safety_margin,
+        budgets_minutes=PROFILES[args.profile],
     )
     out_path = args.out if args.out is not None else (Path(args.metrics).parent / "plan.json")
     write_plan(result, out_path)
