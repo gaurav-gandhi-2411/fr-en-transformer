@@ -11,9 +11,17 @@ from pathlib import Path
 import pytest
 
 import nmt.selection as selection_module
-from nmt.selection import SelectionSet, load_selection_set, select, selection_objective
+import nmt.tune as tune_module
+from nmt.selection import (
+    SelectionSet,
+    limited_selection_set,
+    load_selection_set,
+    select,
+    selection_objective,
+)
 
 SELECTION_PY = Path(selection_module.__file__)
+TUNE_PY = Path(tune_module.__file__)
 
 
 def test_load_selection_set_e1_and_e2_succeed() -> None:
@@ -136,6 +144,53 @@ def test_select_picks_the_higher_scoring_candidate() -> None:
     assert result["scores"]["perfect"]["objective"] > result["scores"]["garbage"]["objective"]
 
 
+def test_limited_selection_set_returns_unchanged_when_no_limit_or_limit_too_big() -> None:
+    e1 = load_selection_set("e1")
+    assert limited_selection_set(e1, None) == e1
+    assert limited_selection_set(e1, len(e1) + 1000) == e1
+
+
+def test_limited_selection_set_truncates_to_a_verified_prefix() -> None:
+    e1 = load_selection_set("e1")
+    limited = limited_selection_set(e1, 5)
+    assert len(limited) == 5
+    assert limited.name == "e1"
+    assert limited.ids == e1.ids[:5]
+    assert limited.sources == e1.sources[:5]
+    assert limited.references == e1.references[:5]
+    # sha256 fields keep pointing at the FULL files -- this is a verified prefix, not a
+    # different/smaller dataset.
+    assert limited.inputs_sha256 == e1.inputs_sha256
+    assert limited.labels_sha256 == e1.labels_sha256
+
+
+def test_limited_selection_set_passes_select_and_scores_only_the_subset() -> None:
+    e1 = load_selection_set("e1")
+    e2 = load_selection_set("e2")
+    limited_e1 = limited_selection_set(e1, 5)
+    limited_e2 = limited_selection_set(e2, 5)
+    perfect = {i: r for i, r in zip(limited_e1.ids, limited_e1.references, strict=True)}
+    perfect.update({i: r for i, r in zip(limited_e2.ids, limited_e2.references, strict=True)})
+
+    result = select({"perfect": perfect}, limited_e1, limited_e2)
+    assert result["best"] == "perfect"
+    assert result["scores"]["perfect"]["objective"] > 0
+
+
+def test_limited_selection_set_rejects_a_hand_truncated_set_with_wrong_content() -> None:
+    """A smaller SelectionSet whose rows do NOT match the canonical set's prefix (not built via
+    `limited_selection_set`) must still be refused -- the guard checks content, not just size."""
+    e1 = load_selection_set("e1")
+    bogus = dataclasses.replace(
+        e1,
+        sources=e1.sources[:5],
+        references=("tampered",) + e1.references[1:5],
+        ids=e1.ids[:5],
+    )
+    with pytest.raises(TypeError, match="canonical"):
+        select({"cand": dict.fromkeys(bogus.ids, "x")}, bogus, load_selection_set("e2"))
+
+
 _FORBIDDEN_PATTERNS = [
     re.compile(r"\be3\b", re.IGNORECASE),
     re.compile(r"\bdev\w*", re.IGNORECASE),  # catches "dev", "dev_", "dev.jsonl", etc.
@@ -144,10 +199,15 @@ _FORBIDDEN_PATTERNS = [
 ]
 
 
-def test_selection_source_never_references_other_eval_sets() -> None:
-    """Source scan (spec §12): nmt/selection.py must contain no reference -- in code, comments,
-    or docstrings -- to any eval set other than e1/e2."""
-    source = SELECTION_PY.read_text(encoding="utf-8")
+_SCANNED_SOURCE_FILES = (SELECTION_PY, TUNE_PY)
+
+
+@pytest.mark.parametrize("path", _SCANNED_SOURCE_FILES, ids=lambda p: p.name)
+def test_selection_source_never_references_other_eval_sets(path: Path) -> None:
+    """Source scan (spec §7, §12, §15): nmt/selection.py and nmt/tune.py (the decoding-tuning CLI,
+    which selects only through nmt.selection.load_selection_set/select) must contain no reference
+    -- in code, comments, or docstrings -- to any eval set other than e1/e2."""
+    source = path.read_text(encoding="utf-8")
     for pattern in _FORBIDDEN_PATTERNS:
         hits = pattern.findall(source)
-        assert not hits, f"forbidden reference {pattern.pattern!r} found in selection.py: {hits}"
+        assert not hits, f"forbidden reference {pattern.pattern!r} found in {path.name}: {hits}"

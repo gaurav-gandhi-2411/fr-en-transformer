@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from nmt.pipeline import stage_analyze, stage_evaluate, stage_export, stage_predict, stage_train
+from nmt.pipeline import (
+    stage_analyze,
+    stage_evaluate,
+    stage_export,
+    stage_predict,
+    stage_train,
+    stage_tune,
+)
 from nmt.submission import validate_submission
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -88,6 +95,37 @@ def test_stage_evaluate_writes_eval_json(tmp_path: Path, monkeypatch: pytest.Mon
     )
     assert (out_dir / "eval.json").is_file()
     assert set(result["sets"].keys()) == {"dev", "e1"}
+
+
+def test_stage_tune_writes_selection_grid_with_limits(tmp_path: Path) -> None:
+    """CLI/stage smoke test on a tiny model with --limit-e1/--limit-e2 so the real (full-size)
+    E1/E2 files stay fast to decode -- exercises the alpha x beam grid, the greedy (beam=1) dedup,
+    and the post-hoc segmentation-threshold search, all scored via `nmt.selection.select`."""
+    export_dir = _export_tiny(tmp_path)
+    out_path = tmp_path / "selection_grid.json"
+    result = stage_tune(
+        export_dir,
+        out_path,
+        alphas=(0.6, 1.0),
+        beams=(1, 4),
+        seg_thresholds=(16,),
+        limit_e1=2,
+        limit_e2=2,
+        batch_size=4,
+    )
+    assert out_path.is_file()
+    assert result["n_e1"] == 2
+    assert result["n_e2"] == 2
+    assert result["limit_e1"] == 2
+    assert result["limit_e2"] == 2
+    assert set(result["winner"]) == {"alpha", "beam", "segment_threshold"}
+    assert len(result["alpha_beam"]["grid"]) == 4  # 2 alphas x 2 beams
+    # beam=1 ignores alpha: decoded once and shared across both nominal alpha=*_beam=1 points.
+    assert result["alpha_beam"]["deduped_as"]["alpha=1.0_beam=1"] == "beam=1"
+    assert "alpha=0.6_beam=4" not in result["alpha_beam"]["deduped_as"]
+    assert set(result["segmentation"]["scores"]) == {"no_segmentation", "T=16"}
+    on_disk = json.loads(out_path.read_text(encoding="utf-8"))
+    assert on_disk == result
 
 
 def test_stage_predict_writes_and_validates(tmp_path: Path) -> None:

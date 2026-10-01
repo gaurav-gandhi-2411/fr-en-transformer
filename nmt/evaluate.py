@@ -320,6 +320,13 @@ def bootstrap_ci(
         samples_list.sort()
         lo = samples_list[int(0.025 * n_resamples)]
         hi = samples_list[min(n_resamples - 1, int(0.975 * n_resamples))]
+    # Degenerate groups (n==1, or a group whose resamples are all numerically identical) can have
+    # `lo`/`hi` differ from `point` by float ULP noise -- e.g. the vectorized aggregate formula
+    # and `metric_fn`'s own direct computation take different operation orders, so a single-index
+    # resample is mathematically but not bit-for-bit equal to the point estimate. A percentile CI
+    # must always bracket its own point estimate; clip to guarantee that invariant exactly.
+    lo = min(lo, point)
+    hi = max(hi, point)
     return {"point": point, "ci_low": lo, "ci_high": hi, "n_resamples": n_resamples, "n": n}
 
 
@@ -328,6 +335,30 @@ def bootstrap_ci_official(
 ) -> dict[str, Any]:
     """`bootstrap_ci` specialized to the official scorer's own BLEU/chrF implementations."""
     return bootstrap_ci(hyps, refs, _official_metric_fn(metric), n_resamples, seed)
+
+
+def bootstrap_ci_by_group(
+    hyps: list[str],
+    refs: list[str],
+    groups: Sequence[str],
+    metric: str,
+    n_resamples: int = 1000,
+    seed: int = 1234,
+) -> dict[str, dict[str, Any]]:
+    """Per-group bootstrap 95% CI for an official BLEU/chrF metric (spec §8: "per slice and
+    metric"). `groups[i]` labels `hyps[i]`/`refs[i]`'s official slice, E-set or length bucket;
+    each group's CI resamples only that group's own sentence indices (not the pooled corpus), so
+    it reflects that slice's own sample size -- not a decomposition of one pooled CI. The point
+    estimate per group is `official/score.py`'s own metric on that group (identical to
+    `compute_official_metrics`'s `by_slice` values, just with a CI attached).
+    """
+    by: dict[str, tuple[list[str], list[str]]] = defaultdict(lambda: ([], []))
+    for h, r, g in zip(hyps, refs, groups, strict=True):
+        by[g][0].append(h)
+        by[g][1].append(r)
+    return {
+        g: bootstrap_ci_official(hs, rs, metric, n_resamples, seed) for g, (hs, rs) in by.items()
+    }
 
 
 def bootstrap_official_overall(
@@ -466,19 +497,32 @@ def length_bucket_label(n_words: int) -> str:
     return ">80"
 
 
-def length_bucket_view(rows: list[dict[str, str]], pred: dict[str, str]) -> dict[str, Any]:
+def length_bucket_view(
+    rows: list[dict[str, str]],
+    pred: dict[str, str],
+    n_resamples: int = 1000,
+    seed: int = 1234,
+) -> dict[str, Any]:
     """`rows`: [{id, source, reference}, ...] pooled across E1+E2+E3 (spec §8). Returns official
-    BLEU/chrF per non-empty length bucket."""
+    BLEU/chrF per non-empty length bucket, each with a bootstrap 95% CI (`bleu_ci`/`chrf_ci`,
+    spec §8: "per slice and metric" -- length buckets are a reported view alongside slices/E-sets)
+    computed on that bucket's own sentences."""
     module = load_official_module()
     buckets: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for row in rows:
         label = length_bucket_label(len(row["source"].split()))
         buckets[label].append((pred.get(row["id"], ""), row["reference"]))
-    return {
-        label: module.score_slice([p[0] for p in pairs], [p[1] for p in pairs])
-        for label, pairs in buckets.items()
-        if pairs and label in LENGTH_BUCKET_LABELS
-    }
+    result: dict[str, Any] = {}
+    for label, pairs in buckets.items():
+        if not pairs or label not in LENGTH_BUCKET_LABELS:
+            continue
+        hs = [p[0] for p in pairs]
+        rs = [p[1] for p in pairs]
+        scores = module.score_slice(hs, rs)
+        scores["bleu_ci"] = bootstrap_ci_official(hs, rs, "bleu", n_resamples, seed)
+        scores["chrf_ci"] = bootstrap_ci_official(hs, rs, "chrf", n_resamples, seed)
+        result[label] = scores
+    return result
 
 
 # -------------------------------------------------------------------------------------------
@@ -634,6 +678,7 @@ def run_evaluation(
         official = compute_official_metrics(pred, gold_rows)
         hyps = [pred[i] for i in ids]
         refs = [label_by_id[i]["reference"] for i in ids]
+        slices = [r["slice"] for r in gold_rows]
 
         entry: dict[str, Any] = {
             "n": len(ids),
@@ -644,6 +689,16 @@ def run_evaluation(
             "official_chrf_ci": bootstrap_ci_official(
                 hyps, refs, "chrf", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
             ),
+            # Per-slice CIs (spec §8: "per slice and metric") -- every official dev slice
+            # (seen/long/unseen_domain), and, for e1/e2/e3, the (single) E-set slice itself.
+            "official_ci_by_slice": {
+                "bleu": bootstrap_ci_by_group(
+                    hyps, refs, slices, "bleu", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
+                ),
+                "chrf": bootstrap_ci_by_group(
+                    hyps, refs, slices, "chrf", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
+                ),
+            },
             "sacrebleu": sacrebleu_metrics(hyps, refs),
             "fallback_counts": {
                 "beam": stats_after[0] - stats_before[0],
@@ -669,7 +724,9 @@ def run_evaluation(
         for row in rows_by_split[split]
     ]
     if combined:
-        result["length_buckets_e1_e2_e3"] = length_bucket_view(combined, all_pred)
+        result["length_buckets_e1_e2_e3"] = length_bucket_view(
+            combined, all_pred, decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
+        )
 
     if decode_cfg.comet:
         comet_triples = [

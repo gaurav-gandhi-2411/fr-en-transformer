@@ -8,7 +8,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -110,16 +110,46 @@ def _require_selection_set(obj: object, expected_name: str) -> None:
     # SelectionSet is a plain frozen dataclass, so a caller could build one by hand with
     # name="e1" but arbitrary content. Checking the declared name alone would let that through;
     # instead the object must be content-identical to what `load_selection_set` reads from the
-    # hard-coded files right now.
+    # hard-coded files right now -- OR a content-consistent PREFIX of it (same sha256es, same
+    # ids/sources/references in the same order, just fewer of them): `limited_selection_set`
+    # below is the only place that ever builds one of those, for CPU-bound smoke/CI runs.
     if not isinstance(obj, SelectionSet):
         raise TypeError(f"expected a SelectionSet, got {type(obj).__name__}")
     if obj.name != expected_name:
         raise TypeError(f"expected a SelectionSet(name={expected_name!r}), got name={obj.name!r}")
-    if obj != _canonical(expected_name):
+    canonical = _canonical(expected_name)
+    n = len(obj)
+    is_consistent_prefix = (
+        obj.inputs_sha256 == canonical.inputs_sha256
+        and obj.labels_sha256 == canonical.labels_sha256
+        and n <= len(canonical)
+        and obj.ids == canonical.ids[:n]
+        and obj.sources == canonical.sources[:n]
+        and obj.references == canonical.references[:n]
+    )
+    if not is_consistent_prefix:
         raise TypeError(
             f"SelectionSet(name={expected_name!r}) does not match the canonical "
             f"{expected_name} files -- refusing hand-built or modified content"
         )
+
+
+def limited_selection_set(sel: SelectionSet, limit: int | None) -> SelectionSet:
+    """A verified PREFIX subset of an already-loaded canonical `sel` (its first `limit` ids,
+    same order) -- not a new loader path and not arbitrary caller content: `sel` must already be
+    a genuine `load_selection_set("e1"|"e2")` result. Returns `sel` unchanged whenever `limit` is
+    `None` or `>= len(sel)`. Exists so CPU-bound runs (`nmt/tune.py`'s `--limit-e1`/`--limit-e2`)
+    can decode/score a small, fast subset while still passing `select`/`selection_objective`'s
+    canonical-content guard above, which accepts exactly this kind of consistent prefix.
+    """
+    if limit is None or limit >= len(sel):
+        return sel
+    return replace(
+        sel,
+        sources=sel.sources[:limit],
+        references=sel.references[:limit],
+        ids=sel.ids[:limit],
+    )
 
 
 def selection_objective(

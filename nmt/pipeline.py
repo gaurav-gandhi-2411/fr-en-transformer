@@ -15,13 +15,24 @@ from typing import Any
 
 from nmt import evaluate as evaluate_mod
 from nmt import submission as submission_mod
+from nmt import tune as tune_mod
 from nmt.analysis import run_analysis
 from nmt.hub import export_checkpoint
 from nmt.train import _build_model_config, build_eval_fn, default_eval_fn, load_config, train
 from nmt.translate import Translator
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-STAGES = ("prepare", "tokenize", "train", "evaluate", "predict", "analyze", "export", "all")
+STAGES = (
+    "prepare",
+    "tokenize",
+    "train",
+    "evaluate",
+    "predict",
+    "analyze",
+    "export",
+    "tune",
+    "all",
+)
 
 DEFAULT_TOKENIZER_PATH = REPO_ROOT / "tokenizer" / "spm.model"
 
@@ -123,6 +134,35 @@ def stage_export(
     model_cfg = _build_model_config(cfg)
     out_dir = out_dir or (REPO_ROOT / "reports" / cfg.name / "export")
     return export_checkpoint(ckpts, out_dir, model_cfg, DEFAULT_TOKENIZER_PATH, average=average)
+
+
+# ---------------------------------------------------------------------------------------------
+# tune
+# ---------------------------------------------------------------------------------------------
+
+
+def stage_tune(
+    model_dir: Path,
+    out_path: Path,
+    alphas: tuple[float, ...] = tune_mod.DEFAULT_ALPHAS,
+    beams: tuple[int, ...] = tune_mod.DEFAULT_BEAMS,
+    seg_thresholds: tuple[int, ...] = tune_mod.DEFAULT_SEG_THRESHOLDS,
+    limit_e1: int | None = None,
+    limit_e2: int | None = None,
+    batch_size: int = 16,
+) -> dict[str, Any]:
+    """Decoding-tuning grid (alpha x beam, then segmentation threshold) on E1/E2 only, via
+    `nmt.tune.run_tune` -- writes the full score table + winner to `out_path`."""
+    return tune_mod.run_tune(
+        model_dir,
+        out_path,
+        alphas=alphas,
+        beams=beams,
+        seg_thresholds=seg_thresholds,
+        limit_e1=limit_e1,
+        limit_e2=limit_e2,
+        batch_size=batch_size,
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -285,18 +325,40 @@ def main(argv: list[str] | None = None) -> int:
     if args.stage in ("export", "all"):
         export_dir = stage_export(args.config, out_dir=report_root / "export", run_dir=args.run_dir)
         print(f"export: wrote {export_dir}")
+    tune_result: dict[str, Any] | None = None
+    if args.stage in ("tune", "all"):
+        model_dir = export_dir or args.model
+        if model_dir is None:
+            raise ValueError("--stage tune requires --model (or run --stage export/all first)")
+        tune_out = report_root / "selection_grid.json"
+        tune_result = stage_tune(model_dir, tune_out)
+        w = tune_result["winner"]
+        print(
+            f"tune: wrote {tune_out} (winner alpha={w['alpha']} beam={w['beam']} "
+            f"segment_threshold={w['segment_threshold']})"
+        )
     if args.stage in ("evaluate", "all"):
         model_dir = export_dir or args.model
         if model_dir is None:
             raise ValueError("--stage evaluate requires --model (or run --stage export/all first)")
+        # `all` runs `tune` (spec section 7's E1/E2-only search) right before this, final
+        # `evaluate` -- its winning alpha/beam/segment_threshold replace the CLI defaults so the
+        # reported dev/E1/E2/E3 numbers are for the config tuning actually chose, not a fixed
+        # default. A standalone `--stage evaluate` run (no `tune` beforehand) keeps using the CLI
+        # flags, exactly as before.
+        beam, alpha, segment_threshold = args.beam, args.alpha, args.segment_threshold
+        if tune_result is not None:
+            w = tune_result["winner"]
+            beam, alpha, segment_threshold = w["beam"], w["alpha"], w["segment_threshold"]
         eval_dir = report_root / "eval" / Path(model_dir).name
         stage_evaluate(
             model_dir,
             run_name,
             Path(model_dir).name,
             args.seed,
-            beam=args.beam,
-            alpha=args.alpha,
+            beam=beam,
+            alpha=alpha,
+            segment_threshold=segment_threshold,
             batch_size=args.batch_size,
             n_bootstrap=args.n_bootstrap,
             comet=args.comet,

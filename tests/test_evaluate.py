@@ -22,6 +22,7 @@ from nmt.evaluate import (
     _chrf_sentence_stats,
     _official_metric_fn,
     _resample_indices,
+    bootstrap_ci_by_group,
     bootstrap_ci_official,
     compute_official_metrics,
     length_bucket_label,
@@ -170,6 +171,51 @@ def test_length_bucket_view_groups_by_word_count() -> None:
     assert set(view.keys()) == {"<=10", "11-20"}
     assert view["<=10"]["n"] == 2
     assert view["11-20"]["n"] == 1
+    for label in view:
+        for metric in ("bleu", "chrf"):
+            ci = view[label][f"{metric}_ci"]
+            assert ci["ci_low"] <= ci["point"] <= ci["ci_high"]
+
+
+# ---- per-slice bootstrap CIs (spec §8: "per slice and metric") ----
+
+
+def test_bootstrap_ci_by_group_brackets_point_per_slice() -> None:
+    ids = [r["id"] for r in _GOLD_ROWS]
+    hyps = [_PRED[i] for i in ids]
+    refs = [r["reference"] for r in _GOLD_ROWS]
+    slices = [r["slice"] for r in _GOLD_ROWS]
+    for metric in ("bleu", "chrf"):
+        by_group = bootstrap_ci_by_group(hyps, refs, slices, metric, n_resamples=200, seed=1234)
+        assert set(by_group) == {"seen", "long", "unseen_domain"}
+        for ci in by_group.values():
+            assert ci["ci_low"] <= ci["point"] <= ci["ci_high"]
+
+
+def test_bootstrap_ci_by_group_point_estimates_equal_official_cli_by_slice_exactly(
+    tmp_path: Path,
+) -> None:
+    """Per-slice CI point estimates must equal `official/score.py --out`'s `by_slice` values
+    exactly (spec: per-slice CIs must keep the point estimate identical to the official scorer's
+    own output -- the CI is attached information, never a different number)."""
+    gold_path = tmp_path / "labels.jsonl"
+    _write_jsonl(gold_path, _GOLD_ROWS)
+    pred_path = tmp_path / "preds.json"
+    pred_path.write_text(json.dumps(_PRED), encoding="utf-8")
+    out_path = tmp_path / "cli_report.json"
+    cli_report = run_official_scorer_cli(gold_path, pred_path, out_path)
+
+    ids = [r["id"] for r in _GOLD_ROWS]
+    hyps = [_PRED[i] for i in ids]
+    refs = [r["reference"] for r in _GOLD_ROWS]
+    slices = [r["slice"] for r in _GOLD_ROWS]
+
+    for metric in ("bleu", "chrf"):
+        by_group = bootstrap_ci_by_group(hyps, refs, slices, metric, n_resamples=200, seed=1234)
+        for slice_name, ci in by_group.items():
+            assert math.isclose(
+                ci["point"], cli_report["by_slice"][slice_name][metric], abs_tol=1e-9
+            )
 
 
 # ---- small end-to-end run_evaluation, monkeypatched to tiny in-memory eval splits ----
@@ -229,6 +275,76 @@ def test_run_evaluation_end_to_end_tiny(tmp_path: Path, monkeypatch: pytest.Monk
     assert "length_buckets_e1_e2_e3" in result
     on_disk = json.loads((out_dir / "eval.json").read_text(encoding="utf-8"))
     assert on_disk == result
+
+
+@pytestmark_tokenizer
+def test_run_evaluation_every_slice_and_bucket_ci_brackets_its_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec §8: per-slice/per-E-set/per-length-bucket bootstrap CIs. On a small synthetic run,
+    every slice (dev's seen/long/unseen_domain, plus each E-set) and every length bucket must have
+    `ci_low <= point <= ci_high` for both official BLEU and official chrF."""
+    tiny_dev = (
+        [
+            {"id": "dev_0", "source": "Bonjour le monde.", "slice": "seen", "length": 20},
+            {"id": "dev_1", "source": "Ceci est un test.", "slice": "unseen_domain", "length": 20},
+            {"id": "dev_2", "source": "Quelle belle journee.", "slice": "long", "length": 20},
+        ],
+        [
+            {"id": "dev_0", "reference": "Hello world.", "slice": "seen"},
+            {"id": "dev_1", "reference": "This is a test.", "slice": "unseen_domain"},
+            {"id": "dev_2", "reference": "What a beautiful day.", "slice": "long"},
+        ],
+    )
+    tiny_e1 = (
+        [{"id": "e1_0", "source": "Au revoir.", "slice": "e1", "length": 10}],
+        [{"id": "e1_0", "reference": "Goodbye.", "slice": "e1"}],
+    )
+    tiny_e2 = (
+        [{"id": "e2_0", "source": "Bonne nuit.", "slice": "e2", "length": 10}],
+        [{"id": "e2_0", "reference": "Good night.", "slice": "e2"}],
+    )
+    tiny_e3 = (
+        [{"id": "e3_0", "source": "Il etait une fois.", "slice": "e3", "length": 18}],
+        [{"id": "e3_0", "reference": "Once upon a time.", "slice": "e3"}],
+    )
+
+    def fake_load_split(name: str) -> tuple[list[dict], list[dict]]:
+        return {"dev": tiny_dev, "e1": tiny_e1, "e2": tiny_e2, "e3": tiny_e3}[name]
+
+    monkeypatch.setattr("nmt.evaluate.load_split", fake_load_split)
+
+    translator = _export_tiny_translator(tmp_path)
+    decode_cfg = EvalRunConfig(
+        beam_size=2, alpha=0.6, batch_size=4, n_bootstrap=20, bootstrap_seed=1
+    )
+    out_dir = tmp_path / "reports" / "smoke" / "ckpt0"
+    result = run_evaluation(
+        translator,
+        "smoke",
+        "ckpt0",
+        decode_cfg,
+        out_dir=out_dir,
+        splits=("dev", "e1", "e2", "e3"),
+    )
+
+    assert set(result["sets"]["dev"]["official_ci_by_slice"]["bleu"]) == {
+        "seen",
+        "long",
+        "unseen_domain",
+    }
+    for split, entry in result["sets"].items():
+        for metric in ("bleu", "chrf"):
+            for slice_name, ci in entry["official_ci_by_slice"][metric].items():
+                assert ci["ci_low"] <= ci["point"] <= ci["ci_high"], (
+                    f"{split}/{metric}/{slice_name}"
+                )
+
+    assert result["length_buckets_e1_e2_e3"]
+    for bucket, scores in result["length_buckets_e1_e2_e3"].items():
+        for metric in ("bleu", "chrf"):
+            ci = scores[f"{metric}_ci"]
+            assert ci["ci_low"] <= ci["point"] <= ci["ci_high"], f"bucket {bucket}/{metric}"
 
 
 # ---- vectorized bootstrap: sufficient statistics must equal the official functions exactly ----
