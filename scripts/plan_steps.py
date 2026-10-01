@@ -56,6 +56,7 @@ class PlanResult:
     tokens_per_step: int
     safety_margin: float
     planned_steps: dict[str, int]
+    seconds_per_step_basis: str = ""
 
 
 def load_step_rows(metrics_path: str | Path) -> list[dict]:
@@ -98,7 +99,16 @@ def compute_plan(
     median_tps = statistics.median(r["tok_per_sec"] for r in steady)
     if median_tps <= 0:
         raise ValueError(f"median tok_per_sec is non-positive: {median_tps}")
-    seconds_per_step = tokens_per_step / median_tps
+    if all("wall_step_s" in r for r in steady):
+        # Mean whole-iteration wall time: what a wall-clock budget actually pays. tok_per_sec
+        # covers compute only (micro-batch assembly runs before its timer starts); on the 3070
+        # pilot it implied 0.482 s/step against a measured 0.707 s/step mean wall time, which
+        # would have planned "40-minute" ablations that run ~50+ minutes.
+        seconds_per_step = statistics.fmean(r["wall_step_s"] for r in steady)
+        basis = "mean wall_step_s"
+    else:
+        seconds_per_step = tokens_per_step / median_tps
+        basis = "tokens_per_step / median tok_per_sec (compute-only; older metrics files)"
     peak_mem = max((r.get("gpu_mem_mb", 0.0) for r in rows), default=0.0)
 
     planned_steps = {
@@ -114,6 +124,7 @@ def compute_plan(
         tokens_per_step=tokens_per_step,
         safety_margin=safety_margin,
         planned_steps=planned_steps,
+        seconds_per_step_basis=basis,
     )
 
 
@@ -164,7 +175,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wrote {out_path}")
     print(f"steps measured (post-warmup): {result.n_steps_measured}")
     print(f"median tokens/s: {result.median_tok_per_sec:.1f}")
-    print(f"seconds/optimizer-step: {result.seconds_per_optimizer_step:.3f}")
+    print(
+        f"seconds/optimizer-step: {result.seconds_per_optimizer_step:.3f} "
+        f"({result.seconds_per_step_basis})"
+    )
     print(f"peak GPU memory: {result.peak_gpu_mem_mb:.1f} MB")
     for label, steps in result.planned_steps.items():
         print(f"PLANNED_STEPS for {label}: {steps}")

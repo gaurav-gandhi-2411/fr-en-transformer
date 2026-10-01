@@ -42,7 +42,7 @@ optim:
   weight_decay: 0.01
   grad_clip: 1.0
   warmup_steps: 500  # see s1_sin.yaml: smaller than main's 4000 for a 40-min budget
-  planned_steps: 3000  # PLACEHOLDER: orchestrator fills from the pilot_3070 plan_steps
+  planned_steps: 2889  # pilot_3070 (9e36831): 0.706 s/step mean wall x 40 min x 0.85 margin; runs/pilot_3070/plan.json
   # (--profile 3070); identical across s1/s2/s3 so all three finish their WSD decay.
   cooldown_frac: 0.2
   # SAFETY cap only. The 40-min budget is enforced via planned_steps (derived from the
@@ -65,4 +65,4 @@ logging:
   run_dir: runs/s3_rope_concat_3070
 
 eval:
-  eval_every: 500  # PLACEHOLDER: orchestrator sets from planned_steps (~every 20 min)
+  eval_every: 1000  # ~12 min at 0.706 s/step; 2 periodic evals per ablation

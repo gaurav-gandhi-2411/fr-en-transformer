@@ -134,3 +134,14 @@ def test_main_cli_3070_profile_plans_the_3070_runs_only(
     assert planned["s1_sin_3070"] == int(40 * 60 * 0.85)
     assert planned["main_ext_3070"] == int(480 * 60 * 0.85)
     assert "PLANNED_STEPS for main_ext_3070:" in capsys.readouterr().out
+
+
+def test_compute_plan_uses_wall_step_time_when_logged() -> None:
+    """Regression: compute-only tok/s implied 0.482 s/step on the 3070 pilot while the measured
+    mean wall time was 0.707 s/step (micro-batch assembly is outside the tok/s timer). When rows
+    carry `wall_step_s`, the plan must budget on it, not on tok/s."""
+    rows = [{"step": i, "tok_per_sec": 50000.0, "wall_step_s": 1.0} for i in range(1, 101)]
+    result = compute_plan(rows, warmup_steps=20, safety_margin=1.0, budgets_minutes={"x": 10.0})
+    assert result.seconds_per_optimizer_step == pytest.approx(1.0)  # not 25000/50000 = 0.5
+    assert result.planned_steps == {"x": 600}
+    assert result.seconds_per_step_basis == "mean wall_step_s"
