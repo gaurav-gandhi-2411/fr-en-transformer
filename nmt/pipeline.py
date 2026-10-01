@@ -181,7 +181,7 @@ def stage_evaluate(
     batch_size: int = 16,
     n_bootstrap: int = 1000,
     comet: bool = False,
-    splits: tuple[str, ...] = ("dev", "e1", "e2", "e3"),
+    splits: tuple[str, ...] = ("dev", "e1", "e2", "e3", "e2synth"),
     out_dir: Path | None = None,
 ) -> dict[str, Any]:
     translator = Translator.from_pretrained(str(model_dir))

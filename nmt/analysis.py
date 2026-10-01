@@ -18,6 +18,7 @@ import numpy as np
 import sentencepiece as spm
 import statsmodels.api as sm
 
+from nmt.data.e2synth import BUCKET_NAMES as E2SYNTH_BUCKET_NAMES
 from nmt.data.normalize import normalize_text
 from nmt.evaluate import load_official_module, load_split
 
@@ -278,10 +279,25 @@ def metric_artifact_share(rows: list[dict[str, str]]) -> dict[str, Any]:
 _LENGTH_BUCKET_ORDER = ("<=10", "11-20", "21-40", "41-80", ">80")
 
 
+def _e2synth_chrf_by_bucket(ev: dict[str, Any]) -> dict[str, dict[str, float]]:
+    """E2-synth's per-char-bucket chrF (point + bootstrap CI) from one `eval.json`, in bucket
+    order; empty when the run has no E2-synth entry. Read from `official_ci_by_slice` (E2-synth's
+    slice names are its char buckets), never from `length_buckets_e1_e2_e3`."""
+    ci = ev.get("sets", {}).get("e2synth", {}).get("official_ci_by_slice", {}).get("chrf", {})
+    return {b: ci[b] for b in E2SYNTH_BUCKET_NAMES if b in ci}
+
+
 def figure_chrf_vs_length_bucket(eval_jsons: dict[str, dict[str, Any]], out_path: Path) -> Path:
     """One line per run (accepts multiple `eval.json`s so S1 vs S2 can be overlaid, spec §10),
-    reading each run's `length_buckets_e1_e2_e3` view."""
-    fig, ax = plt.subplots()
+    reading each run's `length_buckets_e1_e2_e3` view. If any run carries an E2-synth entry, a
+    second, separately labelled panel plots E2-synth (synthetic; reuses E2 sentences) chrF by
+    French char bucket with bootstrap CIs -- never mixed into the E1+E2+E3 word-bucket panel."""
+    synth = {label: _e2synth_chrf_by_bucket(ev) for label, ev in eval_jsons.items()}
+    synth = {label: buckets for label, buckets in synth.items() if buckets}
+    if synth:
+        fig, (ax, ax_synth) = plt.subplots(1, 2, figsize=(11, 4.5))
+    else:
+        fig, ax = plt.subplots()
     for label, ev in eval_jsons.items():
         buckets = ev.get("length_buckets_e1_e2_e3", {})
         xs = [b for b in _LENGTH_BUCKET_ORDER if b in buckets]
@@ -293,6 +309,26 @@ def figure_chrf_vs_length_bucket(eval_jsons: dict[str, dict[str, Any]], out_path
     ax.set_title("chrF vs source length (E1+E2+E3)")
     if eval_jsons:
         ax.legend()
+    if synth:
+        for label, buckets in synth.items():
+            xs = list(buckets)
+            ys = [buckets[b]["point"] for b in xs]
+            yerr = [
+                [buckets[b]["point"] - buckets[b]["ci_low"] for b in xs],
+                [buckets[b]["ci_high"] - buckets[b]["point"] for b in xs],
+            ]
+            ax_synth.errorbar(
+                [b.removeprefix("e2synth_").replace("_", "-") for b in xs],
+                ys,
+                yerr=yerr,
+                marker="o",
+                capsize=3,
+                label=label,
+            )
+        ax_synth.set_xlabel("source length bucket (French characters)")
+        ax_synth.set_ylabel("chrF")
+        ax_synth.set_title("E2-synth (synthetic): chrF vs source length\n(reuses E2 sentences)")
+        ax_synth.legend()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)

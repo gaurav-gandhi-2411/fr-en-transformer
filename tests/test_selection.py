@@ -35,10 +35,20 @@ def test_load_selection_set_e1_and_e2_succeed() -> None:
     assert len(e1.inputs_sha256) == 64  # hex sha256
 
 
-@pytest.mark.parametrize("bad_name", ["e3", "dev", "E1", "train", "/etc/passwd", ""])
+@pytest.mark.parametrize(
+    "bad_name", ["e3", "dev", "E1", "train", "/etc/passwd", "", "e2synth", "e2_synth"]
+)
 def test_load_selection_set_refuses_anything_else(bad_name: str) -> None:
     with pytest.raises(ValueError, match="only accepts"):
         load_selection_set(bad_name)  # type: ignore[arg-type]
+
+
+def test_load_selection_set_refuses_e2synth_even_though_the_files_exist() -> None:
+    """E2-synth is a synthetic reporting-only probe built from E2; selection must never see it."""
+    assert (selection_module.REPO_ROOT / "data" / "eval" / "e2synth" / "inputs.jsonl").is_file()
+    with pytest.raises(ValueError, match="only accepts"):
+        load_selection_set("e2synth")  # type: ignore[arg-type]
+    assert "e2synth" not in selection_module._ALLOWED_SETS
 
 
 def test_selection_set_has_no_public_path_constructor() -> None:
@@ -196,6 +206,9 @@ _FORBIDDEN_PATTERNS = [
     re.compile(r"\bdev\w*", re.IGNORECASE),  # catches "dev", "dev_", "dev.jsonl", etc.
     re.compile(r"opus_books", re.IGNORECASE),
     re.compile(r"labels_dev", re.IGNORECASE),
+    # E2-synth reuses E2 sentences (a synthetic, reporting-only probe): it must be unreachable from
+    # selection and tuning. `synth` also covers `e2synth`, `synthetic`, `data/eval/e2synth`.
+    re.compile(r"synth", re.IGNORECASE),
 ]
 
 

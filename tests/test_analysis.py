@@ -256,3 +256,65 @@ def test_run_analysis_end_to_end_tiny(tmp_path: Path, monkeypatch: pytest.Monkey
     examples = json.loads((out_dir / "examples.json").read_text(encoding="utf-8"))
     assert len(examples) <= 4  # 2 dev slices present x up to 2 each
     assert {e["slice"] for e in examples} <= {"seen", "unseen_domain"}
+
+
+# ---- E2-synth panel in the length-bucket figure --------------------------------------------
+
+
+def _eval_json_with_e2synth() -> dict:
+    ci = {"point": 40.0, "ci_low": 35.0, "ci_high": 45.0, "n_resamples": 10, "n": 5}
+    return {
+        "length_buckets_e1_e2_e3": {"<=10": {"chrf": 50.0}, "11-20": {"chrf": 45.0}},
+        "sets": {
+            "e2synth": {
+                "synthetic": True,
+                "official_ci_by_slice": {
+                    "chrf": {
+                        "e2synth_800_900": {
+                            **ci,
+                            "point": 30.0,
+                            "ci_low": 25.0,
+                            "ci_high": 35.0,
+                        },  # deliberately out of order
+                        "e2synth_400_600": ci,
+                    }
+                },
+            }
+        },
+    }
+
+
+def test_e2synth_chrf_by_bucket_orders_buckets_and_ignores_runs_without_it() -> None:
+    from nmt.analysis import _e2synth_chrf_by_bucket
+
+    got = _e2synth_chrf_by_bucket(_eval_json_with_e2synth())
+    assert list(got) == ["e2synth_400_600", "e2synth_800_900"]
+    assert _e2synth_chrf_by_bucket({"length_buckets_e1_e2_e3": {}}) == {}
+
+
+def test_length_bucket_figure_adds_a_separate_e2synth_panel_only_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import matplotlib.pyplot as plt
+
+    from nmt.analysis import figure_chrf_vs_length_bucket
+
+    figs = []
+    real_subplots = plt.subplots
+
+    def spy(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        fig, axes = real_subplots(*args, **kwargs)
+        figs.append(fig)
+        return fig, axes
+
+    monkeypatch.setattr("nmt.analysis.plt.subplots", spy)
+    plain = {"run": {"length_buckets_e1_e2_e3": {"<=10": {"chrf": 50.0}}}}
+    figure_chrf_vs_length_bucket(plain, tmp_path / "plain.png")
+    with_synth = {"S1": _eval_json_with_e2synth()}
+    figure_chrf_vs_length_bucket(with_synth, tmp_path / "synth.png")
+
+    assert (tmp_path / "plain.png").is_file() and (tmp_path / "synth.png").is_file()
+    assert [len(f.axes) for f in figs] == [1, 2]
+    left, right = figs[1].axes
+    assert "E1+E2+E3" in left.get_title() and "E2-synth (synthetic)" in right.get_title()
+    assert "words" in left.get_xlabel() and "characters" in right.get_xlabel()

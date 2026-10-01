@@ -32,6 +32,12 @@ OFFICIAL_SCORE_PY = REPO_ROOT / "official" / "score.py"
 
 LENGTH_BUCKET_LABELS = ("<=10", "11-20", "21-40", "41-80", ">80")
 
+# Synthetic splits (reporting only, never selection): split name -> label carried in eval.json.
+# E2-synth reuses E2 sentences (see nmt/data/e2synth.py), so its entry is flagged `synthetic` and
+# is deliberately kept OUT of `length_buckets_e1_e2_e3`; its own by-char-bucket CIs live in
+# `official_ci_by_slice` (its slice names are the char buckets).
+SYNTHETIC_SPLIT_LABELS: dict[str, str] = {"e2synth": "E2-synth (synthetic)"}
+
 _official_module_cache: ModuleType | None = None
 
 
@@ -599,8 +605,9 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def load_split(name: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Returns `(inputs_rows, labels_rows)` for `name` in {"e1", "e2", "e3", "dev"}."""
-    if name in ("e1", "e2", "e3"):
+    """Returns `(inputs_rows, labels_rows)` for `name` in {"e1", "e2", "e3", "e2synth", "dev"}.
+    "e2synth" is the synthetic long-input probe (`nmt.data.e2synth`; reporting only)."""
+    if name in ("e1", "e2", "e3", "e2synth"):
         base = REPO_ROOT / "data" / "eval" / name
     elif name == "dev":
         base = REPO_ROOT / "data" / "dev"
@@ -615,7 +622,7 @@ def run_evaluation(
     ckpt_name: str,
     decode_cfg: EvalRunConfig,
     out_dir: Path | None = None,
-    splits: Sequence[str] = ("dev", "e1", "e2", "e3"),
+    splits: Sequence[str] = ("dev", "e1", "e2", "e3", "e2synth"),
     provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Translate every `splits` entry with `translator`, score it (official + sacreBLEU +
@@ -706,6 +713,9 @@ def run_evaluation(
                 "copy": stats_after[2] - stats_before[2],
             },
         }
+        if split in SYNTHETIC_SPLIT_LABELS:
+            entry["synthetic"] = True
+            entry["label"] = SYNTHETIC_SPLIT_LABELS[split]
         if split == "dev":
             entry["overall_ci"] = bootstrap_official_overall(
                 pred, gold_rows, decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed

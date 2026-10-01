@@ -1,0 +1,2886 @@
+{
+  "name": "e2synth",
+  "label": "E2-synth (synthetic)",
+  "synthetic": true,
+  "seed": 1234,
+  "note": "E2-synth is SYNTHETIC: every item concatenates 2-4 sentences of E2, the decoding-tuning set (spec section 3). It therefore reuses the very sentences the decoding configuration was tuned on and measures length generalization, not held-out content. Evaluation/reporting only; never used for checkpoint or decoding selection.",
+  "built_from": "data/eval/e2/{inputs,labels}.jsonl",
+  "construction": "seeded rejection sampling: k in [2, 4] distinct E2 pairs, ordered by E2 id, fr and en each joined with a single space; accepted if the raw French length falls in a bucket with room and the constituent set is new; items then shuffled (seeded) and numbered",
+  "buckets_fr_chars_half_open": {
+    "e2synth_400_600": [
+      400,
+      600
+    ],
+    "e2synth_600_800": [
+      600,
+      800
+    ],
+    "e2synth_800_900": [
+      800,
+      900
+    ]
+  },
+  "per_bucket": 100,
+  "bucket_counts": {
+    "e2synth_400_600": 100,
+    "e2synth_600_800": 100,
+    "e2synth_800_900": 100
+  },
+  "n_items": 300,
+  "files_sha256": {
+    "inputs.jsonl": "9c6062d98f27fdbd3d4f5a330fb53879e8a96efcbdccbb0c01a45459b58971be",
+    "labels.jsonl": "0afac465c2c2db997d45756004105ebcb85fbd9497fcd8439194cb93c4664feb"
+  },
+  "items": [
+    {
+      "id": "e2synth_00000",
+      "slice": "e2synth_400_600",
+      "length": 499,
+      "e2_ids": [
+        "e2_00558",
+        "e2_00903"
+      ]
+    },
+    {
+      "id": "e2synth_00001",
+      "slice": "e2synth_800_900",
+      "length": 851,
+      "e2_ids": [
+        "e2_00406",
+        "e2_00660",
+        "e2_00772"
+      ]
+    },
+    {
+      "id": "e2synth_00002",
+      "slice": "e2synth_400_600",
+      "length": 527,
+      "e2_ids": [
+        "e2_00189",
+        "e2_00934"
+      ]
+    },
+    {
+      "id": "e2synth_00003",
+      "slice": "e2synth_600_800",
+      "length": 722,
+      "e2_ids": [
+        "e2_00295",
+        "e2_00406",
+        "e2_00417"
+      ]
+    },
+    {
+      "id": "e2synth_00004",
+      "slice": "e2synth_600_800",
+      "length": 616,
+      "e2_ids": [
+        "e2_00035",
+        "e2_00161",
+        "e2_00238"
+      ]
+    },
+    {
+      "id": "e2synth_00005",
+      "slice": "e2synth_600_800",
+      "length": 782,
+      "e2_ids": [
+        "e2_00336",
+        "e2_00525",
+        "e2_00796"
+      ]
+    },
+    {
+      "id": "e2synth_00006",
+      "slice": "e2synth_400_600",
+      "length": 595,
+      "e2_ids": [
+        "e2_00644",
+        "e2_00835"
+      ]
+    },
+    {
+      "id": "e2synth_00007",
+      "slice": "e2synth_800_900",
+      "length": 893,
+      "e2_ids": [
+        "e2_00420",
+        "e2_00717",
+        "e2_00902",
+        "e2_00984"
+      ]
+    },
+    {
+      "id": "e2synth_00008",
+      "slice": "e2synth_400_600",
+      "length": 477,
+      "e2_ids": [
+        "e2_00620",
+        "e2_00652"
+      ]
+    },
+    {
+      "id": "e2synth_00009",
+      "slice": "e2synth_600_800",
+      "length": 640,
+      "e2_ids": [
+        "e2_00166",
+        "e2_00445",
+        "e2_00662"
+      ]
+    },
+    {
+      "id": "e2synth_00010",
+      "slice": "e2synth_400_600",
+      "length": 423,
+      "e2_ids": [
+        "e2_00755",
+        "e2_00884"
+      ]
+    },
+    {
+      "id": "e2synth_00011",
+      "slice": "e2synth_800_900",
+      "length": 831,
+      "e2_ids": [
+        "e2_00043",
+        "e2_00493",
+        "e2_00995"
+      ]
+    },
+    {
+      "id": "e2synth_00012",
+      "slice": "e2synth_800_900",
+      "length": 824,
+      "e2_ids": [
+        "e2_00018",
+        "e2_00898"
+      ]
+    },
+    {
+      "id": "e2synth_00013",
+      "slice": "e2synth_800_900",
+      "length": 814,
+      "e2_ids": [
+        "e2_00287",
+        "e2_00297",
+        "e2_00598"
+      ]
+    },
+    {
+      "id": "e2synth_00014",
+      "slice": "e2synth_800_900",
+      "length": 822,
+      "e2_ids": [
+        "e2_00609",
+        "e2_00836",
+        "e2_00891"
+      ]
+    },
+    {
+      "id": "e2synth_00015",
+      "slice": "e2synth_400_600",
+      "length": 467,
+      "e2_ids": [
+        "e2_00138",
+        "e2_00199"
+      ]
+    },
+    {
+      "id": "e2synth_00016",
+      "slice": "e2synth_400_600",
+      "length": 587,
+      "e2_ids": [
+        "e2_00020",
+        "e2_00299"
+      ]
+    },
+    {
+      "id": "e2synth_00017",
+      "slice": "e2synth_400_600",
+      "length": 424,
+      "e2_ids": [
+        "e2_00622",
+        "e2_00996"
+      ]
+    },
+    {
+      "id": "e2synth_00018",
+      "slice": "e2synth_800_900",
+      "length": 829,
+      "e2_ids": [
+        "e2_00291",
+        "e2_00314",
+        "e2_00529"
+      ]
+    },
+    {
+      "id": "e2synth_00019",
+      "slice": "e2synth_600_800",
+      "length": 699,
+      "e2_ids": [
+        "e2_00255",
+        "e2_00272",
+        "e2_00671"
+      ]
+    },
+    {
+      "id": "e2synth_00020",
+      "slice": "e2synth_600_800",
+      "length": 626,
+      "e2_ids": [
+        "e2_00699",
+        "e2_00842"
+      ]
+    },
+    {
+      "id": "e2synth_00021",
+      "slice": "e2synth_400_600",
+      "length": 513,
+      "e2_ids": [
+        "e2_00159",
+        "e2_00861"
+      ]
+    },
+    {
+      "id": "e2synth_00022",
+      "slice": "e2synth_400_600",
+      "length": 501,
+      "e2_ids": [
+        "e2_00559",
+        "e2_00862"
+      ]
+    },
+    {
+      "id": "e2synth_00023",
+      "slice": "e2synth_600_800",
+      "length": 628,
+      "e2_ids": [
+        "e2_00300",
+        "e2_00848"
+      ]
+    },
+    {
+      "id": "e2synth_00024",
+      "slice": "e2synth_800_900",
+      "length": 873,
+      "e2_ids": [
+        "e2_00077",
+        "e2_00171",
+        "e2_00608"
+      ]
+    },
+    {
+      "id": "e2synth_00025",
+      "slice": "e2synth_400_600",
+      "length": 490,
+      "e2_ids": [
+        "e2_00035",
+        "e2_00531"
+      ]
+    },
+    {
+      "id": "e2synth_00026",
+      "slice": "e2synth_800_900",
+      "length": 885,
+      "e2_ids": [
+        "e2_00154",
+        "e2_00237",
+        "e2_00724"
+      ]
+    },
+    {
+      "id": "e2synth_00027",
+      "slice": "e2synth_400_600",
+      "length": 457,
+      "e2_ids": [
+        "e2_00811",
+        "e2_00955"
+      ]
+    },
+    {
+      "id": "e2synth_00028",
+      "slice": "e2synth_600_800",
+      "length": 799,
+      "e2_ids": [
+        "e2_00406",
+        "e2_00788",
+        "e2_00830"
+      ]
+    },
+    {
+      "id": "e2synth_00029",
+      "slice": "e2synth_400_600",
+      "length": 569,
+      "e2_ids": [
+        "e2_00356",
+        "e2_00929"
+      ]
+    },
+    {
+      "id": "e2synth_00030",
+      "slice": "e2synth_600_800",
+      "length": 687,
+      "e2_ids": [
+        "e2_00140",
+        "e2_00181",
+        "e2_00540"
+      ]
+    },
+    {
+      "id": "e2synth_00031",
+      "slice": "e2synth_600_800",
+      "length": 650,
+      "e2_ids": [
+        "e2_00409",
+        "e2_00420",
+        "e2_00878"
+      ]
+    },
+    {
+      "id": "e2synth_00032",
+      "slice": "e2synth_800_900",
+      "length": 881,
+      "e2_ids": [
+        "e2_00324",
+        "e2_00468",
+        "e2_00933"
+      ]
+    },
+    {
+      "id": "e2synth_00033",
+      "slice": "e2synth_800_900",
+      "length": 875,
+      "e2_ids": [
+        "e2_00361",
+        "e2_00378",
+        "e2_00829"
+      ]
+    },
+    {
+      "id": "e2synth_00034",
+      "slice": "e2synth_800_900",
+      "length": 848,
+      "e2_ids": [
+        "e2_00169",
+        "e2_00196",
+        "e2_00554"
+      ]
+    },
+    {
+      "id": "e2synth_00035",
+      "slice": "e2synth_800_900",
+      "length": 864,
+      "e2_ids": [
+        "e2_00363",
+        "e2_00784"
+      ]
+    },
+    {
+      "id": "e2synth_00036",
+      "slice": "e2synth_800_900",
+      "length": 806,
+      "e2_ids": [
+        "e2_00098",
+        "e2_00467",
+        "e2_00472"
+      ]
+    },
+    {
+      "id": "e2synth_00037",
+      "slice": "e2synth_400_600",
+      "length": 533,
+      "e2_ids": [
+        "e2_00266",
+        "e2_00782"
+      ]
+    },
+    {
+      "id": "e2synth_00038",
+      "slice": "e2synth_400_600",
+      "length": 576,
+      "e2_ids": [
+        "e2_00213",
+        "e2_00743"
+      ]
+    },
+    {
+      "id": "e2synth_00039",
+      "slice": "e2synth_800_900",
+      "length": 825,
+      "e2_ids": [
+        "e2_00164",
+        "e2_00388",
+        "e2_00722"
+      ]
+    },
+    {
+      "id": "e2synth_00040",
+      "slice": "e2synth_600_800",
+      "length": 762,
+      "e2_ids": [
+        "e2_00402",
+        "e2_00946"
+      ]
+    },
+    {
+      "id": "e2synth_00041",
+      "slice": "e2synth_800_900",
+      "length": 864,
+      "e2_ids": [
+        "e2_00141",
+        "e2_00173",
+        "e2_00505"
+      ]
+    },
+    {
+      "id": "e2synth_00042",
+      "slice": "e2synth_800_900",
+      "length": 892,
+      "e2_ids": [
+        "e2_00370",
+        "e2_00665"
+      ]
+    },
+    {
+      "id": "e2synth_00043",
+      "slice": "e2synth_400_600",
+      "length": 539,
+      "e2_ids": [
+        "e2_00276",
+        "e2_00844"
+      ]
+    },
+    {
+      "id": "e2synth_00044",
+      "slice": "e2synth_800_900",
+      "length": 814,
+      "e2_ids": [
+        "e2_00338",
+        "e2_00734",
+        "e2_00875"
+      ]
+    },
+    {
+      "id": "e2synth_00045",
+      "slice": "e2synth_600_800",
+      "length": 733,
+      "e2_ids": [
+        "e2_00515",
+        "e2_00995"
+      ]
+    },
+    {
+      "id": "e2synth_00046",
+      "slice": "e2synth_800_900",
+      "length": 832,
+      "e2_ids": [
+        "e2_00483",
+        "e2_00760",
+        "e2_00880"
+      ]
+    },
+    {
+      "id": "e2synth_00047",
+      "slice": "e2synth_400_600",
+      "length": 482,
+      "e2_ids": [
+        "e2_00907",
+        "e2_00975"
+      ]
+    },
+    {
+      "id": "e2synth_00048",
+      "slice": "e2synth_400_600",
+      "length": 555,
+      "e2_ids": [
+        "e2_00113",
+        "e2_00769"
+      ]
+    },
+    {
+      "id": "e2synth_00049",
+      "slice": "e2synth_800_900",
+      "length": 872,
+      "e2_ids": [
+        "e2_00054",
+        "e2_00331",
+        "e2_00972"
+      ]
+    },
+    {
+      "id": "e2synth_00050",
+      "slice": "e2synth_600_800",
+      "length": 725,
+      "e2_ids": [
+        "e2_00594",
+        "e2_00929"
+      ]
+    },
+    {
+      "id": "e2synth_00051",
+      "slice": "e2synth_400_600",
+      "length": 511,
+      "e2_ids": [
+        "e2_00003",
+        "e2_00897"
+      ]
+    },
+    {
+      "id": "e2synth_00052",
+      "slice": "e2synth_400_600",
+      "length": 476,
+      "e2_ids": [
+        "e2_00076",
+        "e2_00654"
+      ]
+    },
+    {
+      "id": "e2synth_00053",
+      "slice": "e2synth_800_900",
+      "length": 858,
+      "e2_ids": [
+        "e2_00380",
+        "e2_00420",
+        "e2_00947"
+      ]
+    },
+    {
+      "id": "e2synth_00054",
+      "slice": "e2synth_400_600",
+      "length": 519,
+      "e2_ids": [
+        "e2_00400",
+        "e2_00443"
+      ]
+    },
+    {
+      "id": "e2synth_00055",
+      "slice": "e2synth_600_800",
+      "length": 784,
+      "e2_ids": [
+        "e2_00692",
+        "e2_00781",
+        "e2_00860"
+      ]
+    },
+    {
+      "id": "e2synth_00056",
+      "slice": "e2synth_800_900",
+      "length": 839,
+      "e2_ids": [
+        "e2_00070",
+        "e2_00294",
+        "e2_00403",
+        "e2_00417"
+      ]
+    },
+    {
+      "id": "e2synth_00057",
+      "slice": "e2synth_800_900",
+      "length": 815,
+      "e2_ids": [
+        "e2_00122",
+        "e2_00561"
+      ]
+    },
+    {
+      "id": "e2synth_00058",
+      "slice": "e2synth_800_900",
+      "length": 806,
+      "e2_ids": [
+        "e2_00143",
+        "e2_00510",
+        "e2_00769"
+      ]
+    },
+    {
+      "id": "e2synth_00059",
+      "slice": "e2synth_400_600",
+      "length": 429,
+      "e2_ids": [
+        "e2_00063",
+        "e2_00098"
+      ]
+    },
+    {
+      "id": "e2synth_00060",
+      "slice": "e2synth_600_800",
+      "length": 795,
+      "e2_ids": [
+        "e2_00368",
+        "e2_00690",
+        "e2_00858"
+      ]
+    },
+    {
+      "id": "e2synth_00061",
+      "slice": "e2synth_800_900",
+      "length": 867,
+      "e2_ids": [
+        "e2_00028",
+        "e2_00444"
+      ]
+    },
+    {
+      "id": "e2synth_00062",
+      "slice": "e2synth_400_600",
+      "length": 510,
+      "e2_ids": [
+        "e2_00464",
+        "e2_00897"
+      ]
+    },
+    {
+      "id": "e2synth_00063",
+      "slice": "e2synth_600_800",
+      "length": 676,
+      "e2_ids": [
+        "e2_00592",
+        "e2_00635",
+        "e2_00960"
+      ]
+    },
+    {
+      "id": "e2synth_00064",
+      "slice": "e2synth_600_800",
+      "length": 759,
+      "e2_ids": [
+        "e2_00342",
+        "e2_00361",
+        "e2_00663"
+      ]
+    },
+    {
+      "id": "e2synth_00065",
+      "slice": "e2synth_400_600",
+      "length": 506,
+      "e2_ids": [
+        "e2_00450",
+        "e2_00751"
+      ]
+    },
+    {
+      "id": "e2synth_00066",
+      "slice": "e2synth_600_800",
+      "length": 695,
+      "e2_ids": [
+        "e2_00132",
+        "e2_00136"
+      ]
+    },
+    {
+      "id": "e2synth_00067",
+      "slice": "e2synth_600_800",
+      "length": 767,
+      "e2_ids": [
+        "e2_00210",
+        "e2_00879",
+        "e2_00953"
+      ]
+    },
+    {
+      "id": "e2synth_00068",
+      "slice": "e2synth_600_800",
+      "length": 634,
+      "e2_ids": [
+        "e2_00064",
+        "e2_00822"
+      ]
+    },
+    {
+      "id": "e2synth_00069",
+      "slice": "e2synth_600_800",
+      "length": 775,
+      "e2_ids": [
+        "e2_00491",
+        "e2_00526",
+        "e2_00847"
+      ]
+    },
+    {
+      "id": "e2synth_00070",
+      "slice": "e2synth_600_800",
+      "length": 676,
+      "e2_ids": [
+        "e2_00007",
+        "e2_00479"
+      ]
+    },
+    {
+      "id": "e2synth_00071",
+      "slice": "e2synth_800_900",
+      "length": 856,
+      "e2_ids": [
+        "e2_00279",
+        "e2_00858",
+        "e2_00948"
+      ]
+    },
+    {
+      "id": "e2synth_00072",
+      "slice": "e2synth_400_600",
+      "length": 597,
+      "e2_ids": [
+        "e2_00281",
+        "e2_00819"
+      ]
+    },
+    {
+      "id": "e2synth_00073",
+      "slice": "e2synth_600_800",
+      "length": 798,
+      "e2_ids": [
+        "e2_00174",
+        "e2_00765",
+        "e2_00805"
+      ]
+    },
+    {
+      "id": "e2synth_00074",
+      "slice": "e2synth_800_900",
+      "length": 801,
+      "e2_ids": [
+        "e2_00124",
+        "e2_00509"
+      ]
+    },
+    {
+      "id": "e2synth_00075",
+      "slice": "e2synth_600_800",
+      "length": 773,
+      "e2_ids": [
+        "e2_00038",
+        "e2_00045",
+        "e2_00680"
+      ]
+    },
+    {
+      "id": "e2synth_00076",
+      "slice": "e2synth_400_600",
+      "length": 531,
+      "e2_ids": [
+        "e2_00818",
+        "e2_00864"
+      ]
+    },
+    {
+      "id": "e2synth_00077",
+      "slice": "e2synth_600_800",
+      "length": 674,
+      "e2_ids": [
+        "e2_00109",
+        "e2_00415"
+      ]
+    },
+    {
+      "id": "e2synth_00078",
+      "slice": "e2synth_400_600",
+      "length": 445,
+      "e2_ids": [
+        "e2_00092",
+        "e2_00098"
+      ]
+    },
+    {
+      "id": "e2synth_00079",
+      "slice": "e2synth_600_800",
+      "length": 787,
+      "e2_ids": [
+        "e2_00158",
+        "e2_00868",
+        "e2_00995"
+      ]
+    },
+    {
+      "id": "e2synth_00080",
+      "slice": "e2synth_600_800",
+      "length": 683,
+      "e2_ids": [
+        "e2_00354",
+        "e2_00962"
+      ]
+    },
+    {
+      "id": "e2synth_00081",
+      "slice": "e2synth_600_800",
+      "length": 680,
+      "e2_ids": [
+        "e2_00263",
+        "e2_00599"
+      ]
+    },
+    {
+      "id": "e2synth_00082",
+      "slice": "e2synth_600_800",
+      "length": 787,
+      "e2_ids": [
+        "e2_00275",
+        "e2_00535",
+        "e2_00829"
+      ]
+    },
+    {
+      "id": "e2synth_00083",
+      "slice": "e2synth_600_800",
+      "length": 603,
+      "e2_ids": [
+        "e2_00463",
+        "e2_00624"
+      ]
+    },
+    {
+      "id": "e2synth_00084",
+      "slice": "e2synth_600_800",
+      "length": 637,
+      "e2_ids": [
+        "e2_00190",
+        "e2_00796"
+      ]
+    },
+    {
+      "id": "e2synth_00085",
+      "slice": "e2synth_400_600",
+      "length": 450,
+      "e2_ids": [
+        "e2_00709",
+        "e2_00813"
+      ]
+    },
+    {
+      "id": "e2synth_00086",
+      "slice": "e2synth_800_900",
+      "length": 842,
+      "e2_ids": [
+        "e2_00580",
+        "e2_00595",
+        "e2_00812"
+      ]
+    },
+    {
+      "id": "e2synth_00087",
+      "slice": "e2synth_600_800",
+      "length": 635,
+      "e2_ids": [
+        "e2_00064",
+        "e2_00596"
+      ]
+    },
+    {
+      "id": "e2synth_00088",
+      "slice": "e2synth_600_800",
+      "length": 780,
+      "e2_ids": [
+        "e2_00050",
+        "e2_00666",
+        "e2_00761"
+      ]
+    },
+    {
+      "id": "e2synth_00089",
+      "slice": "e2synth_400_600",
+      "length": 592,
+      "e2_ids": [
+        "e2_00586",
+        "e2_00678"
+      ]
+    },
+    {
+      "id": "e2synth_00090",
+      "slice": "e2synth_400_600",
+      "length": 547,
+      "e2_ids": [
+        "e2_00032",
+        "e2_00253"
+      ]
+    },
+    {
+      "id": "e2synth_00091",
+      "slice": "e2synth_600_800",
+      "length": 669,
+      "e2_ids": [
+        "e2_00099",
+        "e2_00117"
+      ]
+    },
+    {
+      "id": "e2synth_00092",
+      "slice": "e2synth_600_800",
+      "length": 673,
+      "e2_ids": [
+        "e2_00283",
+        "e2_00426"
+      ]
+    },
+    {
+      "id": "e2synth_00093",
+      "slice": "e2synth_400_600",
+      "length": 566,
+      "e2_ids": [
+        "e2_00534",
+        "e2_00573"
+      ]
+    },
+    {
+      "id": "e2synth_00094",
+      "slice": "e2synth_600_800",
+      "length": 794,
+      "e2_ids": [
+        "e2_00097",
+        "e2_00412",
+        "e2_00637"
+      ]
+    },
+    {
+      "id": "e2synth_00095",
+      "slice": "e2synth_800_900",
+      "length": 869,
+      "e2_ids": [
+        "e2_00055",
+        "e2_00247",
+        "e2_00519"
+      ]
+    },
+    {
+      "id": "e2synth_00096",
+      "slice": "e2synth_600_800",
+      "length": 622,
+      "e2_ids": [
+        "e2_00008",
+        "e2_00268"
+      ]
+    },
+    {
+      "id": "e2synth_00097",
+      "slice": "e2synth_800_900",
+      "length": 813,
+      "e2_ids": [
+        "e2_00041",
+        "e2_00070",
+        "e2_00380"
+      ]
+    },
+    {
+      "id": "e2synth_00098",
+      "slice": "e2synth_600_800",
+      "length": 692,
+      "e2_ids": [
+        "e2_00502",
+        "e2_00795"
+      ]
+    },
+    {
+      "id": "e2synth_00099",
+      "slice": "e2synth_400_600",
+      "length": 545,
+      "e2_ids": [
+        "e2_00100",
+        "e2_00958"
+      ]
+    },
+    {
+      "id": "e2synth_00100",
+      "slice": "e2synth_600_800",
+      "length": 610,
+      "e2_ids": [
+        "e2_00737",
+        "e2_00843"
+      ]
+    },
+    {
+      "id": "e2synth_00101",
+      "slice": "e2synth_400_600",
+      "length": 549,
+      "e2_ids": [
+        "e2_00354",
+        "e2_00663"
+      ]
+    },
+    {
+      "id": "e2synth_00102",
+      "slice": "e2synth_400_600",
+      "length": 449,
+      "e2_ids": [
+        "e2_00280",
+        "e2_00420"
+      ]
+    },
+    {
+      "id": "e2synth_00103",
+      "slice": "e2synth_400_600",
+      "length": 560,
+      "e2_ids": [
+        "e2_00617",
+        "e2_00647"
+      ]
+    },
+    {
+      "id": "e2synth_00104",
+      "slice": "e2synth_800_900",
+      "length": 865,
+      "e2_ids": [
+        "e2_00326",
+        "e2_00432",
+        "e2_00701"
+      ]
+    },
+    {
+      "id": "e2synth_00105",
+      "slice": "e2synth_800_900",
+      "length": 841,
+      "e2_ids": [
+        "e2_00243",
+        "e2_00695",
+        "e2_00976"
+      ]
+    },
+    {
+      "id": "e2synth_00106",
+      "slice": "e2synth_600_800",
+      "length": 792,
+      "e2_ids": [
+        "e2_00267",
+        "e2_00497",
+        "e2_00714"
+      ]
+    },
+    {
+      "id": "e2synth_00107",
+      "slice": "e2synth_600_800",
+      "length": 720,
+      "e2_ids": [
+        "e2_00666",
+        "e2_00693",
+        "e2_00773"
+      ]
+    },
+    {
+      "id": "e2synth_00108",
+      "slice": "e2synth_400_600",
+      "length": 575,
+      "e2_ids": [
+        "e2_00590",
+        "e2_00853"
+      ]
+    },
+    {
+      "id": "e2synth_00109",
+      "slice": "e2synth_800_900",
+      "length": 835,
+      "e2_ids": [
+        "e2_00151",
+        "e2_00348",
+        "e2_00951"
+      ]
+    },
+    {
+      "id": "e2synth_00110",
+      "slice": "e2synth_400_600",
+      "length": 527,
+      "e2_ids": [
+        "e2_00299",
+        "e2_00329"
+      ]
+    },
+    {
+      "id": "e2synth_00111",
+      "slice": "e2synth_400_600",
+      "length": 520,
+      "e2_ids": [
+        "e2_00077",
+        "e2_00202"
+      ]
+    },
+    {
+      "id": "e2synth_00112",
+      "slice": "e2synth_400_600",
+      "length": 435,
+      "e2_ids": [
+        "e2_00273",
+        "e2_00845"
+      ]
+    },
+    {
+      "id": "e2synth_00113",
+      "slice": "e2synth_600_800",
+      "length": 630,
+      "e2_ids": [
+        "e2_00669",
+        "e2_00921"
+      ]
+    },
+    {
+      "id": "e2synth_00114",
+      "slice": "e2synth_400_600",
+      "length": 552,
+      "e2_ids": [
+        "e2_00222",
+        "e2_00937"
+      ]
+    },
+    {
+      "id": "e2synth_00115",
+      "slice": "e2synth_600_800",
+      "length": 604,
+      "e2_ids": [
+        "e2_00336",
+        "e2_00751"
+      ]
+    },
+    {
+      "id": "e2synth_00116",
+      "slice": "e2synth_800_900",
+      "length": 882,
+      "e2_ids": [
+        "e2_00113",
+        "e2_00499",
+        "e2_00881"
+      ]
+    },
+    {
+      "id": "e2synth_00117",
+      "slice": "e2synth_400_600",
+      "length": 451,
+      "e2_ids": [
+        "e2_00421",
+        "e2_00960"
+      ]
+    },
+    {
+      "id": "e2synth_00118",
+      "slice": "e2synth_800_900",
+      "length": 800,
+      "e2_ids": [
+        "e2_00050",
+        "e2_00582",
+        "e2_00816"
+      ]
+    },
+    {
+      "id": "e2synth_00119",
+      "slice": "e2synth_400_600",
+      "length": 563,
+      "e2_ids": [
+        "e2_00426",
+        "e2_00467"
+      ]
+    },
+    {
+      "id": "e2synth_00120",
+      "slice": "e2synth_600_800",
+      "length": 741,
+      "e2_ids": [
+        "e2_00242",
+        "e2_00450",
+        "e2_00836"
+      ]
+    },
+    {
+      "id": "e2synth_00121",
+      "slice": "e2synth_400_600",
+      "length": 429,
+      "e2_ids": [
+        "e2_00909",
+        "e2_00977"
+      ]
+    },
+    {
+      "id": "e2synth_00122",
+      "slice": "e2synth_600_800",
+      "length": 757,
+      "e2_ids": [
+        "e2_00096",
+        "e2_00500",
+        "e2_00553"
+      ]
+    },
+    {
+      "id": "e2synth_00123",
+      "slice": "e2synth_400_600",
+      "length": 427,
+      "e2_ids": [
+        "e2_00046",
+        "e2_00994"
+      ]
+    },
+    {
+      "id": "e2synth_00124",
+      "slice": "e2synth_600_800",
+      "length": 762,
+      "e2_ids": [
+        "e2_00070",
+        "e2_00615",
+        "e2_00691"
+      ]
+    },
+    {
+      "id": "e2synth_00125",
+      "slice": "e2synth_800_900",
+      "length": 807,
+      "e2_ids": [
+        "e2_00133",
+        "e2_00210",
+        "e2_00535"
+      ]
+    },
+    {
+      "id": "e2synth_00126",
+      "slice": "e2synth_400_600",
+      "length": 532,
+      "e2_ids": [
+        "e2_00549",
+        "e2_00634"
+      ]
+    },
+    {
+      "id": "e2synth_00127",
+      "slice": "e2synth_600_800",
+      "length": 776,
+      "e2_ids": [
+        "e2_00171",
+        "e2_00432",
+        "e2_00973"
+      ]
+    },
+    {
+      "id": "e2synth_00128",
+      "slice": "e2synth_600_800",
+      "length": 631,
+      "e2_ids": [
+        "e2_00040",
+        "e2_00831"
+      ]
+    },
+    {
+      "id": "e2synth_00129",
+      "slice": "e2synth_800_900",
+      "length": 871,
+      "e2_ids": [
+        "e2_00253",
+        "e2_00696",
+        "e2_00758",
+        "e2_00782"
+      ]
+    },
+    {
+      "id": "e2synth_00130",
+      "slice": "e2synth_600_800",
+      "length": 737,
+      "e2_ids": [
+        "e2_00196",
+        "e2_00353",
+        "e2_00656"
+      ]
+    },
+    {
+      "id": "e2synth_00131",
+      "slice": "e2synth_400_600",
+      "length": 485,
+      "e2_ids": [
+        "e2_00200",
+        "e2_00842"
+      ]
+    },
+    {
+      "id": "e2synth_00132",
+      "slice": "e2synth_800_900",
+      "length": 885,
+      "e2_ids": [
+        "e2_00113",
+        "e2_00789",
+        "e2_00979"
+      ]
+    },
+    {
+      "id": "e2synth_00133",
+      "slice": "e2synth_600_800",
+      "length": 641,
+      "e2_ids": [
+        "e2_00808",
+        "e2_00971"
+      ]
+    },
+    {
+      "id": "e2synth_00134",
+      "slice": "e2synth_800_900",
+      "length": 854,
+      "e2_ids": [
+        "e2_00156",
+        "e2_00511",
+        "e2_00547"
+      ]
+    },
+    {
+      "id": "e2synth_00135",
+      "slice": "e2synth_400_600",
+      "length": 551,
+      "e2_ids": [
+        "e2_00310",
+        "e2_00826"
+      ]
+    },
+    {
+      "id": "e2synth_00136",
+      "slice": "e2synth_800_900",
+      "length": 813,
+      "e2_ids": [
+        "e2_00679",
+        "e2_00866",
+        "e2_00932"
+      ]
+    },
+    {
+      "id": "e2synth_00137",
+      "slice": "e2synth_600_800",
+      "length": 776,
+      "e2_ids": [
+        "e2_00627",
+        "e2_00746",
+        "e2_00928"
+      ]
+    },
+    {
+      "id": "e2synth_00138",
+      "slice": "e2synth_600_800",
+      "length": 699,
+      "e2_ids": [
+        "e2_00452",
+        "e2_00940",
+        "e2_00968"
+      ]
+    },
+    {
+      "id": "e2synth_00139",
+      "slice": "e2synth_400_600",
+      "length": 569,
+      "e2_ids": [
+        "e2_00518",
+        "e2_00935"
+      ]
+    },
+    {
+      "id": "e2synth_00140",
+      "slice": "e2synth_600_800",
+      "length": 752,
+      "e2_ids": [
+        "e2_00046",
+        "e2_00487",
+        "e2_00801"
+      ]
+    },
+    {
+      "id": "e2synth_00141",
+      "slice": "e2synth_600_800",
+      "length": 700,
+      "e2_ids": [
+        "e2_00014",
+        "e2_00865"
+      ]
+    },
+    {
+      "id": "e2synth_00142",
+      "slice": "e2synth_400_600",
+      "length": 536,
+      "e2_ids": [
+        "e2_00484",
+        "e2_00727"
+      ]
+    },
+    {
+      "id": "e2synth_00143",
+      "slice": "e2synth_800_900",
+      "length": 823,
+      "e2_ids": [
+        "e2_00128",
+        "e2_00525",
+        "e2_00712"
+      ]
+    },
+    {
+      "id": "e2synth_00144",
+      "slice": "e2synth_600_800",
+      "length": 780,
+      "e2_ids": [
+        "e2_00007",
+        "e2_00092",
+        "e2_00119"
+      ]
+    },
+    {
+      "id": "e2synth_00145",
+      "slice": "e2synth_600_800",
+      "length": 787,
+      "e2_ids": [
+        "e2_00585",
+        "e2_00777",
+        "e2_00876"
+      ]
+    },
+    {
+      "id": "e2synth_00146",
+      "slice": "e2synth_800_900",
+      "length": 887,
+      "e2_ids": [
+        "e2_00080",
+        "e2_00401",
+        "e2_00981"
+      ]
+    },
+    {
+      "id": "e2synth_00147",
+      "slice": "e2synth_400_600",
+      "length": 542,
+      "e2_ids": [
+        "e2_00279",
+        "e2_00804"
+      ]
+    },
+    {
+      "id": "e2synth_00148",
+      "slice": "e2synth_600_800",
+      "length": 698,
+      "e2_ids": [
+        "e2_00075",
+        "e2_00491"
+      ]
+    },
+    {
+      "id": "e2synth_00149",
+      "slice": "e2synth_600_800",
+      "length": 627,
+      "e2_ids": [
+        "e2_00187",
+        "e2_00730"
+      ]
+    },
+    {
+      "id": "e2synth_00150",
+      "slice": "e2synth_800_900",
+      "length": 827,
+      "e2_ids": [
+        "e2_00231",
+        "e2_00464",
+        "e2_00908"
+      ]
+    },
+    {
+      "id": "e2synth_00151",
+      "slice": "e2synth_600_800",
+      "length": 632,
+      "e2_ids": [
+        "e2_00298",
+        "e2_00504"
+      ]
+    },
+    {
+      "id": "e2synth_00152",
+      "slice": "e2synth_800_900",
+      "length": 807,
+      "e2_ids": [
+        "e2_00200",
+        "e2_00209",
+        "e2_00437"
+      ]
+    },
+    {
+      "id": "e2synth_00153",
+      "slice": "e2synth_600_800",
+      "length": 705,
+      "e2_ids": [
+        "e2_00720",
+        "e2_00849",
+        "e2_00931"
+      ]
+    },
+    {
+      "id": "e2synth_00154",
+      "slice": "e2synth_400_600",
+      "length": 540,
+      "e2_ids": [
+        "e2_00716",
+        "e2_00719"
+      ]
+    },
+    {
+      "id": "e2synth_00155",
+      "slice": "e2synth_800_900",
+      "length": 899,
+      "e2_ids": [
+        "e2_00296",
+        "e2_00339",
+        "e2_00357",
+        "e2_00771"
+      ]
+    },
+    {
+      "id": "e2synth_00156",
+      "slice": "e2synth_600_800",
+      "length": 729,
+      "e2_ids": [
+        "e2_00304",
+        "e2_00862"
+      ]
+    },
+    {
+      "id": "e2synth_00157",
+      "slice": "e2synth_600_800",
+      "length": 745,
+      "e2_ids": [
+        "e2_00293",
+        "e2_00634",
+        "e2_00890"
+      ]
+    },
+    {
+      "id": "e2synth_00158",
+      "slice": "e2synth_600_800",
+      "length": 780,
+      "e2_ids": [
+        "e2_00366",
+        "e2_00722",
+        "e2_00762"
+      ]
+    },
+    {
+      "id": "e2synth_00159",
+      "slice": "e2synth_800_900",
+      "length": 868,
+      "e2_ids": [
+        "e2_00136",
+        "e2_00273",
+        "e2_00615"
+      ]
+    },
+    {
+      "id": "e2synth_00160",
+      "slice": "e2synth_400_600",
+      "length": 554,
+      "e2_ids": [
+        "e2_00103",
+        "e2_00406"
+      ]
+    },
+    {
+      "id": "e2synth_00161",
+      "slice": "e2synth_800_900",
+      "length": 833,
+      "e2_ids": [
+        "e2_00601",
+        "e2_00613",
+        "e2_00772"
+      ]
+    },
+    {
+      "id": "e2synth_00162",
+      "slice": "e2synth_400_600",
+      "length": 515,
+      "e2_ids": [
+        "e2_00114",
+        "e2_00214"
+      ]
+    },
+    {
+      "id": "e2synth_00163",
+      "slice": "e2synth_400_600",
+      "length": 483,
+      "e2_ids": [
+        "e2_00315",
+        "e2_00389"
+      ]
+    },
+    {
+      "id": "e2synth_00164",
+      "slice": "e2synth_800_900",
+      "length": 889,
+      "e2_ids": [
+        "e2_00137",
+        "e2_00505",
+        "e2_00645"
+      ]
+    },
+    {
+      "id": "e2synth_00165",
+      "slice": "e2synth_600_800",
+      "length": 722,
+      "e2_ids": [
+        "e2_00199",
+        "e2_00521",
+        "e2_00576"
+      ]
+    },
+    {
+      "id": "e2synth_00166",
+      "slice": "e2synth_400_600",
+      "length": 563,
+      "e2_ids": [
+        "e2_00043",
+        "e2_00441"
+      ]
+    },
+    {
+      "id": "e2synth_00167",
+      "slice": "e2synth_800_900",
+      "length": 865,
+      "e2_ids": [
+        "e2_00199",
+        "e2_00514",
+        "e2_00601"
+      ]
+    },
+    {
+      "id": "e2synth_00168",
+      "slice": "e2synth_600_800",
+      "length": 652,
+      "e2_ids": [
+        "e2_00375",
+        "e2_00992"
+      ]
+    },
+    {
+      "id": "e2synth_00169",
+      "slice": "e2synth_400_600",
+      "length": 475,
+      "e2_ids": [
+        "e2_00165",
+        "e2_00269"
+      ]
+    },
+    {
+      "id": "e2synth_00170",
+      "slice": "e2synth_800_900",
+      "length": 877,
+      "e2_ids": [
+        "e2_00333",
+        "e2_00730"
+      ]
+    },
+    {
+      "id": "e2synth_00171",
+      "slice": "e2synth_800_900",
+      "length": 804,
+      "e2_ids": [
+        "e2_00394",
+        "e2_00683",
+        "e2_00964"
+      ]
+    },
+    {
+      "id": "e2synth_00172",
+      "slice": "e2synth_800_900",
+      "length": 854,
+      "e2_ids": [
+        "e2_00357",
+        "e2_00360",
+        "e2_00551"
+      ]
+    },
+    {
+      "id": "e2synth_00173",
+      "slice": "e2synth_600_800",
+      "length": 626,
+      "e2_ids": [
+        "e2_00400",
+        "e2_00466"
+      ]
+    },
+    {
+      "id": "e2synth_00174",
+      "slice": "e2synth_400_600",
+      "length": 460,
+      "e2_ids": [
+        "e2_00027",
+        "e2_00147"
+      ]
+    },
+    {
+      "id": "e2synth_00175",
+      "slice": "e2synth_800_900",
+      "length": 839,
+      "e2_ids": [
+        "e2_00343",
+        "e2_00592",
+        "e2_00860"
+      ]
+    },
+    {
+      "id": "e2synth_00176",
+      "slice": "e2synth_800_900",
+      "length": 890,
+      "e2_ids": [
+        "e2_00339",
+        "e2_00431",
+        "e2_00965"
+      ]
+    },
+    {
+      "id": "e2synth_00177",
+      "slice": "e2synth_400_600",
+      "length": 425,
+      "e2_ids": [
+        "e2_00582",
+        "e2_00637"
+      ]
+    },
+    {
+      "id": "e2synth_00178",
+      "slice": "e2synth_600_800",
+      "length": 676,
+      "e2_ids": [
+        "e2_00045",
+        "e2_00618",
+        "e2_00907"
+      ]
+    },
+    {
+      "id": "e2synth_00179",
+      "slice": "e2synth_400_600",
+      "length": 547,
+      "e2_ids": [
+        "e2_00096",
+        "e2_00715"
+      ]
+    },
+    {
+      "id": "e2synth_00180",
+      "slice": "e2synth_400_600",
+      "length": 536,
+      "e2_ids": [
+        "e2_00063",
+        "e2_00386"
+      ]
+    },
+    {
+      "id": "e2synth_00181",
+      "slice": "e2synth_800_900",
+      "length": 869,
+      "e2_ids": [
+        "e2_00130",
+        "e2_00269",
+        "e2_00781"
+      ]
+    },
+    {
+      "id": "e2synth_00182",
+      "slice": "e2synth_600_800",
+      "length": 669,
+      "e2_ids": [
+        "e2_00576",
+        "e2_00968",
+        "e2_00974"
+      ]
+    },
+    {
+      "id": "e2synth_00183",
+      "slice": "e2synth_400_600",
+      "length": 503,
+      "e2_ids": [
+        "e2_00140",
+        "e2_00596"
+      ]
+    },
+    {
+      "id": "e2synth_00184",
+      "slice": "e2synth_600_800",
+      "length": 757,
+      "e2_ids": [
+        "e2_00411",
+        "e2_00645",
+        "e2_00759"
+      ]
+    },
+    {
+      "id": "e2synth_00185",
+      "slice": "e2synth_600_800",
+      "length": 603,
+      "e2_ids": [
+        "e2_00224",
+        "e2_00518"
+      ]
+    },
+    {
+      "id": "e2synth_00186",
+      "slice": "e2synth_800_900",
+      "length": 819,
+      "e2_ids": [
+        "e2_00091",
+        "e2_00278",
+        "e2_00571"
+      ]
+    },
+    {
+      "id": "e2synth_00187",
+      "slice": "e2synth_800_900",
+      "length": 884,
+      "e2_ids": [
+        "e2_00218",
+        "e2_00380",
+        "e2_00585"
+      ]
+    },
+    {
+      "id": "e2synth_00188",
+      "slice": "e2synth_400_600",
+      "length": 505,
+      "e2_ids": [
+        "e2_00284",
+        "e2_00394"
+      ]
+    },
+    {
+      "id": "e2synth_00189",
+      "slice": "e2synth_800_900",
+      "length": 886,
+      "e2_ids": [
+        "e2_00136",
+        "e2_00384",
+        "e2_00537"
+      ]
+    },
+    {
+      "id": "e2synth_00190",
+      "slice": "e2synth_600_800",
+      "length": 740,
+      "e2_ids": [
+        "e2_00452",
+        "e2_00536",
+        "e2_00968"
+      ]
+    },
+    {
+      "id": "e2synth_00191",
+      "slice": "e2synth_800_900",
+      "length": 811,
+      "e2_ids": [
+        "e2_00038",
+        "e2_00083",
+        "e2_00854"
+      ]
+    },
+    {
+      "id": "e2synth_00192",
+      "slice": "e2synth_400_600",
+      "length": 524,
+      "e2_ids": [
+        "e2_00546",
+        "e2_00627"
+      ]
+    },
+    {
+      "id": "e2synth_00193",
+      "slice": "e2synth_800_900",
+      "length": 824,
+      "e2_ids": [
+        "e2_00107",
+        "e2_00284",
+        "e2_00591"
+      ]
+    },
+    {
+      "id": "e2synth_00194",
+      "slice": "e2synth_600_800",
+      "length": 776,
+      "e2_ids": [
+        "e2_00419",
+        "e2_00454",
+        "e2_00557"
+      ]
+    },
+    {
+      "id": "e2synth_00195",
+      "slice": "e2synth_800_900",
+      "length": 847,
+      "e2_ids": [
+        "e2_00640",
+        "e2_00702",
+        "e2_00894"
+      ]
+    },
+    {
+      "id": "e2synth_00196",
+      "slice": "e2synth_400_600",
+      "length": 450,
+      "e2_ids": [
+        "e2_00293",
+        "e2_00916"
+      ]
+    },
+    {
+      "id": "e2synth_00197",
+      "slice": "e2synth_600_800",
+      "length": 703,
+      "e2_ids": [
+        "e2_00161",
+        "e2_00167",
+        "e2_00993"
+      ]
+    },
+    {
+      "id": "e2synth_00198",
+      "slice": "e2synth_400_600",
+      "length": 552,
+      "e2_ids": [
+        "e2_00358",
+        "e2_00535"
+      ]
+    },
+    {
+      "id": "e2synth_00199",
+      "slice": "e2synth_800_900",
+      "length": 882,
+      "e2_ids": [
+        "e2_00340",
+        "e2_00687",
+        "e2_00880"
+      ]
+    },
+    {
+      "id": "e2synth_00200",
+      "slice": "e2synth_600_800",
+      "length": 782,
+      "e2_ids": [
+        "e2_00031",
+        "e2_00492",
+        "e2_00969"
+      ]
+    },
+    {
+      "id": "e2synth_00201",
+      "slice": "e2synth_800_900",
+      "length": 819,
+      "e2_ids": [
+        "e2_00166",
+        "e2_00526",
+        "e2_00720"
+      ]
+    },
+    {
+      "id": "e2synth_00202",
+      "slice": "e2synth_600_800",
+      "length": 756,
+      "e2_ids": [
+        "e2_00134",
+        "e2_00146",
+        "e2_00366"
+      ]
+    },
+    {
+      "id": "e2synth_00203",
+      "slice": "e2synth_400_600",
+      "length": 506,
+      "e2_ids": [
+        "e2_00721",
+        "e2_00907"
+      ]
+    },
+    {
+      "id": "e2synth_00204",
+      "slice": "e2synth_800_900",
+      "length": 842,
+      "e2_ids": [
+        "e2_00318",
+        "e2_00566",
+        "e2_00825"
+      ]
+    },
+    {
+      "id": "e2synth_00205",
+      "slice": "e2synth_800_900",
+      "length": 884,
+      "e2_ids": [
+        "e2_00427",
+        "e2_00531",
+        "e2_00650"
+      ]
+    },
+    {
+      "id": "e2synth_00206",
+      "slice": "e2synth_600_800",
+      "length": 674,
+      "e2_ids": [
+        "e2_00619",
+        "e2_00854"
+      ]
+    },
+    {
+      "id": "e2synth_00207",
+      "slice": "e2synth_600_800",
+      "length": 766,
+      "e2_ids": [
+        "e2_00195",
+        "e2_00656",
+        "e2_00903"
+      ]
+    },
+    {
+      "id": "e2synth_00208",
+      "slice": "e2synth_800_900",
+      "length": 831,
+      "e2_ids": [
+        "e2_00354",
+        "e2_00573",
+        "e2_00858"
+      ]
+    },
+    {
+      "id": "e2synth_00209",
+      "slice": "e2synth_400_600",
+      "length": 556,
+      "e2_ids": [
+        "e2_00457",
+        "e2_00906"
+      ]
+    },
+    {
+      "id": "e2synth_00210",
+      "slice": "e2synth_600_800",
+      "length": 698,
+      "e2_ids": [
+        "e2_00489",
+        "e2_00511"
+      ]
+    },
+    {
+      "id": "e2synth_00211",
+      "slice": "e2synth_800_900",
+      "length": 801,
+      "e2_ids": [
+        "e2_00072",
+        "e2_00244",
+        "e2_00715"
+      ]
+    },
+    {
+      "id": "e2synth_00212",
+      "slice": "e2synth_400_600",
+      "length": 435,
+      "e2_ids": [
+        "e2_00637",
+        "e2_00872"
+      ]
+    },
+    {
+      "id": "e2synth_00213",
+      "slice": "e2synth_800_900",
+      "length": 882,
+      "e2_ids": [
+        "e2_00418",
+        "e2_00618",
+        "e2_00766"
+      ]
+    },
+    {
+      "id": "e2synth_00214",
+      "slice": "e2synth_400_600",
+      "length": 519,
+      "e2_ids": [
+        "e2_00173",
+        "e2_00531"
+      ]
+    },
+    {
+      "id": "e2synth_00215",
+      "slice": "e2synth_400_600",
+      "length": 580,
+      "e2_ids": [
+        "e2_00520",
+        "e2_00704"
+      ]
+    },
+    {
+      "id": "e2synth_00216",
+      "slice": "e2synth_800_900",
+      "length": 836,
+      "e2_ids": [
+        "e2_00716",
+        "e2_00775",
+        "e2_00888"
+      ]
+    },
+    {
+      "id": "e2synth_00217",
+      "slice": "e2synth_600_800",
+      "length": 683,
+      "e2_ids": [
+        "e2_00279",
+        "e2_00853",
+        "e2_00888"
+      ]
+    },
+    {
+      "id": "e2synth_00218",
+      "slice": "e2synth_800_900",
+      "length": 813,
+      "e2_ids": [
+        "e2_00217",
+        "e2_00943"
+      ]
+    },
+    {
+      "id": "e2synth_00219",
+      "slice": "e2synth_600_800",
+      "length": 769,
+      "e2_ids": [
+        "e2_00032",
+        "e2_00162",
+        "e2_00582"
+      ]
+    },
+    {
+      "id": "e2synth_00220",
+      "slice": "e2synth_600_800",
+      "length": 767,
+      "e2_ids": [
+        "e2_00041",
+        "e2_00061",
+        "e2_00664"
+      ]
+    },
+    {
+      "id": "e2synth_00221",
+      "slice": "e2synth_600_800",
+      "length": 701,
+      "e2_ids": [
+        "e2_00107",
+        "e2_00332",
+        "e2_00994"
+      ]
+    },
+    {
+      "id": "e2synth_00222",
+      "slice": "e2synth_400_600",
+      "length": 538,
+      "e2_ids": [
+        "e2_00080",
+        "e2_00223"
+      ]
+    },
+    {
+      "id": "e2synth_00223",
+      "slice": "e2synth_600_800",
+      "length": 617,
+      "e2_ids": [
+        "e2_00677",
+        "e2_00994"
+      ]
+    },
+    {
+      "id": "e2synth_00224",
+      "slice": "e2synth_800_900",
+      "length": 852,
+      "e2_ids": [
+        "e2_00632",
+        "e2_00694",
+        "e2_00741"
+      ]
+    },
+    {
+      "id": "e2synth_00225",
+      "slice": "e2synth_600_800",
+      "length": 714,
+      "e2_ids": [
+        "e2_00622",
+        "e2_00918"
+      ]
+    },
+    {
+      "id": "e2synth_00226",
+      "slice": "e2synth_600_800",
+      "length": 630,
+      "e2_ids": [
+        "e2_00168",
+        "e2_00535"
+      ]
+    },
+    {
+      "id": "e2synth_00227",
+      "slice": "e2synth_400_600",
+      "length": 486,
+      "e2_ids": [
+        "e2_00255",
+        "e2_00452"
+      ]
+    },
+    {
+      "id": "e2synth_00228",
+      "slice": "e2synth_800_900",
+      "length": 800,
+      "e2_ids": [
+        "e2_00132",
+        "e2_00575",
+        "e2_00725"
+      ]
+    },
+    {
+      "id": "e2synth_00229",
+      "slice": "e2synth_800_900",
+      "length": 861,
+      "e2_ids": [
+        "e2_00074",
+        "e2_00449",
+        "e2_00512"
+      ]
+    },
+    {
+      "id": "e2synth_00230",
+      "slice": "e2synth_800_900",
+      "length": 876,
+      "e2_ids": [
+        "e2_00308",
+        "e2_00320",
+        "e2_00998"
+      ]
+    },
+    {
+      "id": "e2synth_00231",
+      "slice": "e2synth_400_600",
+      "length": 517,
+      "e2_ids": [
+        "e2_00005",
+        "e2_00341"
+      ]
+    },
+    {
+      "id": "e2synth_00232",
+      "slice": "e2synth_800_900",
+      "length": 863,
+      "e2_ids": [
+        "e2_00541",
+        "e2_00553",
+        "e2_00957"
+      ]
+    },
+    {
+      "id": "e2synth_00233",
+      "slice": "e2synth_800_900",
+      "length": 874,
+      "e2_ids": [
+        "e2_00300",
+        "e2_00401",
+        "e2_00979"
+      ]
+    },
+    {
+      "id": "e2synth_00234",
+      "slice": "e2synth_600_800",
+      "length": 730,
+      "e2_ids": [
+        "e2_00098",
+        "e2_00400",
+        "e2_00982"
+      ]
+    },
+    {
+      "id": "e2synth_00235",
+      "slice": "e2synth_600_800",
+      "length": 665,
+      "e2_ids": [
+        "e2_00247",
+        "e2_00253",
+        "e2_00996"
+      ]
+    },
+    {
+      "id": "e2synth_00236",
+      "slice": "e2synth_800_900",
+      "length": 801,
+      "e2_ids": [
+        "e2_00015",
+        "e2_00443",
+        "e2_00751"
+      ]
+    },
+    {
+      "id": "e2synth_00237",
+      "slice": "e2synth_400_600",
+      "length": 497,
+      "e2_ids": [
+        "e2_00001",
+        "e2_00684"
+      ]
+    },
+    {
+      "id": "e2synth_00238",
+      "slice": "e2synth_800_900",
+      "length": 808,
+      "e2_ids": [
+        "e2_00073",
+        "e2_00154",
+        "e2_00531"
+      ]
+    },
+    {
+      "id": "e2synth_00239",
+      "slice": "e2synth_400_600",
+      "length": 564,
+      "e2_ids": [
+        "e2_00487",
+        "e2_00844"
+      ]
+    },
+    {
+      "id": "e2synth_00240",
+      "slice": "e2synth_800_900",
+      "length": 857,
+      "e2_ids": [
+        "e2_00305",
+        "e2_00674",
+        "e2_00808"
+      ]
+    },
+    {
+      "id": "e2synth_00241",
+      "slice": "e2synth_600_800",
+      "length": 738,
+      "e2_ids": [
+        "e2_00672",
+        "e2_00836",
+        "e2_00837"
+      ]
+    },
+    {
+      "id": "e2synth_00242",
+      "slice": "e2synth_800_900",
+      "length": 838,
+      "e2_ids": [
+        "e2_00797",
+        "e2_00853"
+      ]
+    },
+    {
+      "id": "e2synth_00243",
+      "slice": "e2synth_400_600",
+      "length": 536,
+      "e2_ids": [
+        "e2_00232",
+        "e2_00642"
+      ]
+    },
+    {
+      "id": "e2synth_00244",
+      "slice": "e2synth_400_600",
+      "length": 579,
+      "e2_ids": [
+        "e2_00639",
+        "e2_00713"
+      ]
+    },
+    {
+      "id": "e2synth_00245",
+      "slice": "e2synth_600_800",
+      "length": 688,
+      "e2_ids": [
+        "e2_00554",
+        "e2_00683"
+      ]
+    },
+    {
+      "id": "e2synth_00246",
+      "slice": "e2synth_800_900",
+      "length": 873,
+      "e2_ids": [
+        "e2_00100",
+        "e2_00281",
+        "e2_00586"
+      ]
+    },
+    {
+      "id": "e2synth_00247",
+      "slice": "e2synth_600_800",
+      "length": 769,
+      "e2_ids": [
+        "e2_00001",
+        "e2_00530",
+        "e2_00695"
+      ]
+    },
+    {
+      "id": "e2synth_00248",
+      "slice": "e2synth_400_600",
+      "length": 511,
+      "e2_ids": [
+        "e2_00788",
+        "e2_00827"
+      ]
+    },
+    {
+      "id": "e2synth_00249",
+      "slice": "e2synth_800_900",
+      "length": 841,
+      "e2_ids": [
+        "e2_00049",
+        "e2_00209",
+        "e2_00710"
+      ]
+    },
+    {
+      "id": "e2synth_00250",
+      "slice": "e2synth_800_900",
+      "length": 875,
+      "e2_ids": [
+        "e2_00589",
+        "e2_00592"
+      ]
+    },
+    {
+      "id": "e2synth_00251",
+      "slice": "e2synth_800_900",
+      "length": 838,
+      "e2_ids": [
+        "e2_00305",
+        "e2_00439",
+        "e2_00862"
+      ]
+    },
+    {
+      "id": "e2synth_00252",
+      "slice": "e2synth_600_800",
+      "length": 730,
+      "e2_ids": [
+        "e2_00552",
+        "e2_00970"
+      ]
+    },
+    {
+      "id": "e2synth_00253",
+      "slice": "e2synth_800_900",
+      "length": 811,
+      "e2_ids": [
+        "e2_00099",
+        "e2_00559",
+        "e2_00571"
+      ]
+    },
+    {
+      "id": "e2synth_00254",
+      "slice": "e2synth_800_900",
+      "length": 811,
+      "e2_ids": [
+        "e2_00041",
+        "e2_00665",
+        "e2_00884"
+      ]
+    },
+    {
+      "id": "e2synth_00255",
+      "slice": "e2synth_400_600",
+      "length": 460,
+      "e2_ids": [
+        "e2_00527",
+        "e2_00592"
+      ]
+    },
+    {
+      "id": "e2synth_00256",
+      "slice": "e2synth_400_600",
+      "length": 539,
+      "e2_ids": [
+        "e2_00484",
+        "e2_00620"
+      ]
+    },
+    {
+      "id": "e2synth_00257",
+      "slice": "e2synth_600_800",
+      "length": 779,
+      "e2_ids": [
+        "e2_00303",
+        "e2_00373",
+        "e2_00437"
+      ]
+    },
+    {
+      "id": "e2synth_00258",
+      "slice": "e2synth_400_600",
+      "length": 496,
+      "e2_ids": [
+        "e2_00331",
+        "e2_00727"
+      ]
+    },
+    {
+      "id": "e2synth_00259",
+      "slice": "e2synth_800_900",
+      "length": 888,
+      "e2_ids": [
+        "e2_00377",
+        "e2_00429",
+        "e2_00887"
+      ]
+    },
+    {
+      "id": "e2synth_00260",
+      "slice": "e2synth_800_900",
+      "length": 882,
+      "e2_ids": [
+        "e2_00032",
+        "e2_00206",
+        "e2_00881"
+      ]
+    },
+    {
+      "id": "e2synth_00261",
+      "slice": "e2synth_800_900",
+      "length": 877,
+      "e2_ids": [
+        "e2_00458",
+        "e2_00621",
+        "e2_00948"
+      ]
+    },
+    {
+      "id": "e2synth_00262",
+      "slice": "e2synth_400_600",
+      "length": 593,
+      "e2_ids": [
+        "e2_00263",
+        "e2_00380"
+      ]
+    },
+    {
+      "id": "e2synth_00263",
+      "slice": "e2synth_400_600",
+      "length": 593,
+      "e2_ids": [
+        "e2_00566",
+        "e2_00863"
+      ]
+    },
+    {
+      "id": "e2synth_00264",
+      "slice": "e2synth_600_800",
+      "length": 786,
+      "e2_ids": [
+        "e2_00330",
+        "e2_00348",
+        "e2_00434"
+      ]
+    },
+    {
+      "id": "e2synth_00265",
+      "slice": "e2synth_400_600",
+      "length": 580,
+      "e2_ids": [
+        "e2_00595",
+        "e2_00922"
+      ]
+    },
+    {
+      "id": "e2synth_00266",
+      "slice": "e2synth_800_900",
+      "length": 818,
+      "e2_ids": [
+        "e2_00186",
+        "e2_00245",
+        "e2_00326"
+      ]
+    },
+    {
+      "id": "e2synth_00267",
+      "slice": "e2synth_400_600",
+      "length": 569,
+      "e2_ids": [
+        "e2_00695",
+        "e2_00826"
+      ]
+    },
+    {
+      "id": "e2synth_00268",
+      "slice": "e2synth_400_600",
+      "length": 451,
+      "e2_ids": [
+        "e2_00037",
+        "e2_00361"
+      ]
+    },
+    {
+      "id": "e2synth_00269",
+      "slice": "e2synth_800_900",
+      "length": 835,
+      "e2_ids": [
+        "e2_00030",
+        "e2_00053",
+        "e2_00458"
+      ]
+    },
+    {
+      "id": "e2synth_00270",
+      "slice": "e2synth_400_600",
+      "length": 595,
+      "e2_ids": [
+        "e2_00063",
+        "e2_00914"
+      ]
+    },
+    {
+      "id": "e2synth_00271",
+      "slice": "e2synth_400_600",
+      "length": 576,
+      "e2_ids": [
+        "e2_00278",
+        "e2_00823"
+      ]
+    },
+    {
+      "id": "e2synth_00272",
+      "slice": "e2synth_400_600",
+      "length": 535,
+      "e2_ids": [
+        "e2_00242",
+        "e2_00384"
+      ]
+    },
+    {
+      "id": "e2synth_00273",
+      "slice": "e2synth_600_800",
+      "length": 795,
+      "e2_ids": [
+        "e2_00176",
+        "e2_00278",
+        "e2_00386"
+      ]
+    },
+    {
+      "id": "e2synth_00274",
+      "slice": "e2synth_400_600",
+      "length": 457,
+      "e2_ids": [
+        "e2_00309",
+        "e2_00709"
+      ]
+    },
+    {
+      "id": "e2synth_00275",
+      "slice": "e2synth_800_900",
+      "length": 816,
+      "e2_ids": [
+        "e2_00404",
+        "e2_00429"
+      ]
+    },
+    {
+      "id": "e2synth_00276",
+      "slice": "e2synth_400_600",
+      "length": 587,
+      "e2_ids": [
+        "e2_00735",
+        "e2_00905"
+      ]
+    },
+    {
+      "id": "e2synth_00277",
+      "slice": "e2synth_600_800",
+      "length": 696,
+      "e2_ids": [
+        "e2_00551",
+        "e2_00593"
+      ]
+    },
+    {
+      "id": "e2synth_00278",
+      "slice": "e2synth_600_800",
+      "length": 613,
+      "e2_ids": [
+        "e2_00690",
+        "e2_00932"
+      ]
+    },
+    {
+      "id": "e2synth_00279",
+      "slice": "e2synth_800_900",
+      "length": 877,
+      "e2_ids": [
+        "e2_00114",
+        "e2_00422",
+        "e2_00980"
+      ]
+    },
+    {
+      "id": "e2synth_00280",
+      "slice": "e2synth_400_600",
+      "length": 501,
+      "e2_ids": [
+        "e2_00158",
+        "e2_00682"
+      ]
+    },
+    {
+      "id": "e2synth_00281",
+      "slice": "e2synth_400_600",
+      "length": 597,
+      "e2_ids": [
+        "e2_00307",
+        "e2_00977"
+      ]
+    },
+    {
+      "id": "e2synth_00282",
+      "slice": "e2synth_800_900",
+      "length": 878,
+      "e2_ids": [
+        "e2_00203",
+        "e2_00308",
+        "e2_00388"
+      ]
+    },
+    {
+      "id": "e2synth_00283",
+      "slice": "e2synth_400_600",
+      "length": 523,
+      "e2_ids": [
+        "e2_00113",
+        "e2_00200"
+      ]
+    },
+    {
+      "id": "e2synth_00284",
+      "slice": "e2synth_400_600",
+      "length": 455,
+      "e2_ids": [
+        "e2_00178",
+        "e2_00877"
+      ]
+    },
+    {
+      "id": "e2synth_00285",
+      "slice": "e2synth_800_900",
+      "length": 822,
+      "e2_ids": [
+        "e2_00316",
+        "e2_00703"
+      ]
+    },
+    {
+      "id": "e2synth_00286",
+      "slice": "e2synth_600_800",
+      "length": 751,
+      "e2_ids": [
+        "e2_00065",
+        "e2_00934"
+      ]
+    },
+    {
+      "id": "e2synth_00287",
+      "slice": "e2synth_400_600",
+      "length": 495,
+      "e2_ids": [
+        "e2_00436",
+        "e2_00705"
+      ]
+    },
+    {
+      "id": "e2synth_00288",
+      "slice": "e2synth_400_600",
+      "length": 497,
+      "e2_ids": [
+        "e2_00169",
+        "e2_00639"
+      ]
+    },
+    {
+      "id": "e2synth_00289",
+      "slice": "e2synth_600_800",
+      "length": 760,
+      "e2_ids": [
+        "e2_00171",
+        "e2_00323",
+        "e2_00892"
+      ]
+    },
+    {
+      "id": "e2synth_00290",
+      "slice": "e2synth_600_800",
+      "length": 675,
+      "e2_ids": [
+        "e2_00321",
+        "e2_00387"
+      ]
+    },
+    {
+      "id": "e2synth_00291",
+      "slice": "e2synth_400_600",
+      "length": 458,
+      "e2_ids": [
+        "e2_00740",
+        "e2_00828"
+      ]
+    },
+    {
+      "id": "e2synth_00292",
+      "slice": "e2synth_400_600",
+      "length": 491,
+      "e2_ids": [
+        "e2_00017",
+        "e2_00031"
+      ]
+    },
+    {
+      "id": "e2synth_00293",
+      "slice": "e2synth_800_900",
+      "length": 829,
+      "e2_ids": [
+        "e2_00798",
+        "e2_00801",
+        "e2_00979"
+      ]
+    },
+    {
+      "id": "e2synth_00294",
+      "slice": "e2synth_400_600",
+      "length": 532,
+      "e2_ids": [
+        "e2_00029",
+        "e2_00891"
+      ]
+    },
+    {
+      "id": "e2synth_00295",
+      "slice": "e2synth_800_900",
+      "length": 893,
+      "e2_ids": [
+        "e2_00097",
+        "e2_00363",
+        "e2_00712"
+      ]
+    },
+    {
+      "id": "e2synth_00296",
+      "slice": "e2synth_800_900",
+      "length": 899,
+      "e2_ids": [
+        "e2_00070",
+        "e2_00777",
+        "e2_00864",
+        "e2_00929"
+      ]
+    },
+    {
+      "id": "e2synth_00297",
+      "slice": "e2synth_600_800",
+      "length": 622,
+      "e2_ids": [
+        "e2_00127",
+        "e2_00132"
+      ]
+    },
+    {
+      "id": "e2synth_00298",
+      "slice": "e2synth_800_900",
+      "length": 824,
+      "e2_ids": [
+        "e2_00030",
+        "e2_00098",
+        "e2_00232"
+      ]
+    },
+    {
+      "id": "e2synth_00299",
+      "slice": "e2synth_800_900",
+      "length": 808,
+      "e2_ids": [
+        "e2_00096",
+        "e2_00295",
+        "e2_00653"
+      ]
+    }
+  ]
+}
