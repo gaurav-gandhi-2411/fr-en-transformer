@@ -661,12 +661,19 @@ def _wandb_authenticated() -> bool:
     """Best-effort, network-free check for an available W&B API key (env var or netrc)."""
     if os.environ.get("WANDB_API_KEY"):
         return True
-    netrc_path = Path(os.environ.get("NETRC", Path.home() / ".netrc"))
-    if netrc_path.is_file():
-        try:
-            return "api.wandb.ai" in netrc_path.read_text(encoding="utf-8")
-        except OSError:
-            return False
+    # Windows tools (and `wandb login`) write `_netrc`, not `.netrc`; checking only `.netrc`
+    # silently downgraded every local `--wandb online` run to offline.
+    if os.environ.get("NETRC"):
+        candidates = [Path(os.environ["NETRC"])]
+    else:
+        candidates = [Path.home() / ".netrc", Path.home() / "_netrc"]
+    for netrc_path in candidates:
+        if netrc_path.is_file():
+            try:
+                if "api.wandb.ai" in netrc_path.read_text(encoding="utf-8"):
+                    return True
+            except OSError:
+                continue
     return False
 
 

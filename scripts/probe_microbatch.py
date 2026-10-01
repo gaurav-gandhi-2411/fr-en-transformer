@@ -33,6 +33,7 @@ from nmt.model.transformer import ModelConfig, Transformer  # noqa: E402 - needs
 from nmt.train import (  # noqa: E402
     autocast_context,
     enable_tf32,
+    label_smoothed_nll_loss,
     resolve_precision,
     seed_everything,
 )
@@ -100,9 +101,10 @@ def _try_one_step(
     model.zero_grad(set_to_none=True)
     with autocast_context(device, precision):
         logits = model(src, tgt_in)
-        loss = torch.nn.functional.cross_entropy(
-            logits.reshape(-1, logits.size(-1)), tgt_out.reshape(-1)
-        )
+        # The real training loss, not plain cross_entropy: label smoothing keeps extra fp32
+        # (tokens x vocab) intermediates alive through backward. Probing with cross_entropy
+        # passed 12288 tokens, and the real pilot then OOMed on a 750 MiB allocation.
+        loss = label_smoothed_nll_loss(logits, tgt_out, 0, 0.1)
     loss.backward()
     if optimizer is not None:
         # AdamW's two fp32 moment buffers (~400 MB for the 50M model) exist during real training;

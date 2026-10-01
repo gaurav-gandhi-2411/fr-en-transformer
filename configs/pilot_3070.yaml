@@ -28,7 +28,7 @@ data:
   eval_split: e1
 
 batch:
-  max_tokens: 12288  # probe (bf16, AdamW step, seq 256, 0.95 VRAM cap): peak 6862 MB of 8192, runs/pilot_3070/probe_seq256.json
+  max_tokens: 8192  # probe (bf16, real label-smoothed loss, AdamW step, seq 256, 0.95 VRAM cap): 12288 peaks 7238 MB, inside the 15% margin; runs/pilot_3070/probe_seq256.json
   tokens_per_step: 25000
   concat_prob: 0.0  # pilot measures throughput only, not quality — no augmentation needed
   chunk_size: 512
