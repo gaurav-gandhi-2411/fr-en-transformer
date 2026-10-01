@@ -37,6 +37,10 @@ def main(argv: list[str] | None = None) -> int:
 
     result = {
         "model": MODEL_NAME,
+        # RegressionMetric = reference-based COMET-22; a referenceless (QE) model would load as a
+        # different class. Recorded so every score states which kind of model produced it.
+        "model_class": type(model).__name__,
+        "class_identifier": model.hparams.get("class_identifier"),
         "n": len(data),
         "scores": list(output.scores),
         "system_score": float(output.system_score),
