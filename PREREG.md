@@ -91,3 +91,20 @@ run without GG's approval**.
   on RTX 3070), torch/CUDA versions, git SHA (tag) and HF data revision of the submitted model.
 - Known validity limit: the ablations ran in bf16 on an RTX 3070 while `main` runs in fp16 on a
   T4. Ablation conclusions are assumed, not shown, to transfer across precision and hardware.
+
+## 6. Amendments (dated; each made before any ablation training run)
+
+- **2026-10-01 — leakage near-duplicate rule kept (GG decision).**
+  - **What stays:** the guard keeps removing train pairs whose normalized fr or en is a
+    near-duplicate (lowercase, alphanumeric-only key) of any dev/test/E-set sentence. This
+    matches the data the v0.2-colab shards were built from; no shard is rebuilt.
+  - **Evidence** (`reports/audit/leakage_audit.json`):
+    - 85.70% of near-dup removals are 1–3-word sentences: 2,139 of 2,496 pairs.
+    - That is 0.231% of the 926,289 pairs entering the guard.
+  - **Rationale:** eval contamination outweighs the negligible coverage loss.
+- **2026-10-01 — ablation operations (not analysis).**
+  - Ablation runs checkpoint every 5 minutes. A run interrupted by GPU contention or OOM resumes
+    from its last checkpoint, keeping the identical step count (2,889), seed and data order.
+  - Resumes are recorded (`resume_count`, wait time, redone steps). Pure training wall time is
+    reported separately from wait time.
+  - None of this changes §1–§5.
