@@ -20,7 +20,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--in", dest="in_path", required=True, type=Path)
     parser.add_argument("--out", dest="out_path", required=True, type=Path)
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--gpus", type=int, default=0)
+    parser.add_argument(
+        "--gpus", type=int, default=None, help="Default: 1 if CUDA is available, else 0."
+    )
     return parser.parse_args(argv)
 
 
@@ -32,7 +34,10 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.monotonic()
     ckpt_path = download_model(MODEL_NAME)
     model = load_from_checkpoint(ckpt_path)
-    output = model.predict(data, batch_size=args.batch_size, gpus=args.gpus)
+    import torch  # unbabel-comet depends on torch; imported here to pick the device
+
+    gpus = args.gpus if args.gpus is not None else int(torch.cuda.is_available())
+    output = model.predict(data, batch_size=args.batch_size, gpus=gpus)
     wall_seconds = time.monotonic() - t0
 
     result = {
@@ -45,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         "scores": list(output.scores),
         "system_score": float(output.system_score),
         "wall_seconds": wall_seconds,
+        "gpus": gpus,
     }
     args.out_path.parent.mkdir(parents=True, exist_ok=True)
     args.out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

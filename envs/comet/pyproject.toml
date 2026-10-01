@@ -11,4 +11,16 @@ dependencies = [
     # pkg_resources API, which setuptools>=81 no longer ships.
     "setuptools==80.10.2",
     "unbabel-comet==2.2.7",
+    # Same torch version as before, from the CUDA index: COMET-22 (XLM-R large) on CPU ran at
+    # ~1 s/sentence, too slow for ~4.4k sentences x 3 ablation checkpoints. On a machine
+    # without CUDA this wheel still runs on CPU.
+    "torch==2.14.0",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
