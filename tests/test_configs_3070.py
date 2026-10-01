@@ -17,7 +17,8 @@ CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 # Ablations: micro-batch, step budget and safety cap from the 3070 pilot; eval cadence from the
 # resulting step time; checkpoint retention cut to the single final checkpoint (PREREG compares
 # final checkpoints only, and C: had 4.2 GB free -- 5 + decay-phase checkpoints at ~0.6 GB each
-# per run would not fit).
+# per run would not fit); ckpt_minutes 15 -> 5 so an OOM abort or a contention stop (the GPU is
+# shared; scripts/ablation_3070.py resumes) redoes at most ~5 minutes of training.
 _ABLATION_KEYS = {
     "batch.max_tokens",
     "optim.planned_steps",
@@ -25,6 +26,7 @@ _ABLATION_KEYS = {
     "eval.eval_every",
     "ckpt.keep_last",
     "ckpt.keep_decay_phase",
+    "ckpt.ckpt_minutes",
 }
 PAIRS = {
     "pilot_3070": ("pilot", {"batch.max_tokens", "ckpt.keep_last"}),
@@ -83,3 +85,27 @@ def test_ablation_and_pilot_and_main_ext_specifics() -> None:
     assert load_config(CONFIGS / "pilot_3070.yaml").ckpt.ckpt_steps is None
     main_ext, main = load_config(CONFIGS / "main_ext_3070.yaml"), load_config(CONFIGS / "main.yaml")
     assert main_ext.optim.planned_steps == 2 * main.optim.planned_steps
+
+
+def test_ablation_configs_agree_on_everything_that_must_be_identical() -> None:
+    """PREREG §3 fairness: S1/S2/S3 differ only in the tested factor (pos / concat augmentation).
+    Identical seed + data shards + tokens_per_step + planned_steps => identical data order and
+    step count; identical warmup/max_tokens/ckpt cadence keep schedule and resume points equal."""
+    flat = {n: _flatten(_load(n)) for n in ("s1_sin_3070", "s2_rope_3070", "s3_rope_concat_3070")}
+    shared = (
+        "seed",
+        "optim.planned_steps",
+        "batch.tokens_per_step",
+        "batch.max_tokens",
+        "optim.warmup_steps",
+        "ckpt.ckpt_minutes",
+        "ckpt.keep_last",
+        "precision",
+        *sorted(k for k in flat["s1_sin_3070"] if k.startswith("data.")),
+    )
+    assert any(k.startswith("data.") for k in shared)
+    for key in shared:
+        assert len({repr(f.get(key)) for f in flat.values()}) == 1, key
+    assert flat["s1_sin_3070"]["optim.planned_steps"] == 2889
+    assert flat["s1_sin_3070"]["ckpt.ckpt_minutes"] == 5
+    assert flat["s1_sin_3070"]["ckpt.keep_last"] == 1
