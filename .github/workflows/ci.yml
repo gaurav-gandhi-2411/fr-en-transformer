@@ -97,4 +97,6 @@ jobs:
         run: |
           PY="$RUNNER_TEMP/venv/bin/python"
           "$PY" colab/make_synthetic_shards.py .
-          "$PY" colab/execute_notebook.py colab/train.ipynb 1800
+          # The notebook's defaults are the real L4 main run; say "smoke" explicitly here.
+          "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
+            --set CONFIG='"smoke"' --set PLANNED_STEPS=None --set RESUME_TEST=False
