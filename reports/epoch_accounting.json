@@ -1,0 +1,131 @@
+{
+  "basis": "nmt.data.loader.batch_token_count = src.numel() + tgt_in.numel() (padded, both sides); nmt.train accumulates micro-batches until >= tokens_per_step",
+  "tokens_per_step": 25000,
+  "seed": 1234,
+  "n_train_pairs": 921670,
+  "epoch0_replays": [
+    {
+      "max_tokens": 4096,
+      "concat_prob": 0.0,
+      "micro_batches": 9963,
+      "examples": 921670,
+      "padded_tokens_src_plus_tgt": 69436684,
+      "real_tokens_src_plus_tgt": 46455415,
+      "padding_share": 0.33096725932361637,
+      "optimizer_steps_per_epoch": 2279,
+      "partial_step_tokens_left": 24401,
+      "padded_microbatch_tokens": {
+        "median": 7904.0,
+        "p99": 8192.0,
+        "max": 8192,
+        "n_over_budget": 0,
+        "n_over_4x_budget": 0
+      },
+      "replay_seconds": 54.5
+    },
+    {
+      "max_tokens": 4096,
+      "concat_prob": 0.15,
+      "micro_batches": 11919,
+      "examples": 921670,
+      "padded_tokens_src_plus_tgt": 84832970,
+      "real_tokens_src_plus_tgt": 59763811,
+      "padding_share": 0.29551198077822804,
+      "optimizer_steps_per_epoch": 2782,
+      "partial_step_tokens_left": 23454,
+      "padded_microbatch_tokens": {
+        "median": 7905.0,
+        "p99": 8190.0,
+        "max": 8192,
+        "n_over_budget": 0,
+        "n_over_4x_budget": 0
+      },
+      "replay_seconds": 46.3
+    },
+    {
+      "max_tokens": 8192,
+      "concat_prob": 0.0,
+      "micro_batches": 6933,
+      "examples": 921670,
+      "padded_tokens_src_plus_tgt": 84487605,
+      "real_tokens_src_plus_tgt": 46455415,
+      "padding_share": 0.45015111980035416,
+      "optimizer_steps_per_epoch": 2697,
+      "partial_step_tokens_left": 16050,
+      "padded_microbatch_tokens": {
+        "median": 15622.0,
+        "p99": 16380.0,
+        "max": 16380,
+        "n_over_budget": 0,
+        "n_over_4x_budget": 0
+      },
+      "replay_seconds": 44.6
+    },
+    {
+      "max_tokens": 8192,
+      "concat_prob": 0.15,
+      "micro_batches": 7205,
+      "examples": 921670,
+      "padded_tokens_src_plus_tgt": 101030018,
+      "real_tokens_src_plus_tgt": 59763811,
+      "padding_share": 0.40845491089588837,
+      "optimizer_steps_per_epoch": 3122,
+      "partial_step_tokens_left": 16284,
+      "padded_microbatch_tokens": {
+        "median": 15822.0,
+        "p99": 16368.0,
+        "max": 16384,
+        "n_over_budget": 0,
+        "n_over_4x_budget": 0
+      },
+      "replay_seconds": 50.0
+    }
+  ],
+  "epochs": {
+    "main_l4": {
+      "note": "main: 24,645 steps (L4, micro-batch 4096)",
+      "max_tokens": 4096,
+      "concat_prob": 0.15,
+      "planned_steps": 24645,
+      "optimizer_steps_per_epoch": 2782,
+      "epochs": 8.858734723220705,
+      "arithmetic": "24645 / 2782 = 8.859"
+    },
+    "3070_s1_s2": {
+      "note": "3070 ablation S1/S2: 2,889 steps",
+      "max_tokens": 8192,
+      "concat_prob": 0.0,
+      "planned_steps": 2889,
+      "optimizer_steps_per_epoch": 2697,
+      "epochs": 1.07119021134594,
+      "arithmetic": "2889 / 2697 = 1.071"
+    },
+    "3070_s3": {
+      "note": "3070 ablation S3: 2,889 steps",
+      "max_tokens": 8192,
+      "concat_prob": 0.15,
+      "planned_steps": 2889,
+      "optimizer_steps_per_epoch": 3122,
+      "epochs": 0.9253683536194747,
+      "arithmetic": "2889 / 3122 = 0.925"
+    },
+    "l4_fallback_s1_s2": {
+      "note": "L4 fallback S1/S2: floor(2040/0.4966)",
+      "max_tokens": 4096,
+      "concat_prob": 0.0,
+      "planned_steps": 4107,
+      "optimizer_steps_per_epoch": 2279,
+      "epochs": 1.8021061869240895,
+      "arithmetic": "4107 / 2279 = 1.802"
+    },
+    "l4_fallback_s3": {
+      "note": "L4 fallback S3: floor(2040/0.4966)",
+      "max_tokens": 4096,
+      "concat_prob": 0.15,
+      "planned_steps": 4107,
+      "optimizer_steps_per_epoch": 2782,
+      "epochs": 1.47627606038821,
+      "arithmetic": "4107 / 2782 = 1.476"
+    }
+  }
+}
