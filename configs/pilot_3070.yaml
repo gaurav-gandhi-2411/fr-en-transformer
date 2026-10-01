@@ -48,8 +48,10 @@ optim:
 ckpt:
   dir: runs/pilot_3070/ckpt
   ckpt_minutes: 15
-  ckpt_steps: 100  # early checkpoint so the forced-resume test can run within minutes
-  keep_last: 5
+  # Same as pilot.yaml (time-based only): saving ~0.6 GB every 100 steps would pollute the
+  # throughput measurement. The forced-resume test passes --ckpt-steps on the CLI instead.
+  ckpt_steps: null
+  keep_last: 1  # disk-limited laptop; the pilot measures throughput, its weights are not used
   keep_decay_phase: true
 
 logging:

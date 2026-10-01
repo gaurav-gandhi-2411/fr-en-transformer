@@ -14,14 +14,23 @@ from nmt.train import load_config
 CONFIGS = Path(__file__).resolve().parents[1] / "configs"
 
 # 3070 name -> (original, extra dotted keys allowed to differ beyond the common set)
+# Ablations: micro-batch, step budget and safety cap from the 3070 pilot; eval cadence from the
+# resulting step time; checkpoint retention cut to the single final checkpoint (PREREG compares
+# final checkpoints only, and C: had 4.2 GB free -- 5 + decay-phase checkpoints at ~0.6 GB each
+# per run would not fit).
+_ABLATION_KEYS = {
+    "batch.max_tokens",
+    "optim.planned_steps",
+    "optim.max_minutes",
+    "eval.eval_every",
+    "ckpt.keep_last",
+    "ckpt.keep_decay_phase",
+}
 PAIRS = {
-    "pilot_3070": ("pilot", {"ckpt.ckpt_steps", "batch.max_tokens"}),
-    "s1_sin_3070": ("s1_sin", {"batch.max_tokens", "optim.planned_steps", "optim.max_minutes"}),
-    "s2_rope_3070": ("s2_rope", {"batch.max_tokens", "optim.planned_steps", "optim.max_minutes"}),
-    "s3_rope_concat_3070": (
-        "s3_rope_concat",
-        {"batch.max_tokens", "optim.planned_steps", "optim.max_minutes"},
-    ),
+    "pilot_3070": ("pilot", {"batch.max_tokens", "ckpt.keep_last"}),
+    "s1_sin_3070": ("s1_sin", _ABLATION_KEYS),
+    "s2_rope_3070": ("s2_rope", _ABLATION_KEYS),
+    "s3_rope_concat_3070": ("s3_rope_concat", _ABLATION_KEYS),
     "main_ext_3070": ("main", {"batch.max_tokens", "optim.planned_steps", "optim.max_minutes"}),
 }
 GROUPS = {
@@ -70,6 +79,7 @@ def test_ablation_and_pilot_and_main_ext_specifics() -> None:
         assert cfg.optim.max_minutes == 60  # safety cap only; planned_steps ends the run
         assert cfg.group == "ablation_3070"
     assert load_config(CONFIGS / "pilot_3070.yaml").optim.max_minutes == 15
-    assert load_config(CONFIGS / "pilot_3070.yaml").ckpt.ckpt_steps == 100
+    # Time-based only, like pilot.yaml: step checkpoints would pollute the throughput measurement.
+    assert load_config(CONFIGS / "pilot_3070.yaml").ckpt.ckpt_steps is None
     main_ext, main = load_config(CONFIGS / "main_ext_3070.yaml"), load_config(CONFIGS / "main.yaml")
     assert main_ext.optim.planned_steps == 2 * main.optim.planned_steps

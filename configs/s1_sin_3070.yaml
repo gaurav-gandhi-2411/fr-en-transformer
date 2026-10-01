@@ -56,8 +56,8 @@ ckpt:
   dir: runs/s1_sin_3070/ckpt
   ckpt_minutes: 15
   ckpt_steps: null
-  keep_last: 5
-  keep_decay_phase: true
+  keep_last: 1  # PREREG compares final checkpoints only; disk-limited laptop (see tests/test_configs_3070.py)
+  keep_decay_phase: false
 
 logging:
   wandb_mode: offline
