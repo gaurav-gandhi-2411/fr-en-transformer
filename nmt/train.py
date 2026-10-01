@@ -667,7 +667,10 @@ def load_latest_checkpoint(ckpt_dir: Path) -> dict[str, Any] | None:
         return None
     # weights_only=False: checkpoints carry optimizer/sampler/RNG state, not just tensors — these
     # are our own trusted, locally-written files, never untrusted third-party checkpoints.
-    return torch.load(files[-1], weights_only=False)
+    # map_location="cpu": a CUDA-saved checkpoint would otherwise materialize a second full copy
+    # of model + AdamW state on the GPU next to the live ones (8 consecutive OOMs at step 6 on
+    # the 8 GB RTX 3070 resume, runs/s1_sin_3070). load_state_dict copies onto the right device.
+    return torch.load(files[-1], weights_only=False, map_location="cpu")
 
 
 def prune_checkpoints(
@@ -1051,6 +1054,9 @@ def train(
             optimizer.load_state_dict(resumed_ckpt["optimizer"])
             scaler.load_state_dict(resumed_ckpt["scaler"])
             sampler.load_state_dict(resumed_ckpt["sampler"])
+            # Drop the big payloads now: only rng/sampler/step stay referenced for the rest of
+            # train() (the RNG fingerprint below), not a second copy of the weights and Adam state.
+            del resumed_ckpt["model"], resumed_ckpt["optimizer"], resumed_ckpt["scaler"]
             step = resumed_ckpt["step"]
             decay_start_step = resumed_ckpt.get("decay_start_step")
             grad_skip_count = resumed_ckpt.get("grad_skip_count", 0)
