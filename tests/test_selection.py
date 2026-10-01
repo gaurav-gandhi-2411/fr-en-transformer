@@ -64,6 +64,41 @@ def test_select_raises_typeerror_on_a_fabricated_e3_selection_set() -> None:
         selection_objective({"e3_fake": "y"}, fake_e3, real_e2)  # type: ignore[arg-type]
 
 
+def test_select_rejects_hand_built_set_named_e1_with_foreign_content() -> None:
+    """The dangerous bypass: a SelectionSet declared as "e1" but filled with sentences from a
+    reporting-only set (here: the real E3 proxy files). The name check alone would pass it."""
+    rows_in = [
+        json.loads(line)
+        for line in (selection_module.REPO_ROOT / "data/eval/e3/inputs.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    rows_lab = [
+        json.loads(line)
+        for line in (selection_module.REPO_ROOT / "data/eval/e3/labels.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    real_e1, real_e2 = load_selection_set("e1"), load_selection_set("e2")
+    smuggled = SelectionSet(
+        name="e1",
+        sources=tuple(r["source"] for r in rows_in),
+        references=tuple(r["reference"] for r in rows_lab),
+        ids=tuple("e1_" + r["id"] for r in rows_in),
+        inputs_sha256=real_e1.inputs_sha256,
+        labels_sha256=real_e1.labels_sha256,
+    )
+    hyps = dict.fromkeys(smuggled.ids + real_e2.ids, "x")
+    with pytest.raises(TypeError, match="canonical"):
+        select({"cand": hyps}, smuggled, real_e2)
+    with pytest.raises(TypeError, match="canonical"):
+        selection_objective(hyps, smuggled, real_e2)
+    # A one-sentence edit of the genuine set is refused too.
+    edited = dataclasses.replace(real_e1, references=("tampered",) + real_e1.references[1:])
+    with pytest.raises(TypeError, match="canonical"):
+        select({"cand": hyps}, edited, real_e2)
+
+
 def test_select_raises_typeerror_on_non_selection_set_arguments() -> None:
     with pytest.raises(TypeError, match="SelectionSet"):
         select({"cand": {}}, {"not": "a selection set"}, load_selection_set("e2"))  # type: ignore[arg-type]

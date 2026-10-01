@@ -5,6 +5,7 @@ from __future__ import annotations
 # reference any other eval set's paths or loaders -- enforced both by review (no such reference
 # exists below) and by tests/test_selection.py's source scan. Every string literal that names the
 # two allowed sets appears only as "e1"/"e2"; nothing else is ever named here.
+import functools
 import hashlib
 import json
 from dataclasses import dataclass
@@ -100,11 +101,25 @@ def load_selection_set(name: Literal["e1", "e2"]) -> SelectionSet:
     )
 
 
+@functools.lru_cache(maxsize=2)
+def _canonical(name: str) -> SelectionSet:
+    return load_selection_set(name)  # type: ignore[arg-type]
+
+
 def _require_selection_set(obj: object, expected_name: str) -> None:
+    # SelectionSet is a plain frozen dataclass, so a caller could build one by hand with
+    # name="e1" but arbitrary content. Checking the declared name alone would let that through;
+    # instead the object must be content-identical to what `load_selection_set` reads from the
+    # hard-coded files right now.
     if not isinstance(obj, SelectionSet):
         raise TypeError(f"expected a SelectionSet, got {type(obj).__name__}")
     if obj.name != expected_name:
         raise TypeError(f"expected a SelectionSet(name={expected_name!r}), got name={obj.name!r}")
+    if obj != _canonical(expected_name):
+        raise TypeError(
+            f"SelectionSet(name={expected_name!r}) does not match the canonical "
+            f"{expected_name} files -- refusing hand-built or modified content"
+        )
 
 
 def selection_objective(
