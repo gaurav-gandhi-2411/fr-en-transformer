@@ -526,6 +526,45 @@ def phase_size(model_dir: Path, precision: str, state_path: Path) -> dict:
     return out
 
 
+class LoadMeter:
+    """Machine-wide CPU utilisation while a phase runs, minus this process's own share, so a run
+    can state how much OTHER work was on the machine during the measurement (the 5 s pre-run
+    sample cannot). Needs psutil; without it `stop()` returns Nones."""
+
+    def __init__(self) -> None:
+        try:
+            import psutil
+
+            self._ps = psutil
+            self._proc = psutil.Process()
+        except ImportError:
+            self._ps = None
+
+    def start(self) -> None:
+        if self._ps is None:
+            return
+        self._ps.cpu_percent(interval=None)  # primes the system-wide counter
+        t = self._proc.cpu_times()
+        self._cpu0, self._t0 = t.user + t.system, time.perf_counter()
+
+    def stop(self) -> dict[str, float | None]:
+        if self._ps is None:
+            return {
+                "system_cpu_pct_during": None,
+                "own_cpu_pct_of_machine": None,
+                "other_cpu_pct_during": None,
+            }
+        system = float(self._ps.cpu_percent(interval=None))
+        t = self._proc.cpu_times()
+        wall = time.perf_counter() - self._t0
+        own = 100.0 * ((t.user + t.system) - self._cpu0) / wall / (os.cpu_count() or 1)
+        return {
+            "system_cpu_pct_during": system,
+            "own_cpu_pct_of_machine": own,
+            "other_cpu_pct_during": max(0.0, system - own),
+        }
+
+
 def worker_main(args: argparse.Namespace) -> int:
     t_start = time.perf_counter()
     model_dir = Path(args.model_dir)
@@ -545,6 +584,8 @@ def worker_main(args: argparse.Namespace) -> int:
         inputs, _ = load_e1(model_dir)
         split = deterministic_split(len(inputs))
         texts = {k: [inputs[i]["source"] for i in idx] for k, idx in split.items()}
+        meter = LoadMeter()
+        meter.start()
         if args.phase == "latency":
             result["latency"] = phase_latency(translator, texts, args.modes.split(","))
         elif args.phase == "throughput":
@@ -555,6 +596,7 @@ def worker_main(args: argparse.Namespace) -> int:
             )
         else:
             raise ValueError(args.phase)
+        result.update(meter.stop())
         result["torch_num_threads_used"] = torch.get_num_threads()
         result["torch_default_threads_in_worker"] = pre_threads
     result["rss_after_run_mb"] = current_rss_mb()
@@ -617,6 +659,7 @@ def run_job(
     subprocess.run(cmd, check=True, cwd=REPO_ROOT, env=worker_env(threads))
     wrapper = {
         "job": name,
+        "code_sha": git_state()["code_sha"],
         "rep": rep,
         "bg_cpu_pct_before": bg,
         "bg_cpu_source": bg_src,
