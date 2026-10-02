@@ -237,3 +237,37 @@ def hc3_table(
         "se_hc3": dict(zip(names, (float(v) for v in model.bse), strict=True)),
         "p_hc3": dict(zip(names, (float(v) for v in model.pvalues), strict=True)),
     }
+
+
+def estimand_sensitivity(
+    y: np.ndarray, groups: Mapping[str, np.ndarray], domain: np.ndarray
+) -> dict[str, float]:
+    """Explained part of the E1-E3 gap under alternative estimands (all features together, no
+    Shapley): `pooled_with_domain_dummy` (the primary form), `pooled_no_dummy` (common slopes,
+    no domain term), `oaxaca_e1_slopes` / `oaxaca_e3_slopes` (per-domain OLS slopes b;
+    explained = b . (xbar_E1 - xbar_E3)). Each is also given as a share of the gap."""
+    cols = [np.asarray(a, dtype=float).reshape(len(domain), -1) for a in groups.values()]
+    x = np.column_stack(cols)
+    e1, e3 = domain == 0, domain == 1
+    delta = x[e1].mean(axis=0) - x[e3].mean(axis=0)
+    gap = float(y[e1].mean() - y[e3].mean())
+
+    def slopes(rows: np.ndarray, with_dummy: bool = False) -> np.ndarray:
+        parts = [np.ones(int(rows.sum())), *x[rows].T]
+        if with_dummy:
+            parts.append(domain[rows])
+        beta = np.linalg.lstsq(np.column_stack(parts), y[rows], rcond=None)[0]
+        return beta[1 : 1 + x.shape[1]]
+
+    everyone = np.ones(len(domain), dtype=bool)
+    explained = {
+        "pooled_with_domain_dummy": float(slopes(everyone, True) @ delta),
+        "pooled_no_dummy": float(slopes(everyone) @ delta),
+        "oaxaca_e1_slopes": float(slopes(e1) @ delta),
+        "oaxaca_e3_slopes": float(slopes(e3) @ delta),
+    }
+    res: dict[str, float] = {"gap": gap}
+    for k, v in explained.items():
+        res[f"{k}_explained"] = v
+        res[f"{k}_share"] = v / gap
+    return res

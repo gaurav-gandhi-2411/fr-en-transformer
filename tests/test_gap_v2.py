@@ -259,3 +259,18 @@ def test_to_lf_converts_crlf(tmp_path: Path) -> None:
     assert p.read_bytes() == b"<a>\n<b/>\n</a>\n"
     g.to_lf(p)  # idempotent
     assert p.read_bytes() == b"<a>\n<b/>\n</a>\n"
+
+
+def test_estimand_sensitivity_toy_and_consistency() -> None:
+    y, groups, domain = _toy()
+    r = st.estimand_sensitivity(y, groups, domain)
+    # identical slopes in both domains and no noise: every slope-based estimand gives
+    # sum(b_k * delta_k) = 3 * -2 + 5 * 1 = -1 of a gap of -5
+    for k in ("pooled_with_domain_dummy", "oaxaca_e1_slopes", "oaxaca_e3_slopes"):
+        assert r[f"{k}_explained"] == pytest.approx(-1.0)
+    assert r["gap"] == pytest.approx(-5.0)
+    assert r["pooled_with_domain_dummy_share"] == pytest.approx(0.2)
+    # the dummy-pooled explained part equals decompose()'s explained total
+    assert r["pooled_with_domain_dummy_explained"] == pytest.approx(
+        st.decompose(y, groups, domain)["explained_total"], abs=1e-9
+    )

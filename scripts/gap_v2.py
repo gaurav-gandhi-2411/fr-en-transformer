@@ -75,6 +75,10 @@ RATIO_MODERATE = (0.5, 2.0)
 RATIO_SEVERE = (0.33, 3.0)
 SEED = 1234
 N_BOOT = 1000
+RESIDUAL_NOTE = (
+    "residual = gap minus the explained part of the five groups (= -coefficient of the domain "
+    "dummy in the primary OLS); it is NOT a measured domain effect and depends on the model form"
+)
 
 # n't stems and contraction suffixes: apostrophe-split pieces that count as function material
 # (the sklearn list has none of them: "don't" -> "don", "t").
@@ -737,6 +741,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             - dec["gap"]
         }
     shares["bootstrap_runtime_seconds"] = boot_rt
+    shares["residual_note"] = RESIDUAL_NOTE
+    shares["estimand_sensitivity_chrf_5groups"] = {
+        **st.estimand_sensitivity(chrf, groups, domain),
+        "note": "explained part (all 5 groups together, no Shapley) and its share of the gap "
+        "under alternative estimands; point estimates, no bootstrap. pooled_with_domain_dummy is "
+        "the primary form; the other three show how much the 'unexplained' share depends on "
+        "the model form.",
+    }
     ols = {
         "label": LABEL,
         "chrf_full_model_5groups": st.hc3_table(chrf, groups, fnames, domain),
@@ -820,6 +832,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "word_type_share_by_band": {b: float((tv == i).mean()) for i, b in enumerate(BANDS)},
             "n_word_tokens": len(wb),
             "n_word_types": int(len(tv)),
+            "subword_token_share_unseen_rare_tail": float(np.isin(tb, (0, 1, 4)).mean()),
+            "word_token_share_unseen_rare_tail": float(np.isin(np.array(wb), (0, 1, 4)).mean()),
         }
     feat_summary["target_novelty_and_bands"] = {
         "bands": BANDS,
@@ -908,7 +922,7 @@ def make_figure(shares: dict[str, Any], nll_break: dict[str, Any], out: Path) ->
     """Gap components with bootstrap 95% CIs: chrF gap (left) and, descriptively, the pooled
     token-NLL gap by frequency band split into mix and rate terms (right)."""
     prim = shares["primary_5groups"]
-    names = list(prim["groups"]) + ["unexplained residual"]
+    names = list(prim["groups"]) + ["residual (gap minus 5 groups)"]
     vals = [prim["groups"][g]["contribution"] for g in prim["groups"]] + [prim["residual"]]
     cis = [prim["groups"][g]["contribution_ci95"] for g in prim["groups"]] + [prim["residual_ci95"]]
     err = np.array([[v - lo, hi - v] for v, (lo, hi) in zip(vals, cis, strict=True)]).T
@@ -941,7 +955,8 @@ def make_figure(shares: dict[str, Any], nll_break: dict[str, Any], out: Path) ->
         0.5,
         0.005,
         f"{LABEL}. Left: chrF gap split by Shapley over 5 feature groups (heuristic features); "
-        "the grey bar is the unexplained residual. Right: descriptive NLL mix/rate split. "
+        "the grey bar is the residual (gap minus the 5 groups; not a measured domain effect). "
+        "Right: descriptive NLL mix/rate split. "
         "Bars show 95% stratified sentence-bootstrap CIs (1000 resamples, seed 1234).",
         ha="center",
         fontsize=7.5,
@@ -966,6 +981,9 @@ def write_readme(
     provenance footer. LF line endings."""
     prim = shares["primary_5groups"]
     sens = shares["sensitivity_6groups_plus_length_control"]
+    es = shares["estimand_sensitivity_chrf_5groups"]
+    nll2 = shares["second_outcome_nll_5groups"]
+    nov = feat["target_novelty_and_bands"]["by_domain"]
     lines = [
         f"# Gap analysis v2 -- {LABEL}",
         "",
@@ -1004,7 +1022,8 @@ def write_readme(
         f"| **explained (all groups)** | {prim['explained_total']:+.2f} | "
         f"{prim['explained_share'] * 100:+.1f}% | R^2 {prim['r2_full']:.4f} "
         f"(domain-only {prim['r2_domain_only']:.4f}) |",
-        f"| **unexplained residual (domain)** | {prim['residual']:+.2f} "
+        f"| **unexplained residual (= gap minus the five groups; includes the domain-dummy "
+        f"coefficient; not a measured domain effect)** | {prim['residual']:+.2f} "
         f"[{prim['residual_ci95'][0]:+.2f}, {prim['residual_ci95'][1]:+.2f}] | "
         f"{prim['residual_share'] * 100:+.1f}% [{prim['residual_share_ci95'][0] * 100:+.1f}, "
         f"{prim['residual_share_ci95'][1] * 100:+.1f}] | - |",
@@ -1016,6 +1035,27 @@ def write_readme(
         f"{sens['groups']['length']['contribution']:+.2f} "
         f"[{sens['groups']['length']['contribution_ci95'][0]:+.2f}, "
         f"{sens['groups']['length']['contribution_ci95'][1]:+.2f}].",
+        "",
+        f"Residual note: {RESIDUAL_NOTE}",
+        "",
+        f"Estimand sensitivity (`gap_shares.json`, `estimand_sensitivity_chrf_5groups`; explained "
+        f"share of the {es['gap']:.2f} chrF gap by all five groups together, point estimates): "
+        "pooled OLS with domain dummy (primary form) "
+        f"{es['pooled_with_domain_dummy_share'] * 100:+.1f}%, "
+        f"pooled OLS without domain dummy {es['pooled_no_dummy_share'] * 100:+.1f}%, "
+        f"Oaxaca-Blinder with E1 slopes {es['oaxaca_e1_slopes_share'] * 100:+.1f}%, "
+        f"with E3 slopes {es['oaxaca_e3_slopes_share'] * 100:+.1f}%. The unexplained share is "
+        "therefore model-dependent; the 91% figure holds only for the primary form, and its "
+        f"bootstrap CI upper bound is {prim['residual_share_ci95'][1] * 100:.1f}% (residual share "
+        "CI includes 100%).",
+        "",
+        f"Second outcome (`second_outcome_nll_5groups`, sentence-MEAN NLL, a different unit from "
+        f"the pooled-token NLL gap in Table 2): the sentence-mean NLL gap E1-E3 is "
+        f"{nll2['gap_e1_minus_e3']:+.2f}; the five groups explain {nll2['explained_total']:+.2f} "
+        f"and the residual is {nll2['residual']:+.2f} "
+        f"({nll2['residual_share'] * 100:.1f}% of that gap). The pooled-token gap in Table 2 is "
+        f"{nll_break['by_frequency_band']['gap_e3_minus_e1']:+.3f} nats (E3-E1, tokens weighted "
+        "equally rather than sentences).",
         "",
         f"## Table 2 -- Token NLL by training-frequency band ({LABEL})",
         "",
@@ -1036,12 +1076,21 @@ def write_readme(
         )
     lines += [
         "",
+        "Bands in Table 2 are over SUBWORD tokens. Share of reference tokens that are unseen, "
+        "rare or tail-ge10 in the training English side (`features_summary.json`, "
+        "`target_novelty_and_bands.by_domain`): "
+        f"subword tokens E1 {nov['e1']['subword_token_share_unseen_rare_tail'] * 100:.1f}% vs "
+        f"E3 {nov['e3']['subword_token_share_unseen_rare_tail'] * 100:.1f}%; "
+        f"WORD tokens E1 {nov['e1']['word_token_share_unseen_rare_tail'] * 100:.1f}% vs "
+        f"E3 {nov['e3']['word_token_share_unseen_rare_tail'] * 100:.1f}%.",
+        "",
         f"## Figure ({LABEL})",
         "",
         f"![{LABEL}: gap components](gap_v2_components.png)",
         "",
         f"*{LABEL}.* Left: Shapley contribution of each feature group to the chrF gap with 95% "
-        "bootstrap CIs; the grey bar is what remains unexplained. Right: descriptive split of the "
+        "bootstrap CIs; the grey bar is the residual (gap minus the five groups; not a measured "
+        "domain effect). Right: descriptive split of the "
         "pooled token-NLL gap by training-frequency band.",
         "",
         "## Files",
