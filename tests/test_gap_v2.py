@@ -250,3 +250,12 @@ def test_write_json_uses_lf(tmp_path: Path) -> None:
     g.write_json(p, {"label": g.LABEL, "a": [1, 2]})
     raw = p.read_bytes()
     assert b"\r" not in raw and raw.endswith(b"\n") and b"EXPLORATORY / POST-HOC" in raw
+
+
+def test_to_lf_converts_crlf(tmp_path: Path) -> None:
+    p = tmp_path / "f.svg"
+    p.write_bytes(b"<a>\r\n<b/>\r\n</a>\r\n")
+    g.to_lf(p)
+    assert p.read_bytes() == b"<a>\n<b/>\n</a>\n"
+    g.to_lf(p)  # idempotent
+    assert p.read_bytes() == b"<a>\n<b/>\n</a>\n"

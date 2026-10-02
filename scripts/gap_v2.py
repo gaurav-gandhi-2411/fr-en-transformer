@@ -202,6 +202,12 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def to_lf(path: Path) -> None:
+    """Rewrite a text file with LF line endings (idempotent)."""
+    raw = Path(path).read_bytes()
+    Path(path).write_bytes(raw.replace(b"\r\n", b"\n"))
+
+
 def write_json(path: Path, obj: Any) -> None:
     """UTF-8, LF line endings on every OS."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -944,6 +950,7 @@ def make_figure(shares: dict[str, Any], nll_break: dict[str, Any], out: Path) ->
     fig.tight_layout(rect=(0, 0.04, 1, 0.95))
     fig.savefig(out / "gap_v2_components.png", dpi=150)
     fig.savefig(out / "gap_v2_components.svg", metadata={"Date": None})
+    to_lf(out / "gap_v2_components.svg")  # matplotlib writes CRLF on Windows
     plt.close(fig)
 
 
