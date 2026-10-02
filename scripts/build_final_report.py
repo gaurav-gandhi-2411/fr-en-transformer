@@ -74,7 +74,9 @@ def _read(path: Path) -> Any:
 
 
 def _write(path: Path, obj: Any) -> None:
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding="utf-8")
+    # newline="\n": the repo's .gitattributes stores text as LF, so hashes recorded here must be
+    # hashes of LF bytes or they would not match a fresh checkout
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding="utf-8", newline="\n")
 
 
 def sha256_file(path: Path) -> str:
@@ -134,6 +136,38 @@ def _resources() -> tuple[spm.SentencePieceProcessor, np.ndarray, np.ndarray, se
     sp.load(str(DEFAULT_TOKENIZER_PATH))
     byte_ids = {i for i in range(sp.get_piece_size()) if _BYTE_FALLBACK_RE.match(sp.id_to_piece(i))}
     return sp, np.load(DEFAULT_FREQ_SRC_PATH), np.load(DEFAULT_FREQ_TGT_PATH), byte_ids
+
+
+def normalize_and_reindex(out_root: Path) -> int:
+    """eval_local writes text with the platform newline (CRLF on Windows) while git stores LF
+    (.gitattributes `text=auto eol=lf`), so the sha256s it recorded would not match a checkout.
+    Rewrites every non-downloaded text file under `out_root` with LF and refreshes the sha256/bytes
+    of every entry of the run and compare `index.json` files. Returns the number of files
+    converted. `source/` (verbatim HF bytes) is never touched."""
+    converted = 0
+    for f in sorted(out_root.rglob("*")):
+        if (
+            not f.is_file()
+            or f.suffix not in (".json", ".md")
+            or "source" in f.relative_to(out_root).parts
+        ):
+            continue
+        raw = f.read_bytes()
+        if b"\r\n" in raw:
+            f.write_bytes(raw.replace(b"\r\n", b"\n"))
+            converted += 1
+    for index_path in [
+        *(out_root / r / "index.json" for r in RUNS),
+        out_root / "compare" / "index.json",
+    ]:
+        if not index_path.is_file():
+            continue
+        index = _read(index_path)
+        for art in index["artifacts"]:
+            target = index_path.parent / art["path"]
+            art["sha256"], art["bytes"] = sha256_file(target), target.stat().st_size
+        _write(index_path, index)
+    return converted
 
 
 def build_diagnostics(out_root: Path, run: str, variant: str, res: Any) -> dict[str, Any]:
@@ -749,6 +783,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out-root", type=Path, required=True)
     args = p.parse_args(argv)
     root: Path = args.out_root
+    print(f"normalized line endings of {normalize_and_reindex(root)} files")
     res = _resources()
     for run in RUNS:
         for variant in VARIANTS:
@@ -759,8 +794,8 @@ def main(argv: list[str] | None = None) -> int:
     code_sha = subprocess.run(
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=REPO_ROOT
     ).stdout.strip()
-    (root / "SUMMARY.md").write_text(build_summary(root, code_sha), encoding="utf-8")
-    (root / "EXAMPLES.md").write_text(_examples_md(root), encoding="utf-8")
+    (root / "SUMMARY.md").write_text(build_summary(root, code_sha), encoding="utf-8", newline="\n")
+    (root / "EXAMPLES.md").write_text(_examples_md(root), encoding="utf-8", newline="\n")
     print(f"build_final_report: wrote SUMMARY.md and EXAMPLES.md under {root}")
     return 0
 

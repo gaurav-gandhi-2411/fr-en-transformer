@@ -2,6 +2,7 @@ from __future__ import annotations
 
 # Tests for scripts/build_final_report.py's pure helpers: p/CI formatting, bootstrap mean CI,
 # per-slice means and the PREREG §3 verdict block. No pulled artifacts needed.
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -85,3 +86,25 @@ def test_h2_requires_e1_non_inferiority_bound() -> None:
 def test_verdict_p_zero_is_printed_as_bound() -> None:
     good = _comp(_c(0.9, 0.6, 1.1, 0.0), _c(3.0, 2.4, 3.8, 0.0), _c(0, -1, 1, 0.5))
     assert "p < 0.001" in verdict_block("H1", good, None, "PRIMARY")
+
+
+def test_normalize_and_reindex_converts_crlf_and_refreshes_hashes(tmp_path: Path) -> None:
+    import hashlib
+    import json
+
+    from scripts.build_final_report import RUNS, normalize_and_reindex
+
+    run_dir = tmp_path / RUNS[0]
+    (run_dir / "source").mkdir(parents=True)
+    derived = run_dir / "eval.json"
+    derived.write_bytes(b'{\r\n "a": 1\r\n}')
+    downloaded = run_dir / "source" / "x.json"
+    downloaded.write_bytes(b'{\r\n "kept": 1\r\n}')  # verbatim HF bytes: must stay untouched
+    entry = {"path": "eval.json", "sha256": "stale", "bytes": 0}
+    (run_dir / "index.json").write_text(json.dumps({"artifacts": [entry]}), encoding="utf-8")
+    assert normalize_and_reindex(tmp_path) == 1
+    assert derived.read_bytes() == b'{\n "a": 1\n}'
+    assert downloaded.read_bytes() == b'{\r\n "kept": 1\r\n}'
+    art = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))["artifacts"][0]
+    assert art["sha256"] == hashlib.sha256(derived.read_bytes()).hexdigest()
+    assert art["bytes"] == len(derived.read_bytes())
