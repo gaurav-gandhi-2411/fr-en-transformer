@@ -113,14 +113,15 @@ jobs:
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
             --set CONFIG='"ablations_l4"' --set DRY_RUN=True
 
-      # CONFIG="eval_l4" (benchmark -> candidates -> tuning -> selection -> decodes -> private HF
+      # CONFIG="eval_l4" + RUN="all" (main, then s1/s2/s3; each: benchmark -> candidates -> tuning ->
+      # selection -> decodes -> private HF
       # upload, one Colab session) executed end to end as a DRY RUN: the plan, the per-candidate
       # checkpoint files (all MISSING on this host, reported not fatal in a dry run), and the
       # runtime ESTIMATE are printed; nothing is decoded, downloaded or uploaded.
       # execute_notebook.py refuses this config without DRY_RUN=True.
-      - name: Execute colab/train.ipynb in eval_l4 DRY_RUN mode (Python 3.13)
+      - name: Execute colab/train.ipynb in eval_l4 RUN=all DRY_RUN mode (Python 3.13)
         if: matrix.python-version == '3.13'
         run: |
           PY="$RUNNER_TEMP/venv/bin/python"
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
-            --set CONFIG='"eval_l4"' --set DRY_RUN=True
+            --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"all"'

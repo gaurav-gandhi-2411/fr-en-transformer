@@ -897,3 +897,20 @@ def test_module_scores_nothing_itself_and_imports_only_the_set_loader_from_selec
 def test_model_config_for_every_run_exists() -> None:
     for run in ev.RUNS:
         assert (REPO_ROOT / "configs" / f"{run}.yaml").is_file()
+
+
+# --- order of work and the selection surface ----------------------------------------------------
+
+
+def test_selection_can_only_ever_see_e1_and_e2_and_decoding_needs_a_finished_selection(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from nmt import selection
+
+    assert set(selection._ALLOWED_SETS) == {"e1", "e2"}  # dev, E3, E2-synth, test: not loadable
+    tune_src = (REPO_ROOT / "nmt" / "tune.py").read_text(encoding="utf-8")
+    assert "load_split" not in tune_src and '"e3"' not in tune_src and '"dev"' not in tune_src
+    # `decode` (the only step that touches dev/E3/test) refuses to start before selection.json
+    assert ev.main(["decode", "--eval-dir", str(tmp_path)]) == 1
+    assert "selection.json missing or unreadable" in capsys.readouterr().err
+    assert not (tmp_path / "predictions").exists()

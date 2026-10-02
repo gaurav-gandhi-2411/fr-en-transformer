@@ -5,7 +5,8 @@ from __future__ import annotations
 # nothing is decoded, downloaded or uploaded. What is tested here is the notebook's own logic:
 # parameter refusals, the hard-coded PREREG candidate lists, the missing-checkpoint failure, the
 # step order and argv (checked against the real nmt.eval_l4 parser), the stop-at-first-failure
-# behaviour, the ESTIMATE arithmetic, the secrets/Drive/summary cells. The behaviour behind each
+# behaviour inside a run, RUN="all" (order, HF-evidence skipping, continue-and-fail-at-the-end
+# policy), the ESTIMATE arithmetic, the secrets/Drive/summary cells. The behaviour behind each
 # subprocess (resume, validation, HF guards) is tested in tests/test_eval_l4.py.
 import json
 import sys
@@ -48,22 +49,47 @@ def _helpers(run: str = "main") -> dict[str, Any]:
     return ns
 
 
-class FakeRunStep:
-    """Records every step; `outputs` maps a step name to a callback run when it is called (to
-    create the files the real subprocess would write); `fail_at` raises for that step."""
+NO = "HF_RUN_COMPLETE=false\nhf-verify: nothing under runs/"
+YES = "HF_RUN_COMPLETE=true\nHF_EVAL_REVISION=" + "c" * 40
 
-    def __init__(self, outputs: dict[str, Any] | None = None, fail_at: str | None = None) -> None:
+
+class FakeRunStep:
+    """Records every step as (name, argv) and its run in `runs`. Step names arrive as
+    `eval[<run>:<step>]`. `outputs` maps "<run>:<step>" (or just "<step>" for every run) to a
+    callback that creates the files the real subprocess would write; `fail_at` is a set of
+    "<run>:<step>" that raise; `verify` maps a run to the hf-verify stdout (default: not
+    complete). A successful upload writes hf_upload.json under `roots[run]` like the real step."""
+
+    def __init__(
+        self,
+        outputs: dict[str, Any] | None = None,
+        fail_at: str | set[str] | None = None,
+        verify: dict[str, str] | None = None,
+        roots: dict[str, Path] | None = None,
+    ) -> None:
         self.calls: list[tuple[str, list[str]]] = []
+        self.runs: list[str] = []
         self.outputs = outputs or {}
-        self.fail_at = fail_at
+        self.fail_at = {fail_at} if isinstance(fail_at, str) else set(fail_at or ())
+        self.verify = verify or {}
+        self.roots = roots
 
     def __call__(self, step: str, argv: list[str], **kwargs: Any) -> str:
-        name = step.removeprefix("eval[").removesuffix("]")
+        run, _, name = step.removeprefix("eval[").removesuffix("]").partition(":")
         self.calls.append((name, list(argv)))
-        if name == self.fail_at:
+        self.runs.append(run)
+        if f"{run}:{name}" in self.fail_at or name in self.fail_at:
             raise RuntimeError(f"{step} failed (exit 1)")
-        if name in self.outputs:
-            self.outputs[name]()
+        if name == "hf-verify":
+            return self.verify.get(run, NO)
+        for key in (f"{run}:{name}", name):
+            if key in self.outputs:
+                self.outputs[key]()
+        if name == "upload" and self.roots is not None and "upload" not in self.outputs:
+            (self.roots[run] / "hf_upload.json").write_text(
+                json.dumps({"repo": "o/r", "run": run, "revision": "b" * 40, "private": True}),
+                encoding="utf-8",
+            )
         return ""
 
 
@@ -77,6 +103,16 @@ def test_defaults_stay_the_main_run_and_eval_is_selectable() -> None:
     ns = _eval_params()
     assert ns["EVAL"] is True and ns["ABLATION"] is False
     assert ns["EVAL_RUNS"] == ("main", "s1_sin_l4", "s2_rope_l4", "s3_rope_concat_l4")
+    assert ns["EVAL_RUN_LIST"] == ("main",)
+
+
+def test_run_all_means_the_four_runs_main_first(capsys: pytest.CaptureFixture[str]) -> None:
+    ns = _eval_params(RUN='"all"')
+    assert ns["EVAL_RUN_LIST"] == ("main", "s1_sin_l4", "s2_rope_l4", "s3_rope_concat_l4")
+    assert ns["EVAL_RUN_LIST"][0] == "main" and ns["EVAL_RUN_CHOICES"][-1] == "all"
+    assert "main -> s1_sin_l4 -> s2_rope_l4 -> s3_rope_concat_l4" in capsys.readouterr().out
+    with pytest.raises(ValueError, match="RUN='ALL'"):
+        _eval_params(RUN='"ALL"')  # exact spelling only
 
 
 @pytest.mark.parametrize("config", ["main", "eval_l4"])
@@ -135,6 +171,8 @@ def test_notebook_constants_equal_the_module_constants() -> None:
     assert ns["EVAL_RUNS"] == ev.RUNS
     assert ns["EVAL_DECODE_SPLITS"] == ev.DECODE_SPLITS
     assert ns["EVAL_VARIANTS"] == ev.VARIANTS
+    assert tuple(ns["eval_candidate_steps"]("main")) == ev.MAIN_CANDIDATES
+    assert tuple(ns["eval_candidate_steps"]("s2_rope_l4")) == ev.ABLATION_CANDIDATES
 
 
 def test_missing_checkpoint_files_fail_before_anything_runs_naming_each(tmp_path: Path) -> None:
@@ -237,6 +275,13 @@ def test_main_plan_order_and_every_argv_parses_with_the_real_cli(tmp_path: Path)
         "validate-test",
         "upload",
     ]
+    names = [name for name, _ in plan]
+    # (e) throughput bench first (it needs only the final export), then tune + select (E1 + E2
+    # inside nmt.tune), only then any decode; test predictions + validation for main only.
+    assert names.index("bench") < min(i for i, n in enumerate(names) if n.startswith("tune:"))
+    assert max(i for i, n in enumerate(names) if n.startswith("tune:")) < names.index("select")
+    assert names.index("select") < names.index("decode") < names.index("validate-test")
+    assert names.index("validate-test") < names.index("upload") == len(names) - 1
     parser = ev._parser()
     for _, argv in plan:
         assert argv[:3] == [sys.executable, "-m", "nmt.eval_l4"]
@@ -281,23 +326,31 @@ def test_ablation_plan_has_no_test_decode_no_validation_and_one_candidate(tmp_pa
 # --- the run cell ---------------------------------------------------------------------------------
 
 
-def _run_ns(tmp_path: Path, run_step: Any, run: str = "main", **over: Any) -> dict[str, Any]:
+def _run_ns(
+    tmp_path: Path, run_step: Any, run: str = "main", dry: bool = False, **over: Any
+) -> dict[str, Any]:
+    """A namespace for the run cell. `run` is the RUN parameter ('all' = the four runs); each
+    run's checkpoints live in tmp/ckpt/<run> and its outputs in tmp/eval/<run>."""
     ns = _helpers(run)
-    ckpt_dir = tmp_path / "ckpt"
-    ckpt_dir.mkdir(exist_ok=True)
+    runs = ns["EVAL_RUN_LIST"]
     ns.update(
         run_step=run_step,
         repo_dir=REPO_ROOT,
-        ckpt_dir=ckpt_dir,
-        eval_root=tmp_path / "eval",
+        eval_ckpt_dirs={r: tmp_path / "ckpt" / r for r in runs},
+        eval_roots={r: tmp_path / "eval" / r for r in runs},
         git_sha="deadbeef",
         git_describe="v-test",
         preflight={"preflight_gpu": "NVIDIA L4", "preflight_precision": "bf16"},
         EVAL=True,
-        DRY_RUN=False,
+        DRY_RUN=dry,
     )
     ns.update(over)
-    (tmp_path / "eval").mkdir(exist_ok=True)
+    for r in runs:
+        ns["eval_ckpt_dirs"][r].mkdir(parents=True, exist_ok=True)
+        if not dry:
+            ns["eval_roots"][r].mkdir(parents=True, exist_ok=True)
+    if isinstance(run_step, FakeRunStep) and run_step.roots is None:
+        run_step.roots = ns["eval_roots"]
     return ns
 
 
@@ -318,68 +371,97 @@ def _bench_file(path: Path) -> Any:
     return write
 
 
+def _single(tmp_path: Path, rec: FakeRunStep, run: str = "main", **over: Any) -> dict[str, Any]:
+    ns = _run_ns(tmp_path, rec, run, **over)
+    _write_ckpts(ns["eval_ckpt_dirs"][run], run)
+    return ns
+
+
+def _bench(tmp_path: Path, run: str = "main") -> dict[str, Any]:
+    return {"bench": _bench_file(tmp_path / "eval" / run / "bench.json")}
+
+
 def test_run_cell_executes_every_step_in_order_and_prints_both_estimates(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    rec = FakeRunStep(outputs={"bench": _bench_file(tmp_path / "eval" / "bench.json")})
-    ns = _run_ns(tmp_path, rec)
-    _write_ckpts(ns["ckpt_dir"])
+    rec = FakeRunStep(outputs=_bench(tmp_path))
+    ns = _single(tmp_path, rec)
     _exec(EVAL_RUN, ns)
     out = capsys.readouterr().out
-    assert [n for n, _ in rec.calls] == [n for n, _ in _plan(ns, "main", tmp_path)]
+    expected = [n for n, _ in _plan(ns, "main", tmp_path)]
+    assert [n for n, _ in rec.calls] == ["hf-verify", *expected]
     assert out.index("STATIC: ASSUMED") < out.index("from bench.json (measured rates)")
     assert "greedy 3000 out-tok/s, beam 1500 out-tok/s" in out
-    assert "eval: all 11 steps done" in out
-    meta = json.loads((tmp_path / "eval" / "run_meta.json").read_text(encoding="utf-8"))
+    assert "eval: all 11 steps done" in out and "completed; HF revision " + "b" * 40 in out
+    meta = json.loads((tmp_path / "eval" / "main" / "run_meta.json").read_text(encoding="utf-8"))
     assert meta["git_sha"] == "deadbeef" and meta["run"] == "main"
     assert meta["candidates"]["avg_decay"] == [20757, 22500, 24269, 24645]
     assert "first_started_utc" in meta
+    assert ns["eval_results"]["main"] == {"status": "completed", "revision": "b" * 40}
 
 
-def test_run_cell_stops_at_the_first_failing_step_and_starts_nothing_later(
+def test_the_run_summary_records_the_hf_revision_and_the_private_flag(tmp_path: Path) -> None:
+    rec = FakeRunStep(outputs=_bench(tmp_path))
+    ns = _single(tmp_path, rec)
+    _exec(EVAL_RUN, ns)
+    summary = json.loads(
+        (tmp_path / "eval" / "main" / "run_summary.json").read_text(encoding="utf-8")
+    )
+    assert summary["status"] == "completed" and summary["hf_revision"] == "b" * 40
+    assert summary["private"] is True and summary["git_sha"] == "deadbeef"
+    assert (
+        summary["run"] == "main" and summary["hf_repo"] == "OWNER/fr-en-transformer-eval"
+    )
+
+
+def test_a_run_without_a_recorded_private_revision_is_a_failure(tmp_path: Path) -> None:
+    rec = FakeRunStep(outputs={**_bench(tmp_path), "upload": lambda: None})  # writes no file
+    ns = _single(tmp_path, rec)
+    with pytest.raises(RuntimeError, match="no private hf_upload.json revision"):
+        _exec(EVAL_RUN, ns)
+
+
+def test_run_cell_stops_a_run_at_its_first_failing_step_and_starts_nothing_later_in_it(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    rec = FakeRunStep(
-        outputs={"bench": _bench_file(tmp_path / "eval" / "bench.json")}, fail_at="tune:avg_last5"
-    )
-    ns = _run_ns(tmp_path, rec)
-    _write_ckpts(ns["ckpt_dir"])
+    rec = FakeRunStep(outputs=_bench(tmp_path), fail_at="tune:avg_last5")
+    ns = _single(tmp_path, rec)
     with pytest.raises(RuntimeError, match="tune:avg_last5"):
         _exec(EVAL_RUN, ns)
     done = [n for n, _ in rec.calls]
     assert done[-1] == "tune:avg_last5" and "tune:avg_decay" not in done and "upload" not in done
-    assert "EVAL STOPPED at tune:avg_last5" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "EVAL STOPPED at tune:avg_last5 of main" in out and "main: FAILED" in out
+    failed = json.loads((tmp_path / "eval" / "main" / "run_summary.json").read_text("utf-8"))
+    assert failed["status"] == "FAILED" and "tune:avg_last5" in failed["error"]
 
 
 def test_run_cell_rerun_issues_the_same_steps_so_the_subprocesses_can_skip(
     tmp_path: Path,
 ) -> None:
-    first = FakeRunStep(outputs={"bench": _bench_file(tmp_path / "eval" / "bench.json")})
-    ns = _run_ns(tmp_path, first)
-    _write_ckpts(ns["ckpt_dir"])
+    first = FakeRunStep(outputs=_bench(tmp_path))
+    ns = _single(tmp_path, first)
     _exec(EVAL_RUN, ns)
     second = FakeRunStep()
     ns2 = _run_ns(tmp_path, second)
     _exec(EVAL_RUN, ns2)
     assert second.calls == first.calls  # resumption is each step's own skip-if-valid
-    meta = json.loads((tmp_path / "eval" / "run_meta.json").read_text(encoding="utf-8"))
+    meta = json.loads((tmp_path / "eval" / "main" / "run_meta.json").read_text(encoding="utf-8"))
     assert meta["first_started_utc"] <= meta["last_started_utc"]
 
 
 def test_run_cell_refuses_before_any_step_when_a_checkpoint_is_missing(tmp_path: Path) -> None:
     rec = FakeRunStep()
-    ns = _run_ns(tmp_path, rec)
-    _write_ckpts(ns["ckpt_dir"])
-    (ns["ckpt_dir"] / "step_00020757.pt").unlink()
+    ns = _single(tmp_path, rec)
+    (ns["eval_ckpt_dirs"]["main"] / "step_00020757.pt").unlink()
     with pytest.raises(RuntimeError, match="step_00020757.pt"):
         _exec(EVAL_RUN, ns)
-    assert rec.calls == []
+    assert [n for n, _ in rec.calls] == ["hf-verify"]  # only the read-only HF question was asked
 
 
 def test_run_cell_fails_if_the_bench_leaves_no_usable_rates(tmp_path: Path) -> None:
     rec = FakeRunStep()  # the bench step writes nothing
-    ns = _run_ns(tmp_path, rec)
-    _write_ckpts(ns["ckpt_dir"])
+    ns = _single(tmp_path, rec)
     with pytest.raises(RuntimeError, match="bench.json"):
         _exec(EVAL_RUN, ns)
     assert [n for n, _ in rec.calls][-1] == "bench"
@@ -389,13 +471,179 @@ def test_run_cell_dry_run_prints_plan_and_estimate_and_launches_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     rec = FakeRunStep()
-    ns = _run_ns(tmp_path, rec, DRY_RUN=True)  # no checkpoints on disk
+    ns = _run_ns(tmp_path, rec, dry=True)  # no checkpoints on disk
     _exec(EVAL_RUN, ns)
     out = capsys.readouterr().out
-    assert rec.calls == [] and not (tmp_path / "eval" / "run_meta.json").exists()
+    assert rec.calls == [] and not (tmp_path / "eval" / "main" / "run_meta.json").exists()
     assert "DRY_RUN: nothing launched" in out and "[upload]" in out and "[hf-check]" in out
+    assert "[hf-verify]" in out and "skips it if so" in out
     assert "step_00019000.pt:MISSING" in out and "a real run would STOP" in out
-    assert "ESTIMATE (STATIC: ASSUMED" in out
+    assert "ESTIMATE (STATIC: ASSUMED" in out and "main: planned only (DRY_RUN)" in out
+
+
+# --- RUN = "all" ----------------------------------------------------------------------------------
+
+ALL = ("main", "s1_sin_l4", "s2_rope_l4", "s3_rope_concat_l4")
+
+
+def _all_ns(
+    tmp_path: Path, rec: FakeRunStep, with_ckpts: bool = True, **over: Any
+) -> dict[str, Any]:
+    ns = _run_ns(tmp_path, rec, "all", **over)
+    if with_ckpts:
+        for r in ALL:
+            _write_ckpts(ns["eval_ckpt_dirs"][r], r)
+    return ns
+
+
+def _all_benches(tmp_path: Path) -> dict[str, Any]:
+    return {f"{r}:bench": _bench_file(tmp_path / "eval" / r / "bench.json") for r in ALL}
+
+
+def test_all_runs_evaluate_main_first_then_the_ablations_in_order(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = FakeRunStep(outputs=_all_benches(tmp_path))
+    ns = _all_ns(tmp_path, rec)
+    _exec(EVAL_RUN, ns)
+    order = list(dict.fromkeys(rec.runs))
+    assert order == list(ALL)
+    # each run is one contiguous block: hf-verify first, then its own plan, then the next run
+    assert rec.runs == sorted(rec.runs, key=ALL.index)
+    for run in ALL:
+        names = [n for n, r in zip((c[0] for c in rec.calls), rec.runs, strict=True) if r == run]
+        assert names == ["hf-verify", *(n for n, _ in _plan(ns, run, tmp_path))]
+    out = capsys.readouterr().out
+    assert "eval overall: all 4 run(s) ok" in out
+    assert all(ns["eval_results"][r]["status"] == "completed" for r in ALL)
+    for r in ALL:  # every run has its own summary with the HF revision
+        saved = json.loads((tmp_path / "eval" / r / "run_summary.json").read_text("utf-8"))
+        assert saved["run"] == r and saved["hf_revision"] == "b" * 40
+
+
+def test_all_dry_run_shows_the_plan_of_every_run_and_launches_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = FakeRunStep()
+    ns = _run_ns(tmp_path, rec, "all", dry=True)
+    _exec(EVAL_RUN, ns)
+    out = capsys.readouterr().out
+    assert rec.calls == []
+    positions = [out.index(f"EVAL RUN {r}:") for r in ALL]
+    assert positions == sorted(positions)  # main first
+    for r in ALL:
+        assert f"--run {r}" in out and f"{r}.yaml" in out  # upload / candidates argv of that run
+    assert out.count("[hf-verify]") == 4 and out.count("[upload]") == 4
+    assert out.count("[validate-test]") == 1 and out.count(" --test") == 1  # main only
+    assert out.count("planned only (DRY_RUN)") == 4 and "eval overall: all 4 run(s) ok" in out
+    assert not (tmp_path / "eval").exists() or not any((tmp_path / "eval").iterdir())
+
+
+def test_a_run_complete_on_hf_is_skipped_on_hf_evidence_not_on_drive_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = FakeRunStep(outputs=_all_benches(tmp_path), verify={"main": YES, "s2_rope_l4": YES})
+    ns = _all_ns(tmp_path, rec, with_ckpts=False)  # not even checkpoints are needed for a skip
+    for r in ("s1_sin_l4", "s3_rope_concat_l4"):
+        _write_ckpts(ns["eval_ckpt_dirs"][r], r)
+    # Drive claims s1 is uploaded; the HF repo does not hold it: it must be evaluated anyway.
+    (tmp_path / "eval" / "s1_sin_l4" / "hf_upload.json").write_text(
+        json.dumps({"repo": "o/r", "revision": "d" * 40, "private": True}), encoding="utf-8"
+    )
+    _exec(EVAL_RUN, ns)
+    done = {r for (n, _), r in zip(rec.calls, rec.runs, strict=True) if n != "hf-verify"}
+    assert done == {"s1_sin_l4", "s3_rope_concat_l4"}
+    assert ns["eval_results"]["main"] == {"status": "skipped", "revision": "c" * 40}
+    assert ns["eval_results"]["s1_sin_l4"]["status"] == "completed"  # overwrote the Drive claim
+    out = capsys.readouterr().out
+    assert "main: skipped, already complete on HF (verified); HF revision " + "c" * 40 in out
+    assert "SKIPPED: complete on the HF repo (verified)" in out
+
+
+def test_a_failing_run_does_not_skip_the_later_ones_and_the_cell_fails_at_the_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = FakeRunStep(outputs=_all_benches(tmp_path), fail_at={"main:tune:avg_last5"})
+    ns = _all_ns(tmp_path, rec)
+    with pytest.raises(RuntimeError) as err:
+        _exec(EVAL_RUN, ns)
+    assert "eval FAILED for 1 of 4 run(s)" in str(err.value) and "main:" in str(err.value)
+    later = {r for r in rec.runs}
+    assert later == set(ALL)  # the three ablations still ran after main failed
+    assert "upload" not in [n for (n, _), r in zip(rec.calls, rec.runs, strict=True) if r == "main"]
+    for r in ALL[1:]:
+        assert ns["eval_results"][r]["status"] == "completed"
+    assert ns["eval_results"]["main"]["status"] == "FAILED"
+    out = capsys.readouterr().out
+    assert "continuing with: s1_sin_l4, s2_rope_l4, s3_rope_concat_l4" in out
+    assert "eval overall: 1 of 4 run(s) FAILED: main" in out  # printed BEFORE the cell raises
+    assert "main: FAILED:" in out and "s3_rope_concat_l4: completed" in out
+
+
+def test_a_missing_checkpoint_fails_only_that_run(tmp_path: Path) -> None:
+    rec = FakeRunStep(outputs=_all_benches(tmp_path))
+    ns = _all_ns(tmp_path, rec)
+    (ns["eval_ckpt_dirs"]["s2_rope_l4"] / "step_00004107.pt").unlink()
+    with pytest.raises(RuntimeError, match="(?s)s2_rope_l4: .*step_00004107.pt"):
+        _exec(EVAL_RUN, ns)
+    assert [r for r in ALL if ns["eval_results"][r]["status"] == "FAILED"] == ["s2_rope_l4"]
+    assert "s3_rope_concat_l4" in rec.runs  # the run after the failed one still executed
+
+
+@pytest.mark.parametrize("answer", ["", "garbage", "HF_RUN_COMPLETE=true", "HF_RUN_COMPLETE=maybe"])
+def test_an_unreadable_hf_verify_answer_fails_that_run_closed_and_never_skips_it(
+    tmp_path: Path, answer: str
+) -> None:
+    rec = FakeRunStep(outputs=_all_benches(tmp_path), verify={"main": answer})
+    ns = _all_ns(tmp_path, rec)
+    with pytest.raises(RuntimeError, match="main: .*hf-verify"):
+        _exec(EVAL_RUN, ns)
+    assert ns["eval_results"]["main"]["status"] == "FAILED"
+    assert "main" not in [
+        r for (n, _), r in zip(rec.calls, rec.runs, strict=True) if n != "hf-verify"
+    ]
+    assert ns["eval_results"]["s1_sin_l4"]["status"] == "completed"
+
+
+def test_a_failing_hf_verify_subprocess_fails_that_run_and_the_rest_continue(
+    tmp_path: Path,
+) -> None:
+    rec = FakeRunStep(outputs=_all_benches(tmp_path), fail_at={"s1_sin_l4:hf-verify"})
+    ns = _all_ns(tmp_path, rec)
+    with pytest.raises(RuntimeError, match="eval FAILED for 1 of 4"):
+        _exec(EVAL_RUN, ns)
+    assert ns["eval_results"]["s2_rope_l4"]["status"] == "completed"
+
+
+def test_parse_hf_verify_and_format_eval_results() -> None:
+    ns = _helpers("all")
+    assert ns["parse_hf_verify"](YES) == (True, "c" * 40)
+    assert ns["parse_hf_verify"](NO) == (False, None)
+    for bad in ("", "HF_RUN_COMPLETE=true", "HF_RUN_COMPLETE=true\nHF_EVAL_REVISION=abc"):
+        with pytest.raises(RuntimeError, match="hf-verify"):
+            ns["parse_hf_verify"](bad)
+    lines = ns["format_eval_results"](
+        {
+            "main": {"status": "completed", "revision": "b" * 40},
+            "s1_sin_l4": {"status": "skipped", "revision": "c" * 40},
+            "s2_rope_l4": {"status": "FAILED", "revision": None, "error": "boom"},
+        }
+    )
+    text = "\n".join(lines)
+    assert (
+        "s2_rope_l4: FAILED: boom" in text
+        and "eval overall: 1 of 3 run(s) FAILED: s2_rope_l4" in text
+    )
+    argv = ns["eval_verify_argv"]("main", hf_repo="o/r")
+    assert argv[3:] == ["hf-verify", "--repo", "o/r", "--run", "main"]
+
+
+def test_every_notebook_verify_argv_parses_with_the_real_cli() -> None:
+    ns = _helpers("all")
+    argv = ns["eval_verify_argv"]("s2_rope_l4", hf_repo="o/r")
+    assert argv[:3] == [sys.executable, "-m", "nmt.eval_l4"]
+    args = ev._parser().parse_args(argv[3:])
+    assert (args.cmd, args.repo, args.run) == ("hf-verify", "o/r", "s2_rope_l4")
 
 
 def test_run_cell_is_a_noop_outside_eval_mode(capsys: pytest.CaptureFixture[str]) -> None:
@@ -439,6 +687,7 @@ def test_secrets_cell_in_eval_mode_needs_the_write_token_and_gh_but_not_wandb(
     assert "HF_TOKEN_WRITE" not in os.environ and "WANDB_API_KEY" not in os.environ
     out = capsys.readouterr().out
     assert "hf-write-secret" not in out and "gh-secret" not in out
+    assert "HF_TOKEN_WRITE" in out  # the secret NAME is what gets printed, never a value
 
 
 def test_secrets_cell_names_the_missing_eval_secret(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -469,6 +718,8 @@ def _drive_ns(tmp_path: Path, **over: Any) -> dict[str, Any]:
         "RUN": "main",
     }
     ns.update(over)
+    run = ns["RUN"]
+    ns.setdefault("EVAL_RUN_LIST", ALL if run == "all" else (run,))
     return ns
 
 
@@ -478,6 +729,19 @@ def test_drive_cell_eval_local_reads_the_run_ckpt_without_creating_it(tmp_path: 
     assert ns["ckpt_dir"] == tmp_path / "runs" / "notebook_main" / "ckpt"
     assert not ns["ckpt_dir"].exists()  # a missing checkpoint dir must fail in the eval cell
     assert ns["eval_root"] == tmp_path / "runs" / "notebook_eval_main" and ns["eval_root"].is_dir()
+
+
+def test_drive_cell_all_has_one_ckpt_and_eval_dir_per_run_and_creates_none(
+    tmp_path: Path,
+) -> None:
+    ns = _drive_ns(tmp_path, RUN="all")
+    _exec(DRIVE, ns)
+    assert list(ns["eval_ckpt_dirs"]) == list(ALL)  # main first
+    for r in ALL:
+        assert ns["eval_ckpt_dirs"][r] == tmp_path / "runs" / f"notebook_{r}" / "ckpt"
+        assert ns["eval_roots"][r] == tmp_path / "runs" / f"notebook_eval_{r}"
+        assert not ns["eval_roots"][r].exists()  # created by the eval cell only when it evaluates
+    assert ns["ckpt_dir"] is None and ns["eval_root"] is None
 
 
 def test_drive_cell_eval_colab_paths_follow_the_documented_drive_layout(
@@ -495,6 +759,7 @@ def test_drive_cell_eval_colab_paths_follow_the_documented_drive_layout(
     base = Path("/content/drive/MyDrive/fr-en-transformer")
     assert ns["ckpt_dir"] == base / "runs" / "s2_rope_l4" / "ckpt"
     assert ns["eval_root"] == base / "eval" / "s2_rope_l4"
+    assert ns["eval_roots"] == {"s2_rope_l4": base / "eval" / "s2_rope_l4"}
 
 
 def test_train_data_and_wandb_cells_do_nothing_in_eval_mode(
@@ -646,13 +911,48 @@ def test_summary_cell_in_eval_mode_prints_the_eval_summary(
         EVAL=True,
         ABLATION=False,
         preflight={"preflight_gpu": "NVIDIA L4", "preflight_precision": "bf16"},
-        eval_root=tmp_path,
+        eval_roots={"main": tmp_path},
+        eval_results={"main": {"status": "completed", "revision": "b" * 40}},
         HF_EVAL_REPO="o/r",
         RUN="main",
     )
     _exec(SUMMARY, ns)
     out = capsys.readouterr().out
     assert "WINNER: avg_decay" in out and "HF_EVAL_REVISION=" in out and "cafe123" in out
+    assert "main: completed; HF revision " + "b" * 40 in out
+
+
+def test_summary_cell_for_all_lists_every_run_and_does_not_misreport_a_skipped_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ns = _helpers("all")
+    _fill_eval_dir(tmp_path / "s1_sin_l4", run="s1_sin_l4")
+    results = {
+        "main": {"status": "skipped", "revision": "c" * 40},
+        "s1_sin_l4": {"status": "completed", "revision": "b" * 40},
+        "s2_rope_l4": {"status": "FAILED", "revision": None, "error": "boom"},
+        "s3_rope_concat_l4": {"status": "planned", "revision": None},
+    }
+    ns.update(
+        GIT_REF="v-test",
+        git_sha="cafe123",
+        git_describe="v-test",
+        DATA_REVISION="rev",
+        CONFIG="eval_l4",
+        EVAL=True,
+        ABLATION=False,
+        preflight={"preflight_gpu": "NVIDIA L4", "preflight_precision": "bf16"},
+        eval_roots={r: tmp_path / r for r in ALL},
+        eval_results=results,
+        HF_EVAL_REPO="o/r",
+    )
+    _exec(SUMMARY, ns)
+    out = capsys.readouterr().out
+    assert "eval runs: main, s1_sin_l4, s2_rope_l4, s3_rope_concat_l4" in out
+    assert "main: skipped, already complete on HF (verified)" in out
+    assert "not re-evaluated: already complete on the HF repo" in out
+    assert "s2_rope_l4: FAILED: boom" in out and "eval overall: 1 of 4 run(s) FAILED" in out
+    assert "WINNER:" in out  # s1's local summary is printed
 
 
 # --- notebook hygiene, execute_notebook, CI -------------------------------------------------------
@@ -706,6 +1006,7 @@ def test_notebook_default_still_executes_as_smoke_in_ci_and_ci_runs_the_eval_dry
     ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "--set CONFIG='\"smoke\"' --set PLANNED_STEPS=None --set RESUME_TEST=False" in ci
     assert "--set CONFIG='\"eval_l4\"' --set DRY_RUN=True" in ci
+    assert "--set RUN='\"all\"'" in ci  # the CI dry run covers RUN="all"
     mod = _load_execute_notebook()
     nb = nbformat.read(NOTEBOOK, as_version=4)
     assert mod.effective_config(nb) == "main"  # the committed default is the real main run
