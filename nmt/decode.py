@@ -90,12 +90,36 @@ class Hypothesis:
     score: float
 
 
+def _step_log_probs(model: Transformer, cur_tok: Tensor, cache: dict) -> Tensor:
+    """One decode step's (B, V) log-probabilities. A model that sets `step_returns_log_probs`
+    (nmt.ensemble.Ensemble) already returns log-probs from `decode_step`, used as is (no second
+    log_softmax: it would renormalize the averaged log-probs and break exact single-model parity);
+    every other model returns logits and gets the log_softmax applied here, as before."""
+    out = model.decode_step(cur_tok, cache)[:, 0, :]
+    if getattr(model, "step_returns_log_probs", False):
+        return out
+    return torch.log_softmax(out, dim=-1)
+
+
+def _repeat_memory(memory: Tensor | tuple[Tensor, ...], k: int) -> Tensor | tuple[Tensor, ...]:
+    """`repeat_interleave(k, dim=0)` of an encoder memory; an ensemble's memory is a tuple with
+    one tensor per member."""
+    if isinstance(memory, tuple):
+        return tuple(m.repeat_interleave(k, dim=0) for m in memory)
+    return memory.repeat_interleave(k, dim=0)
+
+
 def _reorder_cache(cache: dict, index: Tensor) -> None:
     """Reorder every per-beam tensor in a `Transformer.init_decode_cache` cache along dim 0 by
     `index` (new slot j pulls from old slot `index[j]`) -- self-attention K/V (the only state that
     actually differs across beams within one source example, since cross-attention K/V and the
     cross mask are identical across the K beams of a group and reordering them is a no-op).
+    An ensemble cache (`{"members": [cache, ...]}`) reorders each member's cache.
     """
+    if "members" in cache:
+        for member_cache in cache["members"]:
+            _reorder_cache(member_cache, index)
+        return
     cache["memory_kv"] = [
         (k.index_select(0, index), v.index_select(0, index)) for k, v in cache["memory_kv"]
     ]
@@ -106,7 +130,6 @@ def _reorder_cache(cache: dict, index: Tensor) -> None:
     cache["cross_mask"] = cache["cross_mask"].index_select(0, index)
 
 
-@torch.no_grad()
 def beam_search_decode(
     model: Transformer,
     src: Tensor,
@@ -121,6 +144,24 @@ def beam_search_decode(
     repetition block and a per-example `max_len` derived from that example's own source length.
     Returns exactly one (the best) `Hypothesis` per source example, in input order.
     """
+    nbest = beam_search_nbest(model, src, src_mask, bos_id, eos_id, pad_id, cfg)
+    return [hyps[0] for hyps in nbest]
+
+
+@torch.no_grad()
+def beam_search_nbest(
+    model: Transformer,
+    src: Tensor,
+    src_mask: Tensor,
+    bos_id: int,
+    eos_id: int,
+    pad_id: int,
+    cfg: DecodeConfig | None = None,
+) -> list[list[Hypothesis]]:
+    """`beam_search_decode`'s search, returning every finished hypothesis per example (up to
+    `beam_size`), best first (ties keep finish order, so element 0 is exactly the hypothesis
+    `beam_search_decode` returns). An example that never finished returns its single best live beam.
+    """
     cfg = cfg or DecodeConfig()
     device = src.device
     b_size, _ = src.shape
@@ -132,7 +173,7 @@ def beam_search_decode(
     src_lens = src_mask.sum(dim=1).tolist()
     max_lens = [decode_max_len(int(n), cfg.max_len_a, cfg.max_len_b) for n in src_lens]
 
-    memory_bk = memory.repeat_interleave(k, dim=0)
+    memory_bk = _repeat_memory(memory, k)
     mask_bk = src_mask.repeat_interleave(k, dim=0)
     cache = model.init_decode_cache(memory_bk, mask_bk)
 
@@ -150,8 +191,7 @@ def beam_search_decode(
     global_max_len = max(max_lens) if max_lens else 0
 
     while step < global_max_len and any(active):
-        logits = model.decode_step(cur_tok, cache)  # (B*K, 1, V)
-        log_probs = torch.log_softmax(logits[:, 0, :], dim=-1)
+        log_probs = _step_log_probs(model, cur_tok, cache)  # (B*K, V)
         vocab_size = log_probs.size(-1)
 
         for i in range(b_size * k):
@@ -218,16 +258,16 @@ def beam_search_decode(
         cur_tok = torch.tensor([[t[-1]] for t in tokens], dtype=torch.long, device=device)
         step += 1
 
-    results: list[Hypothesis] = []
+    results: list[list[Hypothesis]] = []
     for b in range(b_size):
         if finished[b]:
-            results.append(max(finished[b], key=lambda h: h.score))
+            results.append(sorted(finished[b], key=lambda h: h.score, reverse=True))
         else:
             best_local = max(range(k), key=lambda loc: scores[b * k + loc].item())
             seq = tokens[b * k + best_local][1:]
             sc = float(scores[b * k + best_local].item())
             results.append(
-                Hypothesis(tokens=seq, score=sc / gnmt_length_penalty(len(seq), cfg.alpha))
+                [Hypothesis(tokens=seq, score=sc / gnmt_length_penalty(len(seq), cfg.alpha))]
             )
 
     if was_training:
@@ -270,8 +310,7 @@ def greedy_decode(
     step = 0
     global_max_len = max(max_lens) if max_lens else 0
     while step < global_max_len and not all(finished):
-        logits = model.decode_step(cur_tok, cache)
-        log_probs = torch.log_softmax(logits[:, 0, :], dim=-1)
+        log_probs = _step_log_probs(model, cur_tok, cache)
         next_tokens: list[int] = []
         for b in range(b_size):
             if finished[b]:

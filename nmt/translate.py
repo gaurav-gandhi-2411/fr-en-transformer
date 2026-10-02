@@ -21,6 +21,7 @@ from torch import Tensor
 from nmt.data.normalize import normalize_text
 from nmt.decode import DecodeConfig, beam_search_decode, greedy_decode, split_sentences
 from nmt.hub import NMTModel, load_pretrained
+from nmt.mbr import MBRConfig, beam_pool, mbr_select, sample_pool
 
 FallbackKind = str  # "beam" | "greedy" | "copy"
 
@@ -98,23 +99,31 @@ class Translator:
 
     @torch.no_grad()
     def _translate_batch(
-        self, texts: list[str], beam: int, alpha: float, no_repeat_ngram_size: int
+        self,
+        texts: list[str],
+        beam: int,
+        alpha: float,
+        no_repeat_ngram_size: int,
+        mbr: MBRConfig | None = None,
     ) -> tuple[list[str], list[FallbackKind]]:
         cfg = self.model.config
         ids_list = [self.sp.encode(t, out_type=int) for t in texts]
         src, src_mask = _pad_ids(ids_list, cfg.pad_id, cfg.eos_id, self.device)
-        decode_cfg = DecodeConfig(
-            beam_size=beam, alpha=alpha, no_repeat_ngram_size=no_repeat_ngram_size
-        )
-        beam_hyps = beam_search_decode(
-            self.model, src, src_mask, cfg.bos_id, cfg.eos_id, cfg.pad_id, decode_cfg
-        )
+        if mbr is None:
+            decode_cfg = DecodeConfig(
+                beam_size=beam, alpha=alpha, no_repeat_ngram_size=no_repeat_ngram_size
+            )
+            beam_hyps = beam_search_decode(
+                self.model, src, src_mask, cfg.bos_id, cfg.eos_id, cfg.pad_id, decode_cfg
+            )
+            primary = [_detok(self.sp, h.tokens, cfg.eos_id) for h in beam_hyps]
+        else:
+            primary = self._mbr_outputs(texts, src, src_mask, alpha, no_repeat_ngram_size, mbr)
 
         outputs: list[str | None] = [None] * len(texts)
         kinds: list[FallbackKind | None] = [None] * len(texts)
         greedy_needed: list[int] = []
-        for i, h in enumerate(beam_hyps):
-            text = _detok(self.sp, h.tokens, cfg.eos_id)
+        for i, text in enumerate(primary):
             if text.strip():
                 outputs[i], kinds[i] = text, "beam"
             else:
@@ -148,6 +157,51 @@ class Translator:
         assert all(k is not None for k in kinds)
         return outputs, kinds  # type: ignore[return-value]
 
+    def _mbr_outputs(
+        self,
+        texts: list[str],
+        src: Tensor,
+        src_mask: Tensor,
+        alpha: float,
+        no_repeat_ngram_size: int,
+        mbr: MBRConfig,
+    ) -> list[str]:
+        """Build the MBR candidate pool of every source (`mbr.kind`) and return each pool's MBR
+        pick (nmt.mbr: chrF utility, pool as pseudo-references). An empty result means the pool had
+        no non-empty member; the caller's greedy/copy fallback then applies. These count as "beam"
+        in `TranslatorStats` (the primary path)."""
+        cfg = self.model.config
+        if mbr.kind == "beam":
+            pools = beam_pool(
+                self.model,
+                src,
+                src_mask,
+                cfg.bos_id,
+                cfg.eos_id,
+                cfg.pad_id,
+                mbr.n,
+                alpha,
+                no_repeat_ngram_size,
+            )
+        else:
+            pools = sample_pool(
+                self.model,
+                src,
+                src_mask,
+                cfg.bos_id,
+                cfg.eos_id,
+                texts,
+                mbr.n,
+                mbr.epsilon,
+                mbr.seed,
+            )
+        picks = []
+        for hyps in pools:
+            cands = [_detok(self.sp, h.tokens, cfg.eos_id) for h in hyps]
+            pick = cands[mbr_select(cands)]
+            picks.append(pick)
+        return picks
+
     def translate(
         self,
         texts: list[str],
@@ -156,13 +210,15 @@ class Translator:
         alpha: float = 0.6,
         segment_threshold: int | None = None,
         no_repeat_ngram_size: int = 3,
+        mbr: MBRConfig | None = None,
     ) -> list[str]:
         """Translate `texts`, batched and length-sorted for efficiency, restoring input order.
 
         `segment_threshold`: sources whose subword token count exceeds this are split on
         sentence punctuation (`nmt.decode.split_sentences`), each segment translated
         independently, and the results joined with a space (spec §7). `None` (default) disables
-        segmentation entirely.
+        segmentation entirely. `mbr` (default None = plain beam search, unchanged) switches each
+        segment to MBR decoding over the pool it describes; `beam` is then unused.
         """
         normalized = [normalize_text(t) for t in texts]
 
@@ -185,7 +241,7 @@ class Translator:
             batch_positions = order[start : start + batch_size]
             batch_texts = [work[i][2] for i in batch_positions]
             translations, kinds = self._translate_batch(
-                batch_texts, beam, alpha, no_repeat_ngram_size
+                batch_texts, beam, alpha, no_repeat_ngram_size, mbr
             )
             for pos, txt, kind in zip(batch_positions, translations, kinds, strict=True):
                 orig_idx, seg_idx, _ = work[pos]
