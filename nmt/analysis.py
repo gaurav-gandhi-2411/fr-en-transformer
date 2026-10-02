@@ -386,6 +386,70 @@ def figure_failure_mode_rates(features: list[SentenceFeatures], out_path: Path) 
     return out_path
 
 
+_UNTRANSLATED_COPY_THRESHOLD = 0.1  # same cut as `_failure_type` / the failure-mode figure
+_OVERLONG_RATIO = 1.5  # hyp/ref word ratio above which a hypothesis counts as over-generated
+
+
+def failure_mode_rates(features: list[SentenceFeatures]) -> dict[str, Any]:
+    """Failure-mode rates of one group of sentences (a slice, a split): the share with any
+    repeated 3-gram, truncated (hyp/ref < 0.5), untranslated copy (> 10% of hyp subwords copied
+    from the source and never seen on the train target side), and over-long (hyp/ref > 1.5), plus
+    the mean and median per-sentence hyp/ref word-count ratio. Rates are shares in [0, 1]; an empty
+    group yields n=0 and None rates (not 0, which would read as 'no failures')."""
+    n = len(features)
+    if n == 0:
+        keys = ("repetition", "truncation", "untranslated_copy", "overlong")
+        return {
+            "n": 0,
+            **{f"{k}_rate": None for k in keys},
+            "length_ratio_mean": None,
+            "length_ratio_median": None,
+        }
+    ratios = np.array([f.length_ratio for f in features])
+    return {
+        "n": n,
+        "repetition_rate": sum(1 for f in features if f.repetition_rate > 0) / n,
+        "truncation_rate": sum(1 for f in features if f.truncated) / n,
+        "untranslated_copy_rate": sum(
+            1 for f in features if f.untranslated_copy_rate > _UNTRANSLATED_COPY_THRESHOLD
+        )
+        / n,
+        "overlong_rate": float(np.mean(ratios > _OVERLONG_RATIO)),
+        "length_ratio_mean": float(ratios.mean()),
+        "length_ratio_median": float(np.median(ratios)),
+    }
+
+
+def rarity_bucket_edges(rarities: list[float], n_buckets: int = 5) -> list[float]:
+    """Interior quantile edges (n_buckets - 1 values) of the source-rarity feature. Computed on the
+    sources only, so every model is bucketed identically."""
+    qs = [i / n_buckets for i in range(1, n_buckets)]
+    return [float(v) for v in np.quantile(np.array(rarities), qs)]
+
+
+def rarity_bucket_chrf(
+    features: list[SentenceFeatures], edges: list[float]
+) -> list[dict[str, Any]]:
+    """Mean sentence chrF per source-rarity bucket. `src_rarity_mean` is a mean train frequency, so
+    a LOW value is a rare source; bucket 1 is the most common sources (highest frequency) and the
+    last bucket the rarest. A value equal to an edge falls in the lower-frequency bucket
+    (`np.searchsorted(..., side="left")`)."""
+    n_buckets = len(edges) + 1
+    by_bucket: list[list[SentenceFeatures]] = [[] for _ in range(n_buckets)]
+    for f in features:
+        ascending = int(np.searchsorted(edges, f.src_rarity_mean, side="left"))
+        by_bucket[n_buckets - 1 - ascending].append(f)
+    return [
+        {
+            "bucket": i + 1,
+            "n": len(sel),
+            "mean_src_freq": float(np.mean([f.src_rarity_mean for f in sel])) if sel else None,
+            "chrf": float(np.mean([f.chrf for f in sel])) if sel else None,
+        }
+        for i, sel in enumerate(by_bucket)
+    ]
+
+
 # -------------------------------------------------------------------------------------------
 # Example selection (spec §10)
 # -------------------------------------------------------------------------------------------
