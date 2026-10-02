@@ -139,3 +139,15 @@ jobs:
           PY="$RUNNER_TEMP/venv/bin/python"
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
             --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"all"'
+
+      # CONFIG="extend_l4" (PREREG rule 4: stable 19k -> 40k, Branch A, Branch B in one Colab
+      # session) executed end to end as a DRY RUN: the input-checkpoint check (MISSING on this
+      # host, reported not fatal in a dry run), each run's plan and exact argv (--init-from only on
+      # a fresh run) and the labelled ESTIMATE are printed; nothing is trained.
+      # execute_notebook.py refuses this config without DRY_RUN=True.
+      - name: Execute colab/train.ipynb in extend_l4 DRY_RUN mode (synthetic shards, 3.13)
+        if: matrix.python-version == '3.13'
+        run: |
+          PY="$RUNNER_TEMP/venv/bin/python"
+          "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
+            --set CONFIG='"extend_l4"' --set DRY_RUN=True

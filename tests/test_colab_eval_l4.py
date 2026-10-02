@@ -722,6 +722,7 @@ def _drive_ns(tmp_path: Path, **over: Any) -> dict[str, Any]:
         "repo_dir": tmp_path,
         "ABLATION": False,
         "EVAL": True,
+        "EXTEND": False,
         "DRY_RUN": False,
         "CONFIG": "eval_l4",
         "RUN": "main",
