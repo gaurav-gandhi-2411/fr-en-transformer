@@ -92,7 +92,8 @@ run without GG's approval**.
 - Known validity limit: the ablations ran in bf16 on an RTX 3070 while `main` runs in fp16 on a
   T4. Ablation conclusions are assumed, not shown, to transfer across precision and hardware.
 
-## 6. Amendments (dated; each made before any ablation training run)
+## 6. Amendments (dated; each made before the results it governs; the last entry is made after the
+ablation and main-run selection results exist and states what was already known)
 
 - **2026-10-01 — leakage near-duplicate rule kept (GG decision).**
   - **What stays:** the guard keeps removing train pairs whose normalized fr or en is a
@@ -174,3 +175,61 @@ run without GG's approval**.
       stopping choice. The same holds for E3.
     - Official dev and E3 enter only the single final report of the selected model (§5). All
       selection uses E1 + E2.
+- **2026-10-02 — post-selection amendment: α-grid extension, MBR, ensembling and an extension
+  run (made AFTER the ablation and main-run selection results exist; disclosures first).**
+  - **What was known when this was written:**
+    1. The Colab selection summaries (from GG): `main` winner = `final`, objective 48.7455
+       (BLEU 37.08, chrF 57.29, chrF-E1 54.98) at α = 1.2, beam 5, T = 192; ablation objectives
+       S1 43.7781, S2 44.8382, S3 44.9363. **α = 1.2, the upper edge of the §1 grid, was the
+       tuning winner in all 6 tuning runs** (3 `main` candidates, S1, S2, S3), on E1 + E2.
+    2. The main run's training curves, including the E1 validation loss, whose minimum (2.9041)
+       was at the last evaluation, so the run was not overfitting at its planned end.
+    3. NOT yet looked at by the authors of this amendment: any official dev, E3, E2-synth,
+       sacreBLEU, COMET or per-slice score of this eval, and the H1 / H2 tests (§3).
+    4. The choices below were motivated by (1) and (2), which are selection-set results and
+       training curves. No dev or E3 score informed them. The motivation is post-hoc and is not
+       presented as pre-registered hypothesis testing; only the rules below are pre-registered.
+  - **Fallback and safety net:** the `main` / `final` model at its tuned config (α 1.2, beam 5,
+    T 192), uploaded at HF eval revision `c3d85982…`, is committed as the v1 submission and stays
+    the submission unless a rule below replaces it.
+  - **1. α grid.** For every candidate decoded under the rules below, α ∈ {1.2, 1.4, 1.6, 1.8,
+    2.0} replaces the §1 grid (beam ∈ {1, 4, 5} and the T step unchanged), chosen by the §2
+    objective on E1 + E2. If the winner is again at α = 2.0 it is reported as a grid-edge result,
+    not extended further. §3's H1 / H2 are unchanged: their primary decoding is each ablation
+    model's already-tuned config from the original grid. A re-tune of S1–S3 on the extended
+    grid, if run, is a secondary sensitivity report only and never changes the H1 / H2 verdicts.
+  - **2. MBR decoding.** Utility = sentence-level chrF exactly as computed by the vendored
+    `official/score.py` (same n-gram order, β and tokenization). Pseudo-references = the
+    candidate pool; the output is the pool member with the highest mean utility against the other
+    members. Pools tried (tuned on E1 + E2 with the §2 objective, one per model/ensemble):
+    beam n-best with N ∈ {8, 16} and/or epsilon sampling with ε = 0.02, N ∈ {8, 16}
+    (sampling seed 1234). Beam settings inside a pool use the winner of rule 1 for that model.
+  - **3. Ensembling.** Average per-step log-probabilities across models sharing the
+    SentencePiece tokenizer (sha256 `1fc208b5…`). The ensembles considered are exactly: {main
+    `final`, branch A}, {main `final`, branch B}, {branch A, branch B}, {main `final`, branch A,
+    branch B}; single-member ensembles equal the single model. No other combinations.
+  - **4. Extension training (WSD branching).** From `runs/main/ckpt/step_00019000.pt`, a
+    stable-phase checkpoint (the WSD decay of the main run starts at step 19,716):
+    - continue the stable phase to 40,000 steps at the stable learning rate, saving stable
+      checkpoints at 30,000 and 40,000;
+    - **Branch A:** linear decay from the step-30,000 stable checkpoint to 37,500;
+    - **Branch B:** linear decay from the step-40,000 stable checkpoint to 50,000;
+    - same data order continued, same hyperparameters (seed 1234, dropout 0.1, bf16, tokens per
+      step, warmup unchanged), new run directories, W&B group `extend_l4`;
+    - **Overfitting watch:** E1 validation loss is read at every evaluation; two consecutive rises
+      above the running minimum flag the run. A flag is reported to GG, who decides whether to cut
+      it. Absent a cut, branches train to their planned end.
+  - **5. Final selection.** Candidates = {main `final`, branch A, branch B, the four ensembles of
+    rule 3} × {beam with the rule-1 grid, MBR with the rule-2 pools}, on the §2 objective over E1 +
+    E2. The highest objective is the submission, at its own tuned config; ties go to the
+    earlier-listed candidate. Dev, E2-synth and E3 are report-only and decoded once for the winner
+    (§5). For information only, not a gate, the paired-bootstrap Δ of the objective against the v1
+    model (`nmt/compare.py --objective`, 1,000 resamples, seed 1234) is reported with its 95% CI.
+    Note the winner is chosen on the same sets it is tuned on, so its E1 + E2 objective is
+    optimistic; dev and E3 are the unbiased view.
+  - **6. Production config.** Also reported: the best single model with beam search (no
+    MBR / ensemble), with measured latency, on the same CPU/precision settings used for the
+    benchmark.
+  - **Unchanged:** §1 metrics and bootstrap, §2 objective, §3 hypotheses and decision rules,
+    selection-set separation (dev / E2-synth / E3 never enter selection).
+
