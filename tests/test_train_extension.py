@@ -285,6 +285,46 @@ def test_init_from_continues_exactly_and_never_writes_to_its_sources(
     assert _tree_hashes(tmp_path / "stable") == stable_before
 
 
+def test_init_from_continues_exactly_across_epoch_boundaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The synthetic train split (512 examples, 128-token steps) is a few dozen steps per epoch,
+    so 400 steps cross several epoch boundaries; the continuation after --init-from at step 150
+    must see the same (sampler.epoch, batch ids) sequence and losses as an uninterrupted run."""
+    seen: list[tuple[int, tuple[str, ...]]] = []
+    original = train_module._iter_micro_batches
+
+    def wrapped(sampler: object) -> Iterator[Batch]:
+        for batch in original(sampler):  # type: ignore[arg-type]
+            seen.append((sampler.epoch, tuple(batch.ids)))  # type: ignore[attr-defined]
+            yield batch
+
+    monkeypatch.setattr(train_module, "_iter_micro_batches", wrapped)
+    n, parent_step = 400, 150
+    sched = (n, n + 100)
+    _go(_cfg(tmp_path, "ref", planned=n, decay=sched))
+    ref = list(seen)
+    seen.clear()
+    _go(
+        _cfg(tmp_path, "par", planned=n, decay=sched, ckpt_steps=parent_step), max_steps=parent_step
+    )
+    parent = list(seen)
+    seen.clear()
+    _go(
+        _cfg(tmp_path, "ext", planned=n, decay=sched), init_from=_ckpt(tmp_path, "par", parent_step)
+    )
+    ext = list(seen)
+
+    assert len({e for e, _ in ref}) >= 3  # the reference crosses >= 2 epoch boundaries
+    assert len({e for e, _ in ext}) >= 3  # ... and so does the continuation itself
+    assert parent == ref[: len(parent)]
+    assert ext == ref[len(parent) :]  # identical (epoch, ids) sequence, in order
+    ref_rows, ext_rows = _rows(tmp_path, "ref"), _rows(tmp_path, "ext")
+    assert sorted(ext_rows) == list(range(parent_step + 1, n + 1))
+    for step, row in ext_rows.items():
+        assert row["loss"] == pytest.approx(ref_rows[step]["loss"], abs=1e-6), step
+
+
 def test_init_from_guards(tmp_path: Path) -> None:
     main = _cfg(tmp_path, "main", planned=8, decay=(8, 12), ckpt_steps=4)
     _go(main, max_steps=4)
