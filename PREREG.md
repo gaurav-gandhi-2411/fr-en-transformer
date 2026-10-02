@@ -153,6 +153,10 @@ run without GG's approval**.
       `decay_len = round(planned_steps × cooldown_frac) = round(24,645 × 0.2) = 4,929` and
       `decay_start_step = planned_steps − decay_len = 19,716`; `cooldown_frac: 0.2` is in
       `configs/main.yaml`.
+    - **Where 24,645 comes from:** it is not in `configs/main.yaml`, which keeps a 50,000
+      placeholder. It reached the trainer through `--planned-steps 24645`: the notebook's
+      `PLANNED_STEPS`, overriding the config at `nmt/train.py:1456-1457`. That value is the L4
+      pilot's `plan.json`.
     - **Retention disclosure:** only five checkpoints exist because `prune_checkpoints`
       (`nmt/train.py:676-697`) protects decay-phase files only when `decay_start_step` is set,
       which happens only under `--cooldown-now`. The main run therefore kept its last
@@ -162,9 +166,10 @@ run without GG's approval**.
       candidate gets its own §1 decoding tuning. The candidate and decoding config with the
       highest objective are selected.
   - **(c) Disclosure: dev metrics logged during training.**
-    - The main run's periodic in-training eval hook decoded the official dev set (all 150, per
-      slice) together with E1/E2/E3 subsets, and logged their BLEU/chrF to W&B as training
-      curves.
+    - The main run's periodic in-training eval hook (every 500 steps) decoded the official dev set
+      (all 150, per slice) together with fixed seeded subsets of E1 (500), E2 (300) and E3 (300).
+      It decoded greedily (max length 1.5 × source + 10, 3-gram repeat block) and logged BLEU/chrF
+      to W&B as training curves (`nmt/evaluate.py` `build_train_eval_fn` / `TrainEvalConfig`).
     - These curves were not used for any decision: no checkpoint, hyperparameter, decoding or
       stopping choice. The same holds for E3.
     - Official dev and E3 enter only the single final report of the selected model (§5). All
