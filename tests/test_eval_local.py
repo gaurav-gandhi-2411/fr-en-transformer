@@ -317,6 +317,58 @@ def test_an_extra_file_on_the_hub_or_on_disk_is_refused(tmp_path: Path) -> None:
         el.pull_run(clean, REPO, "s1_sin_l4", REV, tmp_path / "r2")
 
 
+def test_files_outside_the_run_prefix_never_refuse_or_download(tmp_path: Path) -> None:
+    hub = _hub(("main", 0), ("s1_sin_l4", 0), ("s2_rope_l4", 2))
+    hub.files["_write_probe.txt"] = b"probe"
+    hub.files[".gitattributes"] = b"*.safetensors filter=lfs"
+    hub.files["README.md"] = b"# repo"
+    digests = el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "r")
+    assert hub.downloads and all(f.startswith("runs/s1_sin_l4/") for _, f, _ in hub.downloads)
+    assert all(f.startswith("runs/s1_sin_l4/") for f in digests)
+    rec = json.loads((tmp_path / "r" / el.PULL_RECORD_NAME).read_text(encoding="utf-8"))
+    assert rec["verified"] is True
+
+
+def test_extra_or_tampered_file_under_the_target_run_is_refused_among_other_runs(
+    tmp_path: Path,
+) -> None:
+    hub = _hub(("main", 0), ("s1_sin_l4", 0))
+    hub.files["_write_probe.txt"] = b"probe"
+    hub.files["runs/s1_sin_l4/extra.json"] = b"{}"
+    with pytest.raises(el.ManifestVerificationError, match="not in the manifest"):
+        el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "a")
+    del hub.files["runs/s1_sin_l4/extra.json"]
+    hub.files["runs/s1_sin_l4/bench.json"] += b" "
+    with pytest.raises(el.ManifestVerificationError, match="differs"):
+        el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "b")
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["../outside.json", "/abs.json", "C:\\x.json", "C:/x.json", "a/../../b.json", "a\\b.json"],
+)
+def test_unsafe_manifest_keys_are_refused_naming_the_key(tmp_path: Path, key: str) -> None:
+    hub = _hub(("s1_sin_l4", 0))
+    manifest = _manifest(hub, "s1_sin_l4")
+    manifest["files"][key] = {"sha256": "0" * 64, "bytes": 1}
+    _put_manifest(hub, "s1_sin_l4", manifest)
+    with pytest.raises(el.ManifestVerificationError) as err:
+        el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "r")
+    assert repr(key) in str(err.value)
+    assert [f for _, f, _ in hub.downloads] == ["runs/s1_sin_l4/manifest.json"]
+
+
+def test_a_failed_re_pull_clears_the_stale_pull_record(tmp_path: Path) -> None:
+    hub = _hub(("s1_sin_l4", 0))
+    run_dir = tmp_path / "r"
+    el.pull_run(hub, REPO, "s1_sin_l4", REV, run_dir)
+    assert (run_dir / el.PULL_RECORD_NAME).is_file()
+    hub.files["runs/s1_sin_l4/bench.json"] += b" "
+    with pytest.raises(el.ManifestVerificationError):
+        el.pull_run(hub, REPO, "s1_sin_l4", REV, run_dir)
+    assert not (run_dir / el.PULL_RECORD_NAME).exists()
+
+
 def test_a_missing_manifest_is_refused_before_any_download(tmp_path: Path) -> None:
     hub = _hub(("main", 0))
     del hub.files[f"runs/main/{MANIFEST_NAME}"]

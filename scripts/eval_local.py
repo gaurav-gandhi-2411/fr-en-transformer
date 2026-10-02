@@ -185,6 +185,21 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 PULL_RECORD_NAME = "pull_record.json"
 
 
+def _unsafe_rel(rel: Any) -> str | None:
+    """Why `rel` is not a safe path relative to runs/<run>/ (build_manifest's key form), or None.
+    Refuses absolute (/x, C:x), backslash-containing, empty and '..'-containing keys so a
+    manifest can never steer a read/hash outside runs/<run>/."""
+    if not isinstance(rel, str) or not rel:
+        return "is not a non-empty string"
+    if "\\" in rel:
+        return "contains a backslash"
+    if rel.startswith("/") or re.match(r"^[A-Za-z]:", rel):
+        return "is absolute"
+    if any(part in ("..", ".", "") for part in rel.split("/")):
+        return "has an empty, '.' or '..' path component"
+    return None
+
+
 def _load_manifest(path: Path, run: str, repo_id: str, revision: str) -> dict[str, Any]:
     """Parse and structurally validate runs/<run>/manifest.json (schema of nmt.eval_l4)."""
 
@@ -212,6 +227,9 @@ def _load_manifest(path: Path, run: str, repo_id: str, revision: str) -> dict[st
     if not isinstance(listed, dict) or not listed:
         raise bad("manifest has no file list")
     for rel, entry in listed.items():
+        problem = _unsafe_rel(rel)
+        if problem:
+            raise bad(f"manifest key {rel!r} {problem}")
         ok = (
             isinstance(entry, dict)
             and isinstance(entry.get("bytes"), int)
@@ -248,6 +266,9 @@ def verify_pulled_run(
     def fail(reason: str, **kw: Any) -> ManifestVerificationError:
         return ManifestVerificationError(reason, repo=repo_id, revision=revision, **kw)
 
+    # Per-run scope: only hub files under runs/<run>/ are compared with the manifest. Anything
+    # outside it (the root _write_probe.txt that nmt.eval_l4's write probe commits, .gitattributes,
+    # README.md, other runs' runs/<other>/...) is not this run's and must neither refuse nor load.
     remote = {f.removeprefix(prefix) for f in remote_files if f.startswith(prefix)}
     remote.discard(MANIFEST_NAME)
     for rel in sorted(remote - set(listed)):
@@ -304,6 +325,8 @@ def pull_run(
     before anything is scored. The repo must be private and the revision a 40-hex sha. The
     model weights are skipped unless `with_model`. Every call re-downloads and re-hashes: a
     cached pull is never trusted. Writes <run_dir>/pull_record.json. Returns {repo path: sha256}."""
+    # a failed re-pull must not leave a previous run's 'verified' record behind
+    (run_dir / PULL_RECORD_NAME).unlink(missing_ok=True)
     if not _REVISION_RE.match(revision or ""):
         raise ManifestVerificationError(
             "revision is not a 40-hex commit sha", repo=repo_id, revision=str(revision)
@@ -324,6 +347,7 @@ def pull_run(
             expected=True,
             actual=private,
         )
+    # the hub lists the WHOLE repo; keep only runs/<run>/ so nothing else is ever downloaded
     prefix = f"runs/{run}/"
     files = [f for f in hub.list_files(repo_id, revision) if f.startswith(prefix)]
     present = {f.removeprefix(prefix) for f in files}
