@@ -1,0 +1,221 @@
+{
+ "run": "s3_rope_concat_l4",
+ "variant": "seg_tuned",
+ "failure_modes": {
+  "dev": {
+   "n": 150,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.013333333333333334,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.05333333333333334,
+   "length_ratio_mean": 1.0486619245173145,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.013333333333333334,
+   "word_copy_sentence_rate": 0.30666666666666664,
+   "word_copy_sentences": 46,
+   "word_copy_words": 60
+  },
+  "dev:long": {
+   "n": 30,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.06666666666666667,
+   "length_ratio_mean": 1.1000272111176166,
+   "length_ratio_median": 1.0396389324960755,
+   "ref_repetition_rate": 0.06666666666666667,
+   "word_copy_sentence_rate": 0.6,
+   "word_copy_sentences": 18,
+   "word_copy_words": 23
+  },
+  "dev:seen": {
+   "n": 60,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.03333333333333333,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.06666666666666667,
+   "length_ratio_mean": 1.0615977362956264,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.0,
+   "word_copy_sentence_rate": 0.2833333333333333,
+   "word_copy_sentences": 17,
+   "word_copy_words": 24
+  },
+  "dev:unseen_domain": {
+   "n": 60,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.03333333333333333,
+   "length_ratio_mean": 1.0100434694388516,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.0,
+   "word_copy_sentence_rate": 0.18333333333333332,
+   "word_copy_sentences": 11,
+   "word_copy_words": 13
+  },
+  "e1": {
+   "n": 1940,
+   "repetition_rate": 0.013917525773195877,
+   "truncation_rate": 0.021134020618556702,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.04587628865979381,
+   "length_ratio_mean": 1.0194857818557277,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.04742268041237113,
+   "word_copy_sentence_rate": 0.33608247422680415,
+   "word_copy_sentences": 652,
+   "word_copy_words": 1109
+  },
+  "e2": {
+   "n": 1000,
+   "repetition_rate": 0.037,
+   "truncation_rate": 0.006,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.035,
+   "length_ratio_mean": 1.0476863289945568,
+   "length_ratio_median": 1.0219806763285024,
+   "ref_repetition_rate": 0.147,
+   "word_copy_sentence_rate": 0.592,
+   "word_copy_sentences": 592,
+   "word_copy_words": 1157
+  },
+  "e2synth": {
+   "n": 300,
+   "repetition_rate": 0.08333333333333333,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0033333333333333335,
+   "length_ratio_mean": 1.0184883512878884,
+   "length_ratio_median": 1.0114957716701904,
+   "ref_repetition_rate": 0.25,
+   "word_copy_sentence_rate": 0.8666666666666667,
+   "word_copy_sentences": 260,
+   "word_copy_words": 826
+  },
+  "e2synth:e2synth_400_600": {
+   "n": 100,
+   "repetition_rate": 0.02,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0,
+   "length_ratio_mean": 1.0200770159964756,
+   "length_ratio_median": 1.0158670664667666,
+   "ref_repetition_rate": 0.1,
+   "word_copy_sentence_rate": 0.8,
+   "word_copy_sentences": 80,
+   "word_copy_words": 200
+  },
+  "e2synth:e2synth_600_800": {
+   "n": 100,
+   "repetition_rate": 0.12,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.01,
+   "length_ratio_mean": 1.0267862751244412,
+   "length_ratio_median": 1.0246246246246247,
+   "ref_repetition_rate": 0.26,
+   "word_copy_sentence_rate": 0.84,
+   "word_copy_sentences": 84,
+   "word_copy_words": 291
+  },
+  "e2synth:e2synth_800_900": {
+   "n": 100,
+   "repetition_rate": 0.11,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0,
+   "length_ratio_mean": 1.0086017627427482,
+   "length_ratio_median": 0.9917694079393036,
+   "ref_repetition_rate": 0.39,
+   "word_copy_sentence_rate": 0.96,
+   "word_copy_sentences": 96,
+   "word_copy_words": 335
+  },
+  "e3": {
+   "n": 1000,
+   "repetition_rate": 0.004,
+   "truncation_rate": 0.013,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.027,
+   "length_ratio_mean": 0.9876627000577799,
+   "length_ratio_median": 0.9666666666666667,
+   "ref_repetition_rate": 0.02,
+   "word_copy_sentence_rate": 0.441,
+   "word_copy_sentences": 441,
+   "word_copy_words": 1555
+  }
+ },
+ "rule_based_examples": [
+  {
+   "id": "e1_01118",
+   "source": "MODIFICATIONS DU RÈGLEMENT D'EXÉCUTION DU PCT (dont l'entrée en vigueur est fixée au 1er juillet 2008) Règle 4 Requête (contenu) 4.1 Contenu obligatoire et contenu facultatif; signature a) [Sans changement] b) La requête doit comporter, le cas échéant : i) [sans changement] ii) les indications relatives à une recherche antérieure prévues aux règles 4.12.i) et 12bis.1.c) et f); iii) et iv) [sans changement] c) La requête peut comporter : i) à iv) [sans changement] v) une requête en restauration du droit de priorité; vi) une déclaration prévue à la règle 4.12.ii). d) [Sans changement] 4.2 à 4.10 [Sans changement] 4.11 Mention d'une demande de \"continuation\" ou de \"continuation-in-part\" ou d'une demande principale ou d'un brevet principal a) Si i) le déposant a l'intention d'indiquer, conformément à la règle 49bis.1.a) ou b), qu'il souhaite que la demande internationale soit traitée, dans tout État désigné, comme une demande de brevet d'addition, de certificat d'addition, de certificat d'auteur d'invention additionnel ou de certificat d'utilité additionnel; ou ii) le déposant a l'intention d'indiquer, conformément à la règle 49bis.1.d), qu'il souhaite que la demande internationale soit traitée, dans tout État désigné, comme une demande de \"continuation\" ou de \"continuation-in-part\" d'une demande antérieure, la requête doit l'indiquer et indiquer la demande principale, le brevet principal ou le titre principal correspondant.",
+   "reference": "(b) The inclusion in the request of an indication under paragraph (a) shall have no effect on the operation of Rule 4.9.",
+   "hyp": "MODIFICATIONS OF THE COUNCUTION OF THE PCT EXECTION (the entry into force shall be fixed at 1 July 2008) Rule 4 Request (continu) 4.1 Compulsory Contents and Optional Contents; signature (a) [San change] (b) The request shall include, where appropriate: (i) [without change] (ii) the indications relating to previous research provided for in rules 4.12.i) and 12bis.1.c) and (f); (iii) and (iv) [without change] (c) The request may include: (i) to (iv) [without change] (v) a request for the restoration of the right of priority; (vi) a statement provided for in Rule 4.12.ii). (d) [San change] 4.2 to 4.10 [Sans change] 4.11 A request for \"continuation\" or \"in-part\" or principal application or patent application (a) If (i) the applicant intends to indicate, in accordance with Rule 49bis.1.(a) or (b) that the applicant wishes that the international application be treated, in any designated State, as an application for a patent of addition, certificate of addition, of the author's certificate of additional invention or additional utility certificate; or (ii) the applicant intends to indicate, in accordance with Rule 49bis.1(d), that it wishes that the international application be dealt with, in any designated State, such as a request for \"continuation\" or \"in-part\" of an earlier application, the application shall indicate and indicate the principal application, or the corresponding principal title.",
+   "slice": "e1",
+   "rule": "A: largest length-ratio deviation (ref >= 5 words)",
+   "length_ratio": 10.173913043478262,
+   "hyp_repetition_rate": 0.09913793103448276
+  },
+  {
+   "id": "e1_01087",
+   "source": "La réponse est étonnamment évidente : la guerre était son ennemi réel. C’était la fausse croyance que la violence peut accomplir quelque chose, que le mal peut vaincre le mal. C’était cela son ennemi réel et l’ennemi réel de toute l’humanité. * * *",
+   "reference": "The answer is amazingly obvious: it was war that was her real enemy. It was the false belief that violence will accomplish something, that evil can be overcome by more evil.",
+   "hyp": "The answer is amazingly evident: The war was his real enemy. It was the false belief that violence can accomplish something, that evil can defeat evil. It was his real enemy and the real enemies of all humanity. * * *",
+   "slice": "e1",
+   "rule": "B: highest hypothesis repetition (reference has none)",
+   "length_ratio": 1.2258064516129032,
+   "hyp_repetition_rate": 0.05555555555555555
+  }
+ ],
+ "failure_mode_definitions": {
+  "repetition_rate": "share of sentences with any repeated word 3-gram in the hypothesis",
+  "truncation_rate": "share with hyp/ref word-count ratio < 0.5",
+  "untranslated_copy_rate": "share with > 10% of hypothesis subwords copied from the source and never seen on the train target side",
+  "overlong_rate": "share with hyp/ref word-count ratio > 1.5",
+  "ref_repetition_rate": "the same repeated-3-gram share computed on the REFERENCES: repeated 3-grams occur legitimately, so the hypothesis rate is not a degeneration signal by itself",
+  "word_copy_sentence_rate": "HEURISTIC: share of sentences with >= 1 hypothesis word of length >= 4 identical to a source word and absent from the reference",
+  "word_copy_words": "number of such words in the group (word_copy_sentences = sentences)"
+ },
+ "rarity_buckets_e1_e2_e3": {
+  "definition": "quintiles of the source's mean subword train frequency, edges from the pooled E1+E2+E3 sources (model independent); bucket 1 = most common sources",
+  "edges_mean_src_freq": [
+   101184.10392156863,
+   132543.20263322882,
+   159915.9523809524,
+   192201.39931623932
+  ],
+  "buckets": [
+   {
+    "bucket": 1,
+    "n": 788,
+    "mean_src_freq": 224412.34714320008,
+    "chrf": 51.25920036466392
+   },
+   {
+    "bucket": 2,
+    "n": 788,
+    "mean_src_freq": 174899.28290329344,
+    "chrf": 52.60489639625678
+   },
+   {
+    "bucket": 3,
+    "n": 788,
+    "mean_src_freq": 146157.1655766129,
+    "chrf": 50.20045638202727
+   },
+   {
+    "bucket": 4,
+    "n": 788,
+    "mean_src_freq": 117879.32565223864,
+    "chrf": 49.071736250453256
+   },
+   {
+    "bucket": 5,
+    "n": 788,
+    "mean_src_freq": 62855.13371151275,
+    "chrf": 46.15296510041796
+   }
+  ]
+ }
+}

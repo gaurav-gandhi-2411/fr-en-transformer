@@ -1,0 +1,85 @@
+{
+  "verified": true,
+  "hf_repo": "OWNER/fr-en-transformer-eval",
+  "hf_revision": "bdd850a6d384e088dd1eb52d67ad767149dee3af",
+  "private": true,
+  "manifest_sha256": "473c1ab9925bfc318b4f2d800660b86e21ab774416c9441c5082ce2bb34fba03",
+  "model_files_checked": false,
+  "files": {
+    "bench.json": {
+      "ok": true,
+      "sha256": "2e0b5f8c6f0591539047203c8691dde7132835a3464b15b2d0d8c4200452c772",
+      "bytes": 942
+    },
+    "decode_summary.json": {
+      "ok": true,
+      "sha256": "8951e331ea08b9abba105f7e4437ad50814208672665bf3ac152ccd079ffd0af",
+      "bytes": 2263
+    },
+    "predictions/seg_off/dev_predictions.json": {
+      "ok": true,
+      "sha256": "f8a67f5bda99cbb2947bdae0926d1969faaf121eb4b743dda14b4e2c67ae102c",
+      "bytes": 17115
+    },
+    "predictions/seg_off/e1_predictions.json": {
+      "ok": true,
+      "sha256": "a90dc5c0a02046878c0ac9a09e361ac4351f1313e3adceca3ad6b4939faab97d",
+      "bytes": 243392
+    },
+    "predictions/seg_off/e2_predictions.json": {
+      "ok": true,
+      "sha256": "c81e844a2971208c88319a42360330a1cc22bf9373931dbb26ef4cc5022c94cd",
+      "bytes": 282196
+    },
+    "predictions/seg_off/e2synth_predictions.json": {
+      "ok": true,
+      "sha256": "506446d93d25d212f4129bf04811543b71ad7bd2bc9c92151081b839cf0fc2e1",
+      "bytes": 184552
+    },
+    "predictions/seg_off/e3_predictions.json": {
+      "ok": true,
+      "sha256": "c43c48f4e038c58d5391b648863bea07cbd536e858e07925707cb57e0384983a",
+      "bytes": 124992
+    },
+    "predictions/seg_tuned/dev_predictions.json": {
+      "ok": true,
+      "sha256": "949aa6565ea9d6f4b3653dc79e07658c06a874ba35e0a6020d67a3dd69ca7a50",
+      "bytes": 17122
+    },
+    "predictions/seg_tuned/e1_predictions.json": {
+      "ok": true,
+      "sha256": "adc752692df98d6a6820ee557d284e37adc5c14895ecc609185d6666368c4a30",
+      "bytes": 244192
+    },
+    "predictions/seg_tuned/e2_predictions.json": {
+      "ok": true,
+      "sha256": "c6334027d8dff168678c35648737094cd1c2b5b39368d5b5dea276520b805ca7",
+      "bytes": 283016
+    },
+    "predictions/seg_tuned/e2synth_predictions.json": {
+      "ok": true,
+      "sha256": "2d6b445c0a2d91a7649a1a31660e902528ed712c796bcc080d78d9419933b0f9",
+      "bytes": 188956
+    },
+    "predictions/seg_tuned/e3_predictions.json": {
+      "ok": true,
+      "sha256": "bcebdd11c686e4f0e24d73e2a6dd8fe9011ed4efe4e2ef8dc23a14c0c826197c",
+      "bytes": 125111
+    },
+    "run_meta.json": {
+      "ok": true,
+      "sha256": "dd84cbc6725b4f35929968df21705414d6e07440a1cf6f3001a5325836156603",
+      "bytes": 773
+    },
+    "selection.json": {
+      "ok": true,
+      "sha256": "841752e2dd9142249aad5035386066c77c2c029b1dc6f3dad6e361c64a376c05",
+      "bytes": 966
+    },
+    "tuning/final.json": {
+      "ok": true,
+      "sha256": "191975a8c59a5ea841e04a1d30749faebeb5c88780e0ca3e9ba4f688d048fa4f",
+      "bytes": 5385
+    }
+  }
+}

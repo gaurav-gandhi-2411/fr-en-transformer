@@ -1,0 +1,99 @@
+{
+ "pull_records": {
+  "main": {
+   "verified": true,
+   "private": true,
+   "hf_revision": "c3d8598252853fcd7df1ef4a00e8b0382b8f4351",
+   "pinned_revision_matches": true,
+   "manifest_sha256": "613ea8c0d2e22958e6ef5fc55fe63c8d8f6c218c63958ed5edeb5b33b5ca37d1"
+  },
+  "s1_sin_l4": {
+   "verified": true,
+   "private": true,
+   "hf_revision": "041d49269f61d0cbd9c0380a4f0a0a31f7599547",
+   "pinned_revision_matches": true,
+   "manifest_sha256": "c519d1a96bd4d597b1247f6f3d0abd2774c39a7d5b4e9741cb167335b75cc3b6"
+  },
+  "s2_rope_l4": {
+   "verified": true,
+   "private": true,
+   "hf_revision": "bdd850a6d384e088dd1eb52d67ad767149dee3af",
+   "pinned_revision_matches": true,
+   "manifest_sha256": "473c1ab9925bfc318b4f2d800660b86e21ab774416c9441c5082ce2bb34fba03"
+  },
+  "s3_rope_concat_l4": {
+   "verified": true,
+   "private": true,
+   "hf_revision": "ac92b8da971fdf64974089f40e8f4ddbf9d9638b",
+   "pinned_revision_matches": true,
+   "manifest_sha256": "4ea93ee371e08106b58f39180b554355357ba9c7fb069ae6fe06a915a066e740"
+  }
+ },
+ "official_rescore": {
+  "main/seg_off": {
+   "OVERALL": 42.28724806838365,
+   "equals_eval_json": true
+  },
+  "main/seg_tuned": {
+   "OVERALL": 42.28724806838365,
+   "equals_eval_json": true
+  },
+  "s1_sin_l4/seg_off": {
+   "OVERALL": 37.49324446401324,
+   "equals_eval_json": true
+  },
+  "s1_sin_l4/seg_tuned": {
+   "OVERALL": 37.51588657458554,
+   "equals_eval_json": true
+  },
+  "s2_rope_l4/seg_off": {
+   "OVERALL": 38.9709415090421,
+   "equals_eval_json": true
+  },
+  "s2_rope_l4/seg_tuned": {
+   "OVERALL": 38.983808438147676,
+   "equals_eval_json": true
+  },
+  "s3_rope_concat_l4/seg_off": {
+   "OVERALL": 39.49074035917957,
+   "equals_eval_json": true
+  },
+  "s3_rope_concat_l4/seg_tuned": {
+   "OVERALL": 39.47293868505876,
+   "equals_eval_json": true
+  }
+ },
+ "bootstrap_parity": {
+  "what": "fast-bootstrap point estimate vs official/score.py CLI report (overall BLEU/chrF)",
+  "n_checked": 80,
+  "max_abs_diff": 0.0,
+  "equal": true
+ },
+ "colab_side_dev_numbers": "NOT PRESENT: the uploaded runs/<run>/ contain no dev scores (selection.json and tuning/ use E1+E2 only; dev is decoded after selection), so the dev re-score is checked against the in-process scorer and the CLI parity record, not a Colab-side figure",
+ "selection_objective_rescore": {
+  "main": {
+   "selection_json_objective": 48.74554955135861,
+   "local_rescore_e1_seg_off_e2_seg_tuned": 48.74554955135861,
+   "abs_diff": 0.0,
+   "local_rescore_all_seg_tuned": 48.75141585376798
+  },
+  "s1_sin_l4": {
+   "selection_json_objective": 43.77805740848511,
+   "local_rescore_e1_seg_off_e2_seg_tuned": 43.77805740848511,
+   "abs_diff": 0.0,
+   "local_rescore_all_seg_tuned": 43.84554613032252
+  },
+  "s2_rope_l4": {
+   "selection_json_objective": 44.83818479828129,
+   "local_rescore_e1_seg_off_e2_seg_tuned": 44.83818479828129,
+   "abs_diff": 0.0,
+   "local_rescore_all_seg_tuned": 44.906480231828525
+  },
+  "s3_rope_concat_l4": {
+   "selection_json_objective": 44.936270913297264,
+   "local_rescore_e1_seg_off_e2_seg_tuned": 44.936270913297264,
+   "abs_diff": 0.0,
+   "local_rescore_all_seg_tuned": 44.9492485622161
+  }
+ }
+}

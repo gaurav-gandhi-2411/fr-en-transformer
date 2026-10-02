@@ -1,0 +1,28 @@
+{
+ "artifacts": [
+  {
+   "path": "H1_s2_rope_l4_vs_s1_sin_l4_seg_off.json",
+   "sha256": "e6aa88d3b56ad62414ab6e5442e7e3c9c99cf57dc08943176dcca7c20d30d375",
+   "bytes": 6815,
+   "origin": "derived"
+  },
+  {
+   "path": "H1_s2_rope_l4_vs_s1_sin_l4_seg_tuned.json",
+   "sha256": "45522195325693fda07cfe80a67d63b316c77f8f6084f089c3a24b61757d377a",
+   "bytes": 6856,
+   "origin": "derived"
+  },
+  {
+   "path": "H2_s3_rope_concat_l4_vs_s2_rope_l4_seg_off.json",
+   "sha256": "8ab0e3c8d9c19bd3946c6c6adcbed5f324f6cee8889cf67daf1c0983a94e6d04",
+   "bytes": 6980,
+   "origin": "derived"
+  },
+  {
+   "path": "H2_s3_rope_concat_l4_vs_s2_rope_l4_seg_tuned.json",
+   "sha256": "f93aa12f8747a74dc04ef99bf5cdcfc1de2129aaad6ce6594b7eeaf7587007d0",
+   "bytes": 7021,
+   "origin": "derived"
+  }
+ ]
+}

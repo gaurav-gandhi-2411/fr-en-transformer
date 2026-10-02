@@ -1,0 +1,221 @@
+{
+ "run": "s2_rope_l4",
+ "variant": "seg_off",
+ "failure_modes": {
+  "dev": {
+   "n": 150,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.013333333333333334,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.06,
+   "length_ratio_mean": 1.060561708741497,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.013333333333333334,
+   "word_copy_sentence_rate": 0.32666666666666666,
+   "word_copy_sentences": 49,
+   "word_copy_words": 63
+  },
+  "dev:long": {
+   "n": 30,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.06666666666666667,
+   "length_ratio_mean": 1.0994789962612113,
+   "length_ratio_median": 1.0739247311827955,
+   "ref_repetition_rate": 0.06666666666666667,
+   "word_copy_sentence_rate": 0.6333333333333333,
+   "word_copy_sentences": 19,
+   "word_copy_words": 24
+  },
+  "dev:seen": {
+   "n": 60,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.03333333333333333,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.08333333333333333,
+   "length_ratio_mean": 1.0785386616556694,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.0,
+   "word_copy_sentence_rate": 0.25,
+   "word_copy_sentences": 15,
+   "word_copy_words": 22
+  },
+  "dev:unseen_domain": {
+   "n": 60,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.03333333333333333,
+   "length_ratio_mean": 1.023126112067467,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.0,
+   "word_copy_sentence_rate": 0.25,
+   "word_copy_sentences": 15,
+   "word_copy_words": 17
+  },
+  "e1": {
+   "n": 1940,
+   "repetition_rate": 0.005670103092783505,
+   "truncation_rate": 0.02422680412371134,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.041752577319587626,
+   "length_ratio_mean": 1.0106958326833957,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.04742268041237113,
+   "word_copy_sentence_rate": 0.34123711340206186,
+   "word_copy_sentences": 662,
+   "word_copy_words": 1107
+  },
+  "e2": {
+   "n": 1000,
+   "repetition_rate": 0.016,
+   "truncation_rate": 0.006,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.037,
+   "length_ratio_mean": 1.0461948313695992,
+   "length_ratio_median": 1.0208695652173914,
+   "ref_repetition_rate": 0.147,
+   "word_copy_sentence_rate": 0.602,
+   "word_copy_sentences": 602,
+   "word_copy_words": 1170
+  },
+  "e2synth": {
+   "n": 300,
+   "repetition_rate": 0.023333333333333334,
+   "truncation_rate": 0.016666666666666666,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0033333333333333335,
+   "length_ratio_mean": 0.9941424783162154,
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.25,
+   "word_copy_sentence_rate": 0.8633333333333333,
+   "word_copy_sentences": 259,
+   "word_copy_words": 831
+  },
+  "e2synth:e2synth_400_600": {
+   "n": 100,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.03,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0,
+   "length_ratio_mean": 0.9770970342911276,
+   "length_ratio_median": 0.98639392817475,
+   "ref_repetition_rate": 0.1,
+   "word_copy_sentence_rate": 0.81,
+   "word_copy_sentences": 81,
+   "word_copy_words": 188
+  },
+  "e2synth:e2synth_600_800": {
+   "n": 100,
+   "repetition_rate": 0.02,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.01,
+   "length_ratio_mean": 1.0178631441164372,
+   "length_ratio_median": 1.0216222533894344,
+   "ref_repetition_rate": 0.26,
+   "word_copy_sentence_rate": 0.88,
+   "word_copy_sentences": 88,
+   "word_copy_words": 308
+  },
+  "e2synth:e2synth_800_900": {
+   "n": 100,
+   "repetition_rate": 0.05,
+   "truncation_rate": 0.02,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0,
+   "length_ratio_mean": 0.9874672565410811,
+   "length_ratio_median": 0.9762753188297074,
+   "ref_repetition_rate": 0.39,
+   "word_copy_sentence_rate": 0.9,
+   "word_copy_sentences": 90,
+   "word_copy_words": 335
+  },
+  "e3": {
+   "n": 1000,
+   "repetition_rate": 0.001,
+   "truncation_rate": 0.016,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.031,
+   "length_ratio_mean": 0.99408373150068,
+   "length_ratio_median": 0.9725975975975976,
+   "ref_repetition_rate": 0.02,
+   "word_copy_sentence_rate": 0.423,
+   "word_copy_sentences": 423,
+   "word_copy_words": 1527
+  }
+ },
+ "rule_based_examples": [
+  {
+   "id": "e1_01118",
+   "source": "MODIFICATIONS DU RÈGLEMENT D'EXÉCUTION DU PCT (dont l'entrée en vigueur est fixée au 1er juillet 2008) Règle 4 Requête (contenu) 4.1 Contenu obligatoire et contenu facultatif; signature a) [Sans changement] b) La requête doit comporter, le cas échéant : i) [sans changement] ii) les indications relatives à une recherche antérieure prévues aux règles 4.12.i) et 12bis.1.c) et f); iii) et iv) [sans changement] c) La requête peut comporter : i) à iv) [sans changement] v) une requête en restauration du droit de priorité; vi) une déclaration prévue à la règle 4.12.ii). d) [Sans changement] 4.2 à 4.10 [Sans changement] 4.11 Mention d'une demande de \"continuation\" ou de \"continuation-in-part\" ou d'une demande principale ou d'un brevet principal a) Si i) le déposant a l'intention d'indiquer, conformément à la règle 49bis.1.a) ou b), qu'il souhaite que la demande internationale soit traitée, dans tout État désigné, comme une demande de brevet d'addition, de certificat d'addition, de certificat d'auteur d'invention additionnel ou de certificat d'utilité additionnel; ou ii) le déposant a l'intention d'indiquer, conformément à la règle 49bis.1.d), qu'il souhaite que la demande internationale soit traitée, dans tout État désigné, comme une demande de \"continuation\" ou de \"continuation-in-part\" d'une demande antérieure, la requête doit l'indiquer et indiquer la demande principale, le brevet principal ou le titre principal correspondant.",
+   "reference": "(b) The inclusion in the request of an indication under paragraph (a) shall have no effect on the operation of Rule 4.9.",
+   "hyp": "MODIFICATIONS OF PCT REGULATIONS (of which the entry into force is fixed at 1 July 2008) Rule 4 Re Survey (continuu) 4.1 Compulsory Content and Optional content; signature (a) (b) (ii) and (iv) [of change](ii) the authorisation of an application for \"continuation\" or of a principal patent or patent(a)(c) or (d) (c) (i) and iv) (v) [to change] (c), or (b), the applicant intends that the international application be treated, in any designated State, as a request for an additional invention, certificate of addiction, certificate, author's certificate of additional invention or additional utility certificate; or (iii) the applicant has the intent to indicate, in accordance with Rule 49bis.1(d), that it wishes that the International application is treated in any relevant State, such as an application to be processed, in all designated State as a application for 'continuing' or \"containing\" of an earlier application, the request shall be indicated and indicate the main application, main patent or principal title.",
+   "slice": "e1",
+   "rule": "A: largest length-ratio deviation (ref >= 5 words)",
+   "length_ratio": 7.173913043478261,
+   "hyp_repetition_rate": 0.018404907975460124
+  },
+  {
+   "id": "e1_01409",
+   "source": "Suite au mandat donné par le Conseil «énergie» le 11 novembre 1985, la Commission a transmis au Conseil, le 26 février ( ' ), son deuxième (2) rapport sur les industries de lignite et de la tourbe dans la Communauté.",
+   "reference": "During the visit an exchange of letters to take account of the accession of Greece was signed as well as a joint memorandum on the programming mission carried out by the Commission and the Bank the previous week.",
+   "hyp": "Following the mandate given by the Council on 11 November 1985, the Commission transmitted to the Council, on 26 February (' ), its second (2) report on lignite and tour industries in the Community.",
+   "slice": "e1",
+   "rule": "B: highest hypothesis repetition (reference has none)",
+   "length_ratio": 0.8421052631578947,
+   "hyp_repetition_rate": 0.03333333333333333
+  }
+ ],
+ "failure_mode_definitions": {
+  "repetition_rate": "share of sentences with any repeated word 3-gram in the hypothesis",
+  "truncation_rate": "share with hyp/ref word-count ratio < 0.5",
+  "untranslated_copy_rate": "share with > 10% of hypothesis subwords copied from the source and never seen on the train target side",
+  "overlong_rate": "share with hyp/ref word-count ratio > 1.5",
+  "ref_repetition_rate": "the same repeated-3-gram share computed on the REFERENCES: repeated 3-grams occur legitimately, so the hypothesis rate is not a degeneration signal by itself",
+  "word_copy_sentence_rate": "HEURISTIC: share of sentences with >= 1 hypothesis word of length >= 4 identical to a source word and absent from the reference",
+  "word_copy_words": "number of such words in the group (word_copy_sentences = sentences)"
+ },
+ "rarity_buckets_e1_e2_e3": {
+  "definition": "quintiles of the source's mean subword train frequency, edges from the pooled E1+E2+E3 sources (model independent); bucket 1 = most common sources",
+  "edges_mean_src_freq": [
+   101184.10392156863,
+   132543.20263322882,
+   159915.9523809524,
+   192201.39931623932
+  ],
+  "buckets": [
+   {
+    "bucket": 1,
+    "n": 788,
+    "mean_src_freq": 224412.34714320008,
+    "chrf": 51.40299143836872
+   },
+   {
+    "bucket": 2,
+    "n": 788,
+    "mean_src_freq": 174899.28290329344,
+    "chrf": 52.51588771879346
+   },
+   {
+    "bucket": 3,
+    "n": 788,
+    "mean_src_freq": 146157.1655766129,
+    "chrf": 50.231556370196365
+   },
+   {
+    "bucket": 4,
+    "n": 788,
+    "mean_src_freq": 117879.32565223864,
+    "chrf": 48.80724378621136
+   },
+   {
+    "bucket": 5,
+    "n": 788,
+    "mean_src_freq": 62855.13371151275,
+    "chrf": 46.17132463905691
+   }
+  ]
+ }
+}
