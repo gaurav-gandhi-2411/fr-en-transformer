@@ -196,13 +196,9 @@ def gold_path(split: str) -> Path:
 def official_cli_parity(split: str, pred_path: Path, out_dir: Path, entry: dict[str, Any]) -> dict:
     """Run official/score.py as shipped on `split` and compare with the in-process numbers."""
     cli_path = out_dir / f"official_{split}.json"
-    # official/score.py opens its inputs with the platform's default encoding (cp1252 on Windows),
-    # so a UTF-8 prediction file with literal non-ASCII text is read as mojibake there (measured:
-    # BLEU 97.5 for a reference-identical dev prediction). The same JSON with ASCII \u escapes
-    # decodes identically everywhere; the vendored scorer is byte-pinned and cannot be edited.
-    ascii_pred = out_dir / f"official_{split}_pred_ascii.json"
-    ascii_pred.write_text(json.dumps(_read_json(pred_path), ensure_ascii=True), encoding="ascii")
-    cli = run_official_scorer_cli(gold_path(split), ascii_pred, cli_path)
+    # run_official_scorer sets PYTHONUTF8=1, so the UTF-8 prediction file is read as UTF-8 on
+    # every OS (official/score.py itself is byte-pinned and opens files with the default encoding).
+    cli = run_official_scorer_cli(gold_path(split), pred_path, cli_path)
     mine = entry["official"]
     parity = (
         cli["all"] == mine["all"]

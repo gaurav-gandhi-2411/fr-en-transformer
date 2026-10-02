@@ -19,3 +19,12 @@ python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234
 The provided dev/test files and the official scorer are vendored byte-identical; their
 sha256 hashes are recorded in [`official/SHA256SUMS`](official/SHA256SUMS) and checked
 in `tests/test_official_scorer.py`.
+
+## Windows note: scoring needs UTF-8 mode
+
+`official/score.py` (vendored byte-identical, so it cannot be patched) opens its inputs with the
+platform default encoding, which is cp1252 on Windows. A UTF-8 prediction file with literal
+accented text is then decoded as mojibake: a reference-identical dev prediction file scored
+BLEU 97.5 instead of 100. Run the scorer through `nmt.evaluate.run_official_scorer` (used by
+`scripts/eval_local.py` and the tests), which sets `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8`, or
+set `PYTHONUTF8=1` yourself before calling `python official/score.py` by hand.

@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
 import random
 import subprocess
 import sys
@@ -57,24 +58,46 @@ def load_official_module() -> ModuleType:
     return _official_module_cache
 
 
-def run_official_scorer_cli(gold_path: Path, pred_path: Path, out_path: Path) -> dict[str, Any]:
-    """Run `official/score.py` exactly as shipped via `subprocess` (the primary metric, spec §8),
-    parsing the `--out` JSON report it writes."""
-    subprocess.run(
-        [
-            sys.executable,
-            str(OFFICIAL_SCORE_PY),
-            "--gold",
-            str(gold_path),
-            "--pred",
-            str(pred_path),
-            "--out",
-            str(out_path),
-        ],
+def official_scorer_env(parent: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment `official/score.py` must run under: the parent's, plus PYTHONUTF8=1 and
+    PYTHONIOENCODING=utf-8. The vendored scorer calls `open()` without an encoding, so on Windows
+    it decodes a UTF-8 file as cp1252 (measured: BLEU 97.5 for a reference-identical prediction
+    file); UTF-8 mode makes it read UTF-8 on every OS. The scorer itself is byte-pinned."""
+    env = dict(os.environ if parent is None else parent)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+def run_official_scorer(
+    gold_path: Path, pred_path: Path, out_path: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    """The ONE way to run `official/score.py` locally: `python official/score.py` as shipped, with
+    `official_scorer_env()`. Returns the completed process (stdout carries the OVERALL line)."""
+    cmd = [
+        sys.executable,
+        str(OFFICIAL_SCORE_PY),
+        "--gold",
+        str(gold_path),
+        "--pred",
+        str(pred_path),
+    ]
+    if out_path is not None:
+        cmd += ["--out", str(out_path)]
+    return subprocess.run(
+        cmd,
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        env=official_scorer_env(),
     )
+
+
+def run_official_scorer_cli(gold_path: Path, pred_path: Path, out_path: Path) -> dict[str, Any]:
+    """Run `official/score.py` exactly as shipped via `run_official_scorer` (the primary metric,
+    spec §8), parsing the `--out` JSON report it writes."""
+    run_official_scorer(gold_path, pred_path, out_path)
     return json.loads(out_path.read_text(encoding="utf-8"))
 
 

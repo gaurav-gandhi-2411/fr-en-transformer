@@ -262,9 +262,7 @@ def test_scored_numbers_equal_the_official_scorer_run_directly(
     out, _ = scored_main
     rep = run_official_scorer_cli(
         el.gold_path("dev"),
-        # the ASCII-escaped copy: official/score.py reads files in the platform's default
-        # encoding (cp1252 on Windows), which mangles literal non-ASCII text
-        out / "main" / "seg_off" / "official_dev_pred_ascii.json",
+        out / "main" / "seg_off" / "dev_predictions.json",
         tmp_path / "cli.json",
     )
     ev = json.loads((out / "main" / "seg_off" / "eval.json").read_text(encoding="utf-8"))
