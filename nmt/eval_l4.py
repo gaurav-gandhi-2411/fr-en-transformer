@@ -2,8 +2,10 @@ from __future__ import annotations
 
 # Colab-side evaluation steps for `CONFIG = "eval_l4"` (RUNBOOK §4.5). The notebook runs each
 # subcommand below as its own subprocess (the kernel imports only the stdlib and torch), in this
-# order: hf-check, candidates (final only) + bench, candidates, tune (per candidate), select,
-# decode, validate-test, upload. Selection happens HERE, on Colab, on E1 + E2 only (PREREG §1-§2,
+# order: hf-verify (the notebook's skip check), hf-check, candidates (final only) + bench,
+# candidates, tune (per candidate), select, decode, validate-test, upload. The throughput bench
+# runs before any tuning/selection/decoding. Selection happens HERE, on Colab, on E1 + E2 only
+# (dev and E3 are only ever DECODED, after the winner is fixed; PREREG §1-§2,
 # via nmt.tune / nmt.selection); the local pipeline (scripts/eval_local.py) never decodes or
 # selects, it only scores what this module uploaded.
 #
@@ -50,6 +52,12 @@ TIE_RULE = (
     f"candidates within {TIE_EPSILON:g} of the best objective are tied; the tie goes to the "
     "earliest candidate in the pre-registered order (final, avg_last5, avg_decay)"
 )
+# The candidates each run's selection compares (PREREG §6, 2026-10-02 (b)); the notebook holds the
+# same lists as step numbers and tests/test_colab_eval_l4.py checks the two agree.
+MAIN_CANDIDATES: tuple[str, ...] = ("final", "avg_last5", "avg_decay")
+ABLATION_CANDIDATES: tuple[str, ...] = ("final",)
+MANIFEST_NAME = "manifest.json"
+EXPECTED_TEST_IDS = 330  # data/test/sample_submission.json
 _REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 _REPO_ID_RE = re.compile(r"^[A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*$")
 
@@ -135,9 +143,12 @@ def write_token_message(repo_id: str, why: str) -> str:
     )
 
 
+def _status(exc: BaseException) -> int | None:
+    return getattr(getattr(exc, "response", None), "status_code", None)
+
+
 def _is_auth_error(exc: BaseException) -> bool:
-    status = getattr(getattr(exc, "response", None), "status_code", None)
-    return status in (401, 403)
+    return _status(exc) in (401, 403)
 
 
 def check_write_token(api: Any, repo_id: str) -> str:
@@ -694,6 +705,21 @@ def validate_test_predictions(
 _MODEL_FILES = ("model.safetensors", "config.json", "spm.model")
 
 
+def expected_candidates(run: str) -> tuple[str, ...]:
+    """The candidate names a finished `run` must have tuned (pre-registered)."""
+    return MAIN_CANDIDATES if run == "main" else ABLATION_CANDIDATES
+
+
+def required_rels(run: str, candidate_order: Sequence[str]) -> list[str]:
+    """Paths under runs/<run>/ that a complete upload holds (manifest.json excluded)."""
+    rels = ["bench.json", "selection.json", "decode_summary.json", "run_meta.json"]
+    rels += [f"tuning/{c}.json" for c in candidate_order]
+    rels += [f"predictions/{v}/{s}_predictions.json" for v in VARIANTS for s in DECODE_SPLITS]
+    if run == "main":
+        rels += ["test_predictions.json", "validation.json"]
+    return rels + [f"model/{name}" for name in _MODEL_FILES]
+
+
 def collect_upload_files(eval_dir: Path, run: str) -> list[tuple[Path, str]]:
     """(local path, path in repo) for everything the local pipeline needs, under runs/<run>/.
     Raises EvalStepError listing any required file that is missing."""
@@ -702,26 +728,157 @@ def collect_upload_files(eval_dir: Path, run: str) -> list[tuple[Path, str]]:
     if not isinstance(selection, dict):
         raise EvalStepError(f"upload: {eval_dir}/selection.json missing or unreadable")
     winner = selection["winner"]["candidate"]
-    rels = ["bench.json", "selection.json", "decode_summary.json", "run_meta.json"]
-    rels += [f"tuning/{c}.json" for c in selection["candidate_order"]]
-    rels += [f"predictions/{v}/{s}_predictions.json" for v in VARIANTS for s in DECODE_SPLITS]
-    if run == "main":
-        rels += ["test_predictions.json", "validation.json"]
-    files = [(eval_dir / rel, f"runs/{run}/{rel}") for rel in rels]
-    files += [
-        (eval_dir / "candidates" / winner / name, f"runs/{run}/model/{name}")
-        for name in _MODEL_FILES
-    ]
+    files = []
+    for rel in required_rels(run, selection["candidate_order"]):
+        if rel.startswith("model/"):
+            local = eval_dir / "candidates" / winner / rel.removeprefix("model/")
+        else:
+            local = eval_dir / rel
+        files.append((local, f"runs/{run}/{rel}"))
     missing = [str(p) for p, _ in files if not p.is_file()]
     if missing:
         raise EvalStepError("upload: missing required file(s): " + ", ".join(missing))
     return files
 
 
+def commit_message(run: str) -> str:
+    """The single upload commit's message; hf-verify looks for exactly this title."""
+    return f"eval_l4: {run} predictions, tuning, selection, selected model"
+
+
+def build_manifest(run: str, files: Sequence[tuple[Path, str]], eval_dir: Path) -> dict[str, Any]:
+    """sha256 + size of every uploaded file (keys relative to runs/<run>/), plus the selection's
+    candidate order and winner. Uploaded as runs/<run>/manifest.json in the same commit."""
+    selection = _read_json(Path(eval_dir) / "selection.json") or {}
+    prefix = f"runs/{run}/"
+    return {
+        "schema": 1,
+        "run": run,
+        "candidate_order": list(selection.get("candidate_order", [])),
+        "winner": (selection.get("winner") or {}).get("candidate"),
+        "files": {
+            rel.removeprefix(prefix): {"sha256": _sha256_file(p), "bytes": p.stat().st_size}
+            for p, rel in files
+        },
+    }
+
+
+def _lfs_sha256(entry: Any) -> str | None:
+    lfs = getattr(entry, "lfs", None)
+    if isinstance(lfs, dict):
+        return lfs.get("sha256")
+    return getattr(lfs, "sha256", None)
+
+
+def verify_run_on_hf(api: Any, repo_id: str, run: str) -> dict[str, Any]:
+    """Evidence from the private HF repo itself that `run` was uploaded completely.
+
+    Complete means ALL of: the repo is private; a commit titled `commit_message(run)` exists; at
+    the repo head runs/<run>/manifest.json exists, names this run, lists every required file
+    (candidates fixed by PREREG); every listed file exists with the manifest's size and sha256
+    (LFS files via the hub's own sha256, small files by downloading and hashing them); for main,
+    validation.json says valid with 330 ids. Returns {"complete": bool, "reason", "revision"}
+    where revision is the upload commit's sha. A 404 (no repo / no runs/<run>/) is "not
+    complete"; any other failure to READ the evidence raises EvalStepError (fail closed: never a
+    silent skip), and a non-private repo raises HFNotPrivateError.
+    """
+
+    def no(reason: str) -> dict[str, Any]:
+        return {"complete": False, "reason": reason, "revision": None}
+
+    try:
+        info = api.repo_info(repo_id=repo_id, repo_type="model")
+    except Exception as exc:
+        if _status(exc) == 404:
+            return no(f"repo {repo_id} does not exist")
+        raise EvalStepError(
+            f"hf-verify: cannot read {repo_id} ({type(exc).__name__}: {exc})"
+        ) from exc
+    if getattr(info, "private", None) is not True:
+        raise HFNotPrivateError(
+            f"hf-verify: HF repo {repo_id} is NOT private "
+            f"(private={getattr(info, 'private', None)!r})"
+        )
+    head = getattr(info, "sha", None)
+    if not head or not _REVISION_RE.match(str(head)):
+        raise EvalStepError(f"hf-verify: {repo_id} reported no usable head revision ({head!r})")
+
+    prefix = f"runs/{run}"
+    try:
+        entries = list(
+            api.list_repo_tree(
+                repo_id=repo_id,
+                path_in_repo=prefix,
+                recursive=True,
+                repo_type="model",
+                revision=head,
+            )
+        )
+        commits = list(api.list_repo_commits(repo_id=repo_id, repo_type="model", revision=head))
+    except Exception as exc:
+        if _status(exc) == 404:
+            return no(f"nothing under {prefix}/ in {repo_id}")
+        raise EvalStepError(
+            f"hf-verify: cannot list {repo_id} ({type(exc).__name__}: {exc})"
+        ) from exc
+    upload = next((c for c in commits if getattr(c, "title", None) == commit_message(run)), None)
+    if upload is None:
+        return no(f"no commit titled {commit_message(run)!r}")
+    remote = {e.path: e for e in entries if getattr(e, "size", None) is not None}
+
+    def fetch(rel: str) -> Path:
+        try:
+            return Path(
+                api.hf_hub_download(
+                    repo_id=repo_id, filename=f"{prefix}/{rel}", repo_type="model", revision=head
+                )
+            )
+        except Exception as exc:
+            raise EvalStepError(f"hf-verify: cannot download {prefix}/{rel} ({exc})") from exc
+
+    if f"{prefix}/{MANIFEST_NAME}" not in remote:
+        return no(f"{prefix}/{MANIFEST_NAME} is missing")
+    manifest = _read_json(fetch(MANIFEST_NAME))
+    if not isinstance(manifest, dict) or manifest.get("run") != run:
+        return no("manifest.json is unreadable or names another run")
+    listed = manifest.get("files")
+    if manifest.get("candidate_order") != list(expected_candidates(run)) or not isinstance(
+        listed, dict
+    ):
+        return no("manifest.json candidate order / file list is not the pre-registered one")
+    absent = [r for r in required_rels(run, expected_candidates(run)) if r not in listed]
+    if absent:
+        return no(f"manifest.json lacks required file(s): {', '.join(absent)}")
+    for rel, want in listed.items():
+        entry = remote.get(f"{prefix}/{rel}")
+        if entry is None:
+            return no(f"{prefix}/{rel} is listed in the manifest but absent from the repo")
+        if entry.size != want.get("bytes"):
+            return no(f"{prefix}/{rel}: size {entry.size} != manifest {want.get('bytes')}")
+        got = _lfs_sha256(entry) or _sha256_file(fetch(rel))
+        if got != want.get("sha256"):
+            return no(f"{prefix}/{rel}: sha256 differs from the manifest")
+    if run == "main":
+        validation = _read_json(fetch("validation.json"))
+        if not (
+            isinstance(validation, dict)
+            and validation.get("valid") is True
+            and validation.get("n_ids") == EXPECTED_TEST_IDS
+        ):
+            return no(f"validation.json does not report valid / {EXPECTED_TEST_IDS} ids")
+    return {
+        "complete": True,
+        "reason": "manifest and sha256 verified",
+        "revision": upload.commit_id,
+    }
+
+
 def upload_run(api: Any, repo_id: str, run: str, eval_dir: Path) -> dict[str, Any]:
     """Upload one run to the PRIVATE HF repo in a single commit. Order: gather files (refuse if
-    any missing), check token scope, create_repo(private=True, exist_ok=True) and read back
-    (refuse unless private), commit, read back privacy again. Prints `HF_EVAL_REVISION=<sha>`."""
+    any missing), check token scope, look for evidence on HF that the run is already complete
+    (verify_run_on_hf; skip if so), create_repo(private=True, exist_ok=True) and read back
+    (refuse unless private), commit (files + manifest.json), read back privacy again. Prints
+    `HF_EVAL_REVISION=<sha>` and records it in hf_upload.json."""
     from huggingface_hub import CommitOperationAdd
 
     eval_dir = Path(eval_dir)
@@ -731,24 +888,37 @@ def upload_run(api: Any, repo_id: str, run: str, eval_dir: Path) -> dict[str, An
         raise EvalStepError(f"HF_EVAL_REPO={repo_id!r} is not '<owner>/<name>'")
     files = collect_upload_files(eval_dir, run)
     check_write_token(api, repo_id)
-    prior = _read_json(eval_dir / "hf_upload.json")
-    if (
-        isinstance(prior, dict)
-        and _REVISION_RE.match(str(prior.get("revision")))
-        and prior.get("repo") == repo_id
-    ):
+    state = verify_run_on_hf(api, repo_id, run)  # also refuses a non-private repo
+    if state["complete"]:
         assert_repo_private(api, repo_id, "upload already done")
-        print(f"upload: SKIP (already uploaded at revision {prior['revision']})")
-        print(f"HF_EVAL_REVISION={prior['revision']}")
-        return prior
+        print(f"upload: SKIP (verified complete on HF at revision {state['revision']})")
+        print(f"HF_EVAL_REVISION={state['revision']}")
+        record = {
+            "repo": repo_id,
+            "run": run,
+            "revision": state["revision"],
+            "private": True,
+            "files": [r for _, r in files],
+            "verified_existing": True,
+        }
+        _write_json(eval_dir / "hf_upload.json", record)
+        return record
     ensure_private_repo(api, repo_id)
+    manifest = build_manifest(run, files, eval_dir)
+    _write_json(eval_dir / MANIFEST_NAME, manifest)
     operations = [CommitOperationAdd(path_in_repo=r, path_or_fileobj=str(p)) for p, r in files]
+    operations.append(
+        CommitOperationAdd(
+            path_in_repo=f"runs/{run}/{MANIFEST_NAME}",
+            path_or_fileobj=str(eval_dir / MANIFEST_NAME),
+        )
+    )
     try:
         commit = api.create_commit(
             repo_id=repo_id,
             repo_type="model",
             operations=operations,
-            commit_message=f"eval_l4: {run} predictions, tuning, selection, selected model",
+            commit_message=commit_message(run),
         )
     except Exception as exc:
         if _is_auth_error(exc):
@@ -763,7 +933,8 @@ def upload_run(api: Any, repo_id: str, run: str, eval_dir: Path) -> dict[str, An
         "run": run,
         "revision": revision,
         "private": True,
-        "files": [r for _, r in files],
+        "files": [r for _, r in files] + [f"runs/{run}/{MANIFEST_NAME}"],
+        "manifest_sha256": _sha256_file(eval_dir / MANIFEST_NAME),
     }
     _write_json(eval_dir / "hf_upload.json", record)
     print(f"HF_EVAL_REVISION={revision}")
@@ -826,9 +997,13 @@ def measure_workload() -> dict[str, Any]:
 def _hf_api() -> Any:
     from huggingface_hub import HfApi
 
-    token = os.environ.get("HF_TOKEN")
+    token = os.environ.get("HF_TOKEN")  # the name huggingface_hub reads
     if not token:
-        raise EvalStepError("HF_TOKEN is not set in the environment (the notebook exports it)")
+        raise EvalStepError(
+            "HF_TOKEN is not set in the environment. In Colab the notebook's secrets cell exports "
+            "your HF_TOKEN_WRITE secret under this name (Notebook access on); re-run that cell. "
+            "Outside Colab, export a write-scoped token as HF_TOKEN. The value is never printed."
+        )
     return HfApi(token=token)
 
 
@@ -838,6 +1013,12 @@ def _parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("hf-check", help="fail fast: token can write, repo (if any) is private")
     s.add_argument("--repo", required=True)
+
+    s = sub.add_parser(
+        "hf-verify", help="is runs/<run>/ complete on the private HF repo (manifest + sha256)?"
+    )
+    s.add_argument("--repo", required=True)
+    s.add_argument("--run", required=True, choices=RUNS)
 
     s = sub.add_parser("candidates", help="average checkpoints and export candidate model dirs")
     s.add_argument("--ckpt-dir", required=True, type=Path)
@@ -894,6 +1075,13 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.cmd == "hf-check":
         info = hf_check(_hf_api(), args.repo)
         print(f"hf-check: OK account={info['account']} repo={args.repo} exists={info['exists']}")
+    elif args.cmd == "hf-verify":
+        state = verify_run_on_hf(_hf_api(), args.repo, args.run)
+        # One machine-readable line (the notebook parses it) then the human reason.
+        print(f"HF_RUN_COMPLETE={'true' if state['complete'] else 'false'}")
+        if state["revision"]:
+            print(f"HF_EVAL_REVISION={state['revision']}")
+        print(f"hf-verify {args.run}: {state['reason']}")
     elif args.cmd == "candidates":
         specs = parse_candidate_specs(args.candidate)
         check_candidate_files(args.ckpt_dir, specs)

@@ -5,8 +5,10 @@ from __future__ import annotations
 # validation, and the private-HF upload guards (read-only token, public repo, privacy flipping
 # after upload) against a FAKE HfApi. No network, no GPU, no real decoding: translators are stubs
 # and the real eval data under data/ supplies the ids.
+import hashlib
 import json
 import re
+import tempfile
 import types
 from pathlib import Path
 from typing import Any
@@ -503,6 +505,10 @@ class FakeApi:
         self.create_error = create_error
         self.created: list[dict[str, Any]] = []
         self.commits: list[list[str]] = []
+        self.titles: list[str] = []
+        self.remote: dict[str, bytes] = {}  # path in repo -> content at the (single) head
+        self.list_error: Exception | None = None
+        self._cache = tempfile.TemporaryDirectory()  # stands in for the HF download cache
 
     def whoami(self) -> dict[str, Any]:
         return self.who
@@ -524,7 +530,32 @@ class FakeApi:
         if self.commit_error:
             raise self.commit_error
         self.commits.append([op.path_in_repo for op in kwargs["operations"]])
+        self.titles.append(kwargs["commit_message"])
+        for op in kwargs["operations"]:
+            self.remote[op.path_in_repo] = Path(op.path_or_fileobj).read_bytes()
         return types.SimpleNamespace(oid=REVISION)
+
+    def list_repo_tree(self, **kwargs: Any) -> Any:
+        if self.list_error:
+            raise self.list_error
+        prefix = kwargs["path_in_repo"] + "/"
+        found = {p: b for p, b in self.remote.items() if p.startswith(prefix)}
+        if not found:
+            raise _HttpError(404)
+        for path, data in found.items():
+            lfs = None
+            if path.endswith(".safetensors"):  # the hub reports a sha256 only for LFS files
+                lfs = types.SimpleNamespace(sha256=hashlib.sha256(data).hexdigest())
+            yield types.SimpleNamespace(path=path, size=len(data), lfs=lfs)
+
+    def list_repo_commits(self, **_kwargs: Any) -> list[Any]:
+        return [types.SimpleNamespace(title=t, commit_id=REVISION) for t in self.titles]
+
+    def hf_hub_download(self, **kwargs: Any) -> str:
+        path = Path(self._cache.name) / kwargs["filename"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.remote[kwargs["filename"]])
+        return str(path)
 
 
 @pytest.mark.parametrize(
@@ -586,7 +617,9 @@ def _eval_dir(tmp_path: Path, run: str = "main", winner: str = "avg_decay") -> P
             p.write_text("{}", encoding="utf-8")
     if run == "main":
         (d / "test_predictions.json").write_text("{}", encoding="utf-8")
-        (d / "validation.json").write_text("{}", encoding="utf-8")
+        (d / "validation.json").write_text(
+            json.dumps({"valid": True, "n_ids": 330, "empty_strings": 0}), encoding="utf-8"
+        )
     return d
 
 
@@ -677,16 +710,135 @@ def test_upload_tolerates_a_create_403_for_an_existing_private_repo(tmp_path: Pa
         ev.upload_run(missing, REPO, "main", _eval_dir(tmp_path / "b"))
 
 
-def test_upload_is_skipped_on_rerun_but_still_checks_privacy(
+def _uploaded(tmp_path: Path, run: str = "main", winner: str = "avg_decay") -> tuple[Path, FakeApi]:
+    """An eval dir whose run was uploaded once into a fresh FakeApi (the remote store holds it)."""
+    d = _eval_dir(tmp_path, run, winner)
+    api = FakeApi()
+    ev.upload_run(api, REPO, run, d)
+    return d, api
+
+
+def test_upload_is_skipped_on_rerun_only_on_hf_evidence_and_still_checks_privacy(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    d = _eval_dir(tmp_path)
-    ev.upload_run(FakeApi(), REPO, "main", d)
+    d, api = _uploaded(tmp_path)
     again = FakeApi()
-    ev.upload_run(again, REPO, "main", d)
-    assert again.commits == [] and "SKIP" in capsys.readouterr().out
+    again.remote, again.titles = dict(api.remote), list(api.titles)  # the repo as HF holds it
+    rec = ev.upload_run(again, REPO, "main", d)
+    assert again.commits == [] and "SKIP (verified complete on HF" in capsys.readouterr().out
+    assert rec["revision"] == REVISION and rec["verified_existing"] is True
     with pytest.raises(ev.HFNotPrivateError):
         ev.upload_run(FakeApi(private=False), REPO, "main", d)
+
+
+def test_a_local_hf_upload_json_alone_never_skips_the_upload(tmp_path: Path) -> None:
+    d, _ = _uploaded(tmp_path)  # hf_upload.json now exists on "Drive"
+    fresh_repo = FakeApi()  # ... but this HF repo holds nothing for the run
+    ev.upload_run(fresh_repo, REPO, "main", d)
+    assert len(fresh_repo.commits) == 1
+
+
+def test_upload_commits_the_manifest_with_every_sha_and_records_its_hash(tmp_path: Path) -> None:
+    d, api = _uploaded(tmp_path)
+    assert api.titles == [ev.commit_message("main")]
+    manifest = json.loads(api.remote["runs/main/manifest.json"])
+    assert manifest["run"] == "main" and manifest["candidate_order"] == list(ev.MAIN_CANDIDATES)
+    assert set(manifest["files"]) == set(ev.required_rels("main", ev.MAIN_CANDIDATES))
+    weights = manifest["files"]["model/model.safetensors"]
+    assert weights == {"sha256": hashlib.sha256(b"w").hexdigest(), "bytes": 1}
+    saved = json.loads((d / "hf_upload.json").read_text("utf-8"))
+    assert (
+        saved["manifest_sha256"]
+        == hashlib.sha256(api.remote["runs/main/manifest.json"]).hexdigest()
+    )
+
+
+def test_verify_complete_run_and_ablation(tmp_path: Path) -> None:
+    _, api = _uploaded(tmp_path)
+    state = ev.verify_run_on_hf(api, REPO, "main")
+    assert state == {
+        "complete": True,
+        "reason": "manifest and sha256 verified",
+        "revision": REVISION,
+    }
+    _, abl = _uploaded(tmp_path / "abl", "s1_sin_l4", "final")
+    assert ev.verify_run_on_hf(abl, REPO, "s1_sin_l4")["complete"] is True
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "no_manifest",
+        "tampered_small",
+        "tampered_lfs",
+        "missing_file",
+        "no_commit",
+        "bad_validation",
+    ],
+)
+def test_verify_says_not_complete_for_every_kind_of_damage(tmp_path: Path, damage: str) -> None:
+    _, api = _uploaded(tmp_path)
+    if damage == "no_manifest":
+        del api.remote["runs/main/manifest.json"]
+    elif damage == "tampered_small":
+        data = api.remote["runs/main/selection.json"]
+        api.remote["runs/main/selection.json"] = data[:-1] + b"X"  # same size, other bytes
+    elif damage == "tampered_lfs":
+        api.remote["runs/main/model/model.safetensors"] = b"x"  # lfs sha256 is computed from it
+    elif damage == "missing_file":
+        del api.remote["runs/main/predictions/seg_tuned/e3_predictions.json"]
+    elif damage == "no_commit":
+        api.titles = ["some other commit"]
+    elif damage == "bad_validation":
+        manifest = json.loads(api.remote["runs/main/manifest.json"])
+        bad = json.dumps({"valid": True, "n_ids": 329, "empty_strings": 0}).encode()
+        api.remote["runs/main/validation.json"] = bad
+        manifest["files"]["validation.json"] = {
+            "sha256": hashlib.sha256(bad).hexdigest(),
+            "bytes": len(bad),
+        }
+        api.remote["runs/main/manifest.json"] = json.dumps(manifest).encode()
+    state = ev.verify_run_on_hf(api, REPO, "main")
+    assert state["complete"] is False and state["revision"] is None and state["reason"]
+
+
+def test_verify_a_missing_repo_or_an_unuploaded_run_is_not_complete() -> None:
+    assert ev.verify_run_on_hf(FakeApi(exists=False), REPO, "main")["complete"] is False
+    assert ev.verify_run_on_hf(FakeApi(), REPO, "s2_rope_l4")["complete"] is False
+
+
+def test_verify_fails_closed_when_the_evidence_cannot_be_read(tmp_path: Path) -> None:
+    _, api = _uploaded(tmp_path)
+    api.list_error = _HttpError(500)
+    with pytest.raises(ev.EvalStepError, match="cannot list"):
+        ev.verify_run_on_hf(api, REPO, "main")
+    with pytest.raises(ev.HFNotPrivateError):
+        ev.verify_run_on_hf(FakeApi(private=None), REPO, "main")
+    with pytest.raises(ev.EvalStepError, match="cannot read"):
+        broken = FakeApi()
+        broken.repo_info = lambda **_k: (_ for _ in ()).throw(_HttpError(500))  # type: ignore[method-assign]
+        ev.verify_run_on_hf(broken, REPO, "main")
+
+
+def test_hf_verify_cli_prints_the_marker_line_the_notebook_parses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, api = _uploaded(tmp_path)
+    monkeypatch.setattr(ev, "_hf_api", lambda: api)
+    assert ev.main(["hf-verify", "--repo", REPO, "--run", "main"]) == 0
+    out = capsys.readouterr().out
+    assert "HF_RUN_COMPLETE=true" in out and f"HF_EVAL_REVISION={REVISION}" in out
+    assert ev.main(["hf-verify", "--repo", REPO, "--run", "s3_rope_concat_l4"]) == 0
+    assert "HF_RUN_COMPLETE=false" in capsys.readouterr().out
+
+
+def test_missing_hf_token_message_names_the_colab_secret_and_never_a_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    with pytest.raises(ev.EvalStepError) as err:
+        ev._hf_api()
+    assert "HF_TOKEN_WRITE" in str(err.value) and "HF_TOKEN" in str(err.value)
 
 
 def test_upload_rejects_an_unknown_run_and_a_bad_repo_id(tmp_path: Path) -> None:
