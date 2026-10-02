@@ -75,6 +75,7 @@ class Ensemble(nn.Module):
         check_compatible([m.config for m in models], tokenizer_sha256s)
         self.members = nn.ModuleList(models)
         self.config = models[0].config
+        self.eval()  # decoding only: a freshly built nn.Module is in train mode (dropout on)
 
     def encode(self, src: Tensor, src_key_padding_mask: Tensor) -> tuple[Tensor, ...]:
         return tuple(m.encode(src, src_key_padding_mask) for m in self.members)
