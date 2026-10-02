@@ -108,3 +108,31 @@ def test_normalize_and_reindex_converts_crlf_and_refreshes_hashes(tmp_path: Path
     art = json.loads((run_dir / "index.json").read_text(encoding="utf-8"))["artifacts"][0]
     assert art["sha256"] == hashlib.sha256(derived.read_bytes()).hexdigest()
     assert art["bytes"] == len(derived.read_bytes())
+
+
+def test_word_copies_flags_only_long_unshared_source_words() -> None:
+    from scripts.build_final_report import word_copies
+
+    # "Meaulnes" is kept by the reference -> not flagged; "maison" is copied and absent -> flagged;
+    # "de" is shorter than 4 -> ignored
+    out = word_copies("Meaulnes de maison", "Meaulnes de maison", "Meaulnes of house")
+    assert out == ["maison"]
+    assert word_copies("the house", "la maison", "the house") == []
+
+
+def test_pick_rule_examples_is_deterministic_and_documented() -> None:
+    from scripts.build_final_report import pick_rule_examples
+
+    def row(i: str, ref: str, hyp: str) -> dict[str, str]:
+        return {"id": i, "source": "s", "reference": ref, "hyp": hyp, "slice": "x"}
+
+    rows = [
+        row("a", "one two three four five", "one two three four five"),
+        row("b", "one two three four five six", "one"),  # largest length deviation
+        row("c", "one two three four five", "x y z x y z x y z"),  # repetition, ref has none
+        row("d", "a b c a b c d e", "q w e q w e q w e q w e"),  # ref repeats -> not a B candidate
+    ]
+    picks = pick_rule_examples(rows)
+    assert [p["id"] for p in picks] == ["b", "c"]
+    assert picks == pick_rule_examples(list(reversed(rows)))
+    assert picks[1]["id"] != picks[0]["id"]

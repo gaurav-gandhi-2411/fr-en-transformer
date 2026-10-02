@@ -32,10 +32,13 @@ from nmt.analysis import (
     DEFAULT_FREQ_TGT_PATH,
     DEFAULT_TOKENIZER_PATH,
     _rows_with_predictions,
+    _words,
     build_sentence_features,
     failure_mode_rates,
+    length_ratio,
     rarity_bucket_chrf,
     rarity_bucket_edges,
+    repetition_rate,
 )
 from nmt.compare import _objective_inputs, _objective_point
 from nmt.evaluate import (
@@ -171,35 +174,112 @@ def normalize_and_reindex(out_root: Path) -> int:
     return converted
 
 
+COPY_MIN_LEN = 4  # shorter words ("de", "la", "en") are too often legitimately shared
+
+
+def word_copies(hyp: str, source: str, ref: str) -> list[str]:
+    """Heuristic untranslated-copy words: hypothesis words of length >= COPY_MIN_LEN that equal a
+    source word (case-insensitive) and do not occur in the reference. Names and numbers the
+    reference also keeps are therefore excluded; a name the reference spells differently is not."""
+    src_words = {w.lower() for w in _words(source)}
+    ref_words = {w.lower() for w in _words(ref)}
+    return [
+        w
+        for w in _words(hyp)
+        if len(w) >= COPY_MIN_LEN and w.lower() in src_words and w.lower() not in ref_words
+    ]
+
+
+def pick_rule_examples(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Two deterministic, rule-based examples from `rows` (dicts with id, source, reference, hyp):
+    (A) the largest |hyp/ref word ratio - 1| among rows whose reference has >= 5 words;
+    (B) the highest hypothesis repeated-3-gram share among rows whose REFERENCE has none and that
+    is not A. Ties go to the smaller id. No chrF, no manual choice."""
+    ranked_a = sorted(
+        (r for r in rows if len(_words(r["reference"])) >= 5),
+        key=lambda r: (-abs(length_ratio(r["hyp"], r["reference"]) - 1.0), r["id"]),
+    )
+    out = []
+    if ranked_a:
+        a = ranked_a[0]
+        out.append({**a, "rule": "A: largest length-ratio deviation (ref >= 5 words)"})
+        ranked_b = sorted(
+            (
+                r
+                for r in rows
+                if r["id"] != a["id"]
+                and repetition_rate(r["reference"]) == 0
+                and repetition_rate(r["hyp"]) > 0
+            ),
+            key=lambda r: (-repetition_rate(r["hyp"]), r["id"]),
+        )
+        if ranked_b:
+            out.append(
+                {**ranked_b[0], "rule": "B: highest hypothesis repetition (reference has none)"}
+            )
+    for e in out:
+        e["length_ratio"] = length_ratio(e["hyp"], e["reference"])
+        e["hyp_repetition_rate"] = repetition_rate(e["hyp"])
+    return out
+
+
+def _reference_side_and_word_copy(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Reference-side repeated-3-gram share and the word-level copy heuristic for one group."""
+    n = len(rows)
+    copies = [word_copies(r["hyp"], r["source"], r["reference"]) for r in rows]
+    return {
+        "ref_repetition_rate": sum(1 for r in rows if repetition_rate(r["reference"]) > 0) / n,
+        "word_copy_sentence_rate": sum(1 for c in copies if c) / n,
+        "word_copy_sentences": sum(1 for c in copies if c),
+        "word_copy_words": sum(len(c) for c in copies),
+    }
+
+
 def build_diagnostics(out_root: Path, run: str, variant: str, res: Any) -> dict[str, Any]:
     """Failure-mode rates per set and per slice, and chrF by source-rarity quintile (pooled
     E1+E2+E3, edges from the sources only), for one (run, variant)."""
     sp, freq_src, freq_tgt, byte_ids = res
     groups: dict[str, list] = {}
+    group_rows: dict[str, list] = {}
     pooled = []
+    pooled_rows: list = []
     for split in SPLITS:
         preds = _read(out_root / run / variant / f"{split}_predictions.json")
         rows = _rows_with_predictions(split, preds)
         feats = build_sentence_features(rows, sp, freq_src, freq_tgt, byte_ids, split)
         groups[split] = feats
+        group_rows[split] = rows
         slice_of = {r["id"]: r["slice"] for r in rows}
         names = sorted(set(slice_of.values()))
         if len(names) > 1:
             for name in names:
                 groups[f"{split}:{name}"] = [f for f in feats if slice_of[f.id] == name]
+                group_rows[f"{split}:{name}"] = [r for r in rows if r["slice"] == name]
+        if split in ("dev", "e1", "e2", "e3"):
+            pooled_rows += rows
         if split in ("e1", "e2", "e3"):
             pooled += feats
     edges = rarity_bucket_edges([f.src_rarity_mean for f in pooled])
     out = {
         "run": run,
         "variant": variant,
-        "failure_modes": {g: failure_mode_rates(f) for g, f in groups.items()},
+        "failure_modes": {
+            g: {**failure_mode_rates(f), **_reference_side_and_word_copy(group_rows[g])}
+            for g, f in groups.items()
+        },
+        "rule_based_examples": pick_rule_examples(pooled_rows),
         "failure_mode_definitions": {
             "repetition_rate": "share of sentences with any repeated word 3-gram in the hypothesis",
             "truncation_rate": "share with hyp/ref word-count ratio < 0.5",
             "untranslated_copy_rate": "share with > 10% of hypothesis subwords copied from the "
             "source and never seen on the train target side",
             "overlong_rate": "share with hyp/ref word-count ratio > 1.5",
+            "ref_repetition_rate": "the same repeated-3-gram share computed on the REFERENCES: "
+            "repeated 3-grams occur legitimately, so the hypothesis rate is not a degeneration "
+            "signal by itself",
+            "word_copy_sentence_rate": "HEURISTIC: share of sentences with >= 1 hypothesis word of "
+            f"length >= {COPY_MIN_LEN} identical to a source word and absent from the reference",
+            "word_copy_words": "number of such words in the group (word_copy_sentences = sentences)",
         },
         "rarity_buckets_e1_e2_e3": {
             "definition": "quintiles of the source's mean subword train frequency, edges from "
@@ -528,6 +608,14 @@ def _examples_md(out_root: Path) -> str:
         "untranslated_copy (> 10% of hypothesis subwords copied from the source) > low_chrf_other. "
         "Models are shown at their tuned decoding config (seg_tuned).",
         "",
+        "**Caveat:** 'worst by dev chrF' is dominated by noisy or unrelated references, so these "
+        "6 examples often show a reference problem, not a model failure; whether a reference is "
+        "unrelated to its source is NOT detected automatically. Each model therefore also gets 2 "
+        "rule-based examples (second list), picked deterministically from official dev + E1 + E2 "
+        "+ E3: (A) the largest |hyp/ref word ratio - 1| among references with >= 5 words; (B) the "
+        "highest hypothesis repeated-3-gram share among sentences whose reference has none (A's "
+        "sentence excluded); ties go to the smaller id.",
+        "",
     ]
     for run in RUNS:
         ex = _read(out_root / run / "seg_tuned" / "examples.json")
@@ -538,6 +626,16 @@ def _examples_md(out_root: Path) -> str:
                 f"  - source: {e['source']}",
                 f"  - reference: {e['reference']}",
                 f"  - hypothesis: {e['hypothesis']}",
+            ]
+        rb = _read(out_root / run / "seg_tuned" / "diagnostics.json")["rule_based_examples"]
+        lines += ["", f"Rule-based picks (source: `{run}/seg_tuned/diagnostics.json`):", ""]
+        for e in rb:
+            lines += [
+                f"- `{e['id']}` ({e['slice']}, rule {e['rule']}; hyp/ref ratio "
+                f"{e['length_ratio']:.2f}, hyp repeated-3-gram share {e['hyp_repetition_rate']:.2f})",
+                f"  - source: {e['source']}",
+                f"  - reference: {e['reference']}",
+                f"  - hypothesis: {e['hyp']}",
             ]
         lines.append("")
     return "\n".join(lines)
@@ -598,22 +696,34 @@ def _failure_table(out_root: Path, variant: str) -> str:
         "e3",
     )
     lines = [
-        "| model | group | n | repetition | truncation | untranslated copy | over-long | "
-        "mean hyp/ref ratio |",
-        "|---|---|---|---|---|---|---|---|",
+        "| model | group | n | repetition (hyp) | repetition (ref) | truncation | "
+        "untranslated copy (subword, see caveat) | word-copy heuristic: sentences (words) | "
+        "over-long | mean hyp/ref ratio |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for run in RUNS:
         fm = _read(out_root / run / variant / "diagnostics.json")["failure_modes"]
         for g in groups:
             r = fm[g]
             lines.append(
-                f"| {run} | {g} | {r['n']} | {r['repetition_rate']:.3f} | {r['truncation_rate']:.3f}"
-                f" | {r['untranslated_copy_rate']:.3f} | {r['overlong_rate']:.3f} | "
-                f"{r['length_ratio_mean']:.3f} |"
+                f"| {run} | {g} | {r['n']} | {r['repetition_rate']:.3f} | "
+                f"{r['ref_repetition_rate']:.3f} | {r['truncation_rate']:.3f}"
+                f" | {r['untranslated_copy_rate']:.3f} | {r['word_copy_sentence_rate']:.3f} "
+                f"({r['word_copy_sentences']} sent., {r['word_copy_words']} words) | "
+                f"{r['overlong_rate']:.3f} | {r['length_ratio_mean']:.3f} |"
             )
     return "\n".join(lines) + (
         f"\n\nShares of sentences (definitions in `<run>/{variant}/diagnostics.json`). Source: "
-        f"`<run>/{variant}/diagnostics.json` (`failure_modes`).\n"
+        f"`<run>/{variant}/diagnostics.json` (`failure_modes`).\n\n"
+        "Caveats. (1) *Repetition* counts ANY repeated word 3-gram, including legitimate ones "
+        "(references repeat 3-grams too); the reference-side share is printed next to the "
+        "hypothesis share and a hypothesis rate at or below it is not a degeneration signal by "
+        "itself. (2) *Untranslated copy (subword)* counts only hypothesis subwords that never "
+        "occurred on the train target side, so it is 0.000 almost by construction and must NOT be "
+        "read as 'no untranslated copies'. The *word-copy heuristic* column measures it directly "
+        f"but crudely: hypothesis words of length >= {COPY_MIN_LEN} identical to a source word and "
+        "absent from the reference (a heuristic; names the reference spells differently, and "
+        "legitimate cognates, are counted).\n"
     )
 
 
