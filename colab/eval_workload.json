@@ -1,0 +1,37 @@
+{
+  "tokenizer_sha256": "1fc208b5b0885b8a1164ea2b6b44303d7acbddd709fab1f6b2dda53231779a37",
+  "out_over_src_token_ratio": 0.8419,
+  "bench_e2_first200_out_tokens": 11605,
+  "splits": {
+    "e1": {
+      "n": 1940,
+      "src_tokens": 59932,
+      "out_tokens": 51002
+    },
+    "e2": {
+      "n": 1000,
+      "src_tokens": 72259,
+      "out_tokens": 58902
+    },
+    "e3": {
+      "n": 1000,
+      "src_tokens": 35349,
+      "out_tokens": 32328
+    },
+    "e2synth": {
+      "n": 300,
+      "src_tokens": 49174,
+      "out_tokens": 40255
+    },
+    "dev": {
+      "n": 150,
+      "src_tokens": 4293,
+      "out_tokens": 3582
+    },
+    "test": {
+      "n": 330,
+      "src_tokens": 9500,
+      "out_tokens": 7998
+    }
+  }
+}
