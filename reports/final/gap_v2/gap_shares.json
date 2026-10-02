@@ -383,8 +383,21 @@
     }
   },
   "bootstrap_runtime_seconds": {
-    "primary_5groups": 55.1,
-    "sensitivity_6groups_plus_length_control": 114.9,
-    "second_outcome_nll_5groups": 55.1
+    "primary_5groups": 61.2,
+    "sensitivity_6groups_plus_length_control": 138.9,
+    "second_outcome_nll_5groups": 70.8
+  },
+  "residual_note": "residual = gap minus the explained part of the five groups (= -coefficient of the domain dummy in the primary OLS); it is NOT a measured domain effect and depends on the model form",
+  "estimand_sensitivity_chrf_5groups": {
+    "gap": 12.670018262513508,
+    "pooled_with_domain_dummy_explained": 1.1024000961549982,
+    "pooled_with_domain_dummy_share": 0.08700856410101981,
+    "pooled_no_dummy_explained": 3.984057567094886,
+    "pooled_no_dummy_share": 0.3144476578129667,
+    "oaxaca_e1_slopes_explained": 5.125841654319082,
+    "oaxaca_e1_slopes_share": 0.4045646618746235,
+    "oaxaca_e3_slopes_explained": -0.9543531240276931,
+    "oaxaca_e3_slopes_share": -0.07532373705027054,
+    "note": "explained part (all 5 groups together, no Shapley) and its share of the gap under alternative estimands; point estimates, no bootstrap. pooled_with_domain_dummy is the primary form; the other three show how much the 'unexplained' share depends on the model form."
   }
 }

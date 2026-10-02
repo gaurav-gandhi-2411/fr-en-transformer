@@ -355,7 +355,9 @@
           "tail_ge10": 0.17675077239958806
         },
         "n_word_tokens": 34111,
-        "n_word_types": 7768
+        "n_word_types": 7768,
+        "subword_token_share_unseen_rare_tail": 0.0020348090637902763,
+        "word_token_share_unseen_rare_tail": 0.08484066723344376
       },
       "e3": {
         "subword_token_share_by_band": {
@@ -380,7 +382,9 @@
           "tail_ge10": 0.21105334103601
         },
         "n_word_tokens": 20626,
-        "n_word_types": 5193
+        "n_word_types": 5193,
+        "subword_token_share_unseen_rare_tail": 0.025888451689463493,
+        "word_token_share_unseen_rare_tail": 0.1708038398138272
       }
     },
     "train": {
