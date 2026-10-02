@@ -1,0 +1,74 @@
+# Extension step (i) (PREREG 2026-10-02 post-selection amendment, rule 4): continue the main run's
+# STABLE phase from runs/main/ckpt/step_00019000.pt (main's decay starts at 19,716) at the stable
+# LR to 40,000 steps, in a NEW run directory, W&B group extend_l4. Started with
+# `--init-from <Drive>/runs/main/ckpt/step_00019000.pt` (colab/train.ipynb CONFIG="extend_l4").
+# Everything except name/group/dirs/schedule/ckpt/eval-watch equals configs/main.yaml
+# (tests/test_extend_l4.py pins that): seed 1234, dropout 0.1, tokens/step 25,000, warmup 4,000,
+# micro-batch 4096, concat 0.15, lr 7e-4; `precision: bf16` is what `auto` resolved to for main
+# on the L4 (an init checkpoint from a different precision is refused).
+name: ext_stable_l4
+group: extend_l4
+seed: 1234
+device: auto
+precision: bf16
+label_smoothing: 0.1
+
+model:
+  vocab_size: 16000
+  d_model: 512
+  n_heads: 8
+  enc_layers: 8
+  dec_layers: 4
+  d_ff: 2048
+  dropout: 0.1
+  pos: rope
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 4096
+  tokens_per_step: 25000
+  concat_prob: 0.15
+  concat_max_len: 256
+  chunk_size: 512
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  warmup_steps: 4000
+  # This run STOPS at 40,000 (planned_steps). Its schedule is the stable phase of Branch B's:
+  # decay would start at 40,000 and end at 50,000, so within this run the LR is the constant
+  # stable LR from the init step (19,000: no re-warmup) to the end.
+  planned_steps: 40000
+  cooldown_frac: 0.2  # unused: decay_start/decay_end below are explicit
+  decay_start: 40000
+  decay_end: 50000
+  max_minutes: null  # no wall-clock cap: planned_steps is the stop condition
+
+ckpt:
+  dir: runs/ext_stable_l4/ckpt
+  ckpt_minutes: 10  # bounds the redo after a Colab disconnect (resume is exact) to <= 10 min
+  ckpt_steps: null
+  keep_last: 2  # the rolling resume checkpoints; the two milestones below are kept on top
+  keep_decay_phase: false  # nothing is decayed in this run
+  milestone_steps: [30000, 40000]  # PREREG rule 4: the stable checkpoints Branch A / B start from
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/ext_stable_l4
+
+eval:
+  eval_every: 500  # same as main
+  overfit_watch: true  # PREREG rule 4: flag 2 consecutive E1 val-loss rises above the running min
