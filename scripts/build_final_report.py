@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -650,6 +651,7 @@ def _provenance(out_root: Path, code_sha: str) -> str:
     for run in RUNS:
         files.append(out_root / run / "pull_record.json")
         files.append(out_root / run / "index.json")
+        files.append(out_root / run / "selection.json")
         for variant in VARIANTS:
             base = out_root / run / variant
             for name in (
@@ -707,12 +709,17 @@ def build_summary(out_root: Path, code_sha: str) -> str:
         "|---|---|---|---|---|---|",
     ]
     for run in RUNS:
-        w = _read(out_root / run / "source" / "runs" / run / "selection.json")["winner"]
+        w = _read(out_root / run / "selection.json")["winner"]
         parts.append(
             f"| {run} | {w['candidate']} | {w['objective']:.4f} | {w['alpha']} | {w['beam']} | "
             f"{w['segment_threshold']} |"
         )
-    parts += ["", "Source: `<run>/source/runs/<run>/selection.json`.", ""]
+    parts += [
+        "",
+        "Source: `<run>/selection.json` (verbatim copy of the HF `runs/<run>/selection.json`; "
+        "`source/` is gitignored via the repo's `runs/` rule, re-pull with `scripts.eval_local`).",
+        "",
+    ]
     parts += ["## Per-model results (tuned decoding config)", ""]
     for run in RUNS:
         parts += [f"### {RUN_LABEL[run]}", "", model_table(out_root, run, "seg_tuned"), ""]
@@ -784,6 +791,10 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     root: Path = args.out_root
     print(f"normalized line endings of {normalize_and_reindex(root)} files")
+    for run in RUNS:  # the winner record is tiny and `source/` is gitignored, so keep a copy
+        shutil.copyfile(
+            root / run / "source" / "runs" / run / "selection.json", root / run / "selection.json"
+        )
     res = _resources()
     for run in RUNS:
         for variant in VARIANTS:
