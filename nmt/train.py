@@ -55,7 +55,7 @@ import sys
 import time
 import uuid
 import warnings
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -129,6 +129,13 @@ class OptimSection:
     warmup_steps: int = 4000
     planned_steps: int = 300  # TBD from pilot for pilot/ablation/main configs; see configs/*.yaml
     cooldown_frac: float = 0.2  # final fraction of planned_steps spent decaying to 0
+    # Explicit WSD decay window (extension runs, PREREG 2026-10-02 rule 4): LR is stable until
+    # `decay_start`, then decays linearly to 0 at `decay_end`; `cooldown_frac` is then unused.
+    # `planned_steps` stays "the step this run stops at", so a stable-phase run that stops at
+    # 40,000 declares the decay it would take afterwards (40,000 -> 50,000) and never enters it.
+    # Both or neither; None = the default `planned_steps`/`cooldown_frac` schedule.
+    decay_start: int | None = None
+    decay_end: int | None = None
     max_minutes: float | None = None  # wall-clock cap (pilot=15, ablations=40, main safety=240)
 
 
@@ -139,6 +146,9 @@ class CkptSection:
     ckpt_steps: int | None = None
     keep_last: int = 5
     keep_decay_phase: bool = True
+    # Steps that are always saved (even off the ckpt_steps/ckpt_minutes cadence) and never
+    # pruned, e.g. the extension's stable-phase checkpoints at 30,000 and 40,000 steps.
+    milestone_steps: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -162,6 +172,9 @@ class EvalSection:
     e2_n: int = 300
     e3_n: int = 300
     n_samples_table: int = 20
+    # Overfitting watch (PREREG rule 4): flag two consecutive E1 val-loss rises above the running
+    # minimum. Reports only (print + W&B summary + eval row); it never stops training.
+    overfit_watch: bool = False
 
 
 @dataclass
@@ -213,6 +226,18 @@ def load_config(path: str | Path) -> TrainConfig:
     cfg = TrainConfig(**kwargs)
     if cfg.precision not in PRECISIONS:
         raise ValueError(f"precision must be one of {PRECISIONS}, got {cfg.precision!r}")
+    opt = cfg.optim
+    if (opt.decay_start is None) != (opt.decay_end is None):
+        raise ValueError("optim.decay_start and optim.decay_end must be set together (or neither)")
+    if (
+        opt.decay_start is not None
+        and opt.decay_end is not None
+        and not opt.warmup_steps <= opt.decay_start < opt.decay_end
+    ):
+        raise ValueError(
+            f"need warmup_steps <= decay_start < decay_end, got {opt.warmup_steps}, "
+            f"{opt.decay_start}, {opt.decay_end}"
+        )
     return cfg
 
 
@@ -512,12 +537,37 @@ def collect_run_provenance(
 # ---------------------------------------------------------------------------------------------
 
 
+def wsd_decay_window(
+    warmup_steps: int,
+    planned_steps: int,
+    cooldown_frac: float,
+    decay_start_step: int | None = None,
+    decay_end_step: int | None = None,
+) -> tuple[int, int]:
+    """(decay start step, decay length) of the WSD schedule. `decay_start_step` (set by
+    `--cooldown-now`) overrides the default start, `planned_steps - round(planned_steps *
+    cooldown_frac)`. With `decay_end_step` (extension runs) the window is exactly
+    [decay_start_step, decay_end_step) and `planned_steps`/`cooldown_frac` are not consulted.
+    Shared by `wsd_lr_scale` and the checkpoint pruner so the two can never disagree about where
+    the decay phase begins.
+    """
+    if decay_end_step is not None:
+        if decay_start_step is None:
+            raise ValueError("decay_end_step requires an explicit decay_start_step")
+        return decay_start_step, max(1, decay_end_step - decay_start_step)
+    decay_len = max(1, round(planned_steps * cooldown_frac))
+    if decay_start_step is None:
+        decay_start_step = max(warmup_steps, planned_steps - decay_len)
+    return decay_start_step, decay_len
+
+
 def wsd_lr_scale(
     step: int,
     warmup_steps: int,
     planned_steps: int,
     cooldown_frac: float,
     decay_start_step: int | None = None,
+    decay_end_step: int | None = None,
 ) -> float:
     """Warmup-stable-decay LR multiplier in [0, 1] (Hägele et al. 2024), `step` 0-indexed.
 
@@ -525,13 +575,14 @@ def wsd_lr_scale(
     `cooldown_frac * planned_steps` steps. By default the decay window ends exactly at
     `planned_steps`; `--cooldown-now` instead passes an explicit `decay_start_step` (the step at
     which cooldown was triggered), letting a run stop and cool down from any checkpoint (spec §6:
-    "robust to Colab cutoffs").
+    "robust to Colab cutoffs"). `decay_end_step` fixes the window's end explicitly (see
+    `wsd_decay_window`); the decay is then linear from 1.0 at `decay_start_step` to 0.0 there.
     """
     if warmup_steps > 0 and step < warmup_steps:
         return step / warmup_steps
-    decay_len = max(1, round(planned_steps * cooldown_frac))
-    if decay_start_step is None:
-        decay_start_step = max(warmup_steps, planned_steps - decay_len)
+    decay_start_step, decay_len = wsd_decay_window(
+        warmup_steps, planned_steps, cooldown_frac, decay_start_step, decay_end_step
+    )
     if step < decay_start_step:
         return 1.0
     if step >= decay_start_step + decay_len:
@@ -674,26 +725,89 @@ def load_latest_checkpoint(ckpt_dir: Path) -> dict[str, Any] | None:
 
 
 def prune_checkpoints(
-    ckpt_dir: Path, keep_last: int, decay_start_step: int | None, keep_decay_phase: bool
+    ckpt_dir: Path,
+    keep_last: int,
+    decay_start_step: int | None,
+    keep_decay_phase: bool,
+    keep_steps: Iterable[int] = (),
 ) -> None:
-    """Delete old checkpoints beyond `keep_last`, but never delete ones at/after
-    `decay_start_step` when `keep_decay_phase` is set — checkpoint averaging (spec §6, §9) needs
-    the decay-phase checkpoints to still be on disk regardless of how many steps have passed.
+    """Delete old checkpoints, but always keep the newest `keep_last`, every step in
+    `keep_steps` (milestones), and, when `keep_decay_phase` is set, everything at/after
+    `decay_start_step` -- checkpoint averaging (spec §6, §9) needs the decay-phase checkpoints to
+    still be on disk regardless of how many steps have passed. Callers pass the WSD decay start
+    whether or not `--cooldown-now` was used (see `train`); `None` disables that protection.
     """
     files = sorted(Path(ckpt_dir).glob("step_*.pt"), key=lambda p: int(p.stem.split("_")[1]))
-    if len(files) <= keep_last:
-        return
-    protected = {
-        f
-        for f in files
-        if keep_decay_phase
-        and decay_start_step is not None
-        and int(f.stem.split("_")[1]) >= decay_start_step
-    }
-    candidates = [f for f in files if f not in protected]
-    n_to_delete = max(0, len(files) - keep_last)
-    for f in candidates[:n_to_delete]:
-        f.unlink(missing_ok=True)
+    milestones = set(keep_steps)
+    newest = set(files[max(0, len(files) - keep_last) :]) if keep_last > 0 else set()
+    for f in files:
+        f_step = int(f.stem.split("_")[1])
+        in_decay = keep_decay_phase and decay_start_step is not None and f_step >= decay_start_step
+        if f not in newest and f_step not in milestones and not in_decay:
+            f.unlink(missing_ok=True)
+
+
+@dataclass
+class OverfitWatch:
+    """PREREG rule 4 overfitting watch: E1 validation loss is read at every evaluation; a value
+    above the running minimum is a rise, two consecutive rises flag the run. Reporting only: the
+    caller prints and records the flag, nothing here (or in `train`) ever stops training. A value
+    at or below the running minimum resets the streak and becomes the new minimum.
+    """
+
+    min_loss: float | None = None
+    min_step: int | None = None
+    rises: int = 0
+
+    def update(self, step: int, val_loss: float) -> bool:
+        """Feed one evaluation; True while the run is flagged (>= 2 consecutive rises)."""
+        if self.min_loss is None:
+            if val_loss == val_loss:  # not NaN
+                self.min_loss, self.min_step = val_loss, step
+            return False
+        if val_loss <= self.min_loss:
+            self.min_loss, self.min_step, self.rises = val_loss, step, 0
+        else:  # also taken for NaN: a NaN validation loss is the worst kind of rise
+            self.rises += 1
+        return self.rises >= 2
+
+    @classmethod
+    def from_metrics(cls, metrics_path: Path, upto_step: int) -> OverfitWatch:
+        """Rebuild the state from the eval rows already in `metrics_path` (steps <= `upto_step`;
+        a step logged twice keeps its last occurrence), so a resumed run's streak is exact."""
+        by_step: dict[int, float] = {}
+        if metrics_path.is_file():
+            for line in metrics_path.read_text(encoding="utf-8").splitlines():
+                row = json.loads(line) if line.strip() else {}
+                ev = row.get("eval")
+                if ev and "val_loss" in ev and ev["step"] <= upto_step:
+                    by_step[ev["step"]] = ev["val_loss"]
+        watch = cls()
+        for step in sorted(by_step):
+            watch.update(step, by_step[step])
+        return watch
+
+
+_INIT_STEP_RE = re.compile(r"^step_(\d+)\.pt$")
+
+
+def check_init_from(init_from: Path, ckpt_dir: Path) -> int:
+    """Validate `--init-from` BEFORE anything is written and return the step in its file name.
+    The source must exist and must not live in this run's own ckpt dir: a new run directory that
+    could write next to (or prune) the checkpoint it started from would break the extension's
+    rule that parent runs are never modified.
+    """
+    if not init_from.is_file():
+        raise FileNotFoundError(f"--init-from checkpoint not found: {init_from}")
+    if init_from.resolve().parent == ckpt_dir.resolve():
+        raise ValueError(
+            f"--init-from {init_from} is inside this run's own ckpt dir {ckpt_dir}; initialise "
+            "into a NEW run directory (the source checkpoints are never written to)."
+        )
+    match = _INIT_STEP_RE.match(init_from.name)
+    if match is None:
+        raise ValueError(f"--init-from must be named step_<N>.pt, got {init_from.name!r}")
+    return int(match.group(1))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -979,6 +1093,7 @@ def train(
     resume_count: int = 0,
     wait_seconds: float = 0.0,
     debug_raise_oom_at_step: int | None = None,
+    init_from: Path | None = None,
 ) -> None:
     """Run (or resume) training for `cfg`. Every call builds a brand-new model/optimizer/sampler
     from scratch and, if `resume=True`, restores them from the latest checkpoint in
@@ -995,6 +1110,13 @@ def train(
     `debug_raise_oom_at_step` is TEST-ONLY: raises a `torch.OutOfMemoryError` at that step's
     forward, once per run dir (a marker file stops the resumed invocation from re-firing it).
     Exit 75 (`EX_TEMPFAIL`) is raised as SystemExit on a stop request and on an OOM abort.
+
+    `init_from` (extension mode): start a NEW run from another run's checkpoint `step_<N>.pt` --
+    model, optimizer, scaler, data cursor and RNG state are all restored and the step counter
+    continues at N (no re-warmup: the LR follows the config's schedule at the absolute step). It
+    applies only when `ckpt.dir` holds no checkpoint yet; once the new run has its own
+    checkpoints, `resume=True` resumes from those and `init_from` is ignored. The source file is
+    only ever read. Prints `INIT_FROM ...` instead of `RESUMED ...`.
     """
     seed = cfg.seed if seed is None else seed
     device = _resolve_device(cfg)
@@ -1011,6 +1133,7 @@ def train(
     run_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = Path(cfg.ckpt.dir)
     ckpt_dir = ckpt_dir if ckpt_dir.is_absolute() else REPO_ROOT / ckpt_dir
+    init_step_expected = check_init_from(Path(init_from), ckpt_dir) if init_from else None
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = run_dir / "metrics.jsonl"
 
@@ -1039,29 +1162,71 @@ def train(
     decay_start_step: int | None = None
     grad_skip_count = 0
     resumed_ckpt: dict[str, Any] | None = None
+    init_info: dict[str, Any] | None = None
     if resume:
         resumed_ckpt = load_latest_checkpoint(ckpt_dir)
-        if resumed_ckpt is not None:
-            saved_precision = resumed_ckpt.get("precision")
-            if saved_precision is not None and saved_precision != precision:
-                raise RuntimeError(
-                    f"cannot resume: checkpoint was trained with precision={saved_precision!r} "
-                    f"but this run resolved precision={precision!r} (config {cfg.precision!r}). "
-                    "Mixing precisions mid-run breaks the loss-scale/optimizer-state contract; "
-                    "pass the original --precision or start a fresh run in a new ckpt dir."
-                )
-            model.load_state_dict(resumed_ckpt["model"])
-            optimizer.load_state_dict(resumed_ckpt["optimizer"])
-            scaler.load_state_dict(resumed_ckpt["scaler"])
-            sampler.load_state_dict(resumed_ckpt["sampler"])
-            # Drop the big payloads now: only rng/sampler/step stay referenced for the rest of
-            # train() (the RNG fingerprint below), not a second copy of the weights and Adam state.
-            del resumed_ckpt["model"], resumed_ckpt["optimizer"], resumed_ckpt["scaler"]
-            step = resumed_ckpt["step"]
-            decay_start_step = resumed_ckpt.get("decay_start_step")
-            grad_skip_count = resumed_ckpt.get("grad_skip_count", 0)
+    if init_from is not None and resumed_ckpt is None:
+        if any(ckpt_dir.glob("step_*.pt")):  # not a resume: refuse to mix into an existing run
+            raise RuntimeError(
+                f"--init-from needs an empty ckpt dir, but {ckpt_dir} already holds checkpoints; "
+                "pass --resume to continue that run, or use a new directory."
+            )
+        resumed_ckpt = torch.load(init_from, weights_only=False, map_location="cpu")
+        if resumed_ckpt["step"] != init_step_expected:
+            raise ValueError(
+                f"--init-from {init_from}: file name says step {init_step_expected} but the "
+                f"checkpoint holds step {resumed_ckpt['step']}"
+            )
+        target = max_steps if max_steps is not None else cfg.optim.planned_steps
+        if resumed_ckpt["step"] >= target:
+            raise ValueError(
+                f"--init-from step {resumed_ckpt['step']} is not below this run's target {target}"
+            )
+        init_info = {
+            "init_from": str(init_from),
+            "init_from_step": resumed_ckpt["step"],
+            "init_from_sha256": _file_sha256(Path(init_from)),
+        }
+    elif init_from is not None:
+        print(f"--init-from ignored: resuming this run's own checkpoint in {ckpt_dir}")
+    if resumed_ckpt is not None:
+        saved_precision = resumed_ckpt.get("precision")
+        if saved_precision is not None and saved_precision != precision:
+            raise RuntimeError(
+                f"cannot resume: checkpoint was trained with precision={saved_precision!r} "
+                f"but this run resolved precision={precision!r} (config {cfg.precision!r}). "
+                "Mixing precisions mid-run breaks the loss-scale/optimizer-state contract; "
+                "pass the original --precision or start a fresh run in a new ckpt dir."
+            )
+        model.load_state_dict(resumed_ckpt["model"])
+        optimizer.load_state_dict(resumed_ckpt["optimizer"])
+        scaler.load_state_dict(resumed_ckpt["scaler"])
+        sampler.load_state_dict(resumed_ckpt["sampler"])
+        # Drop the big payloads now: only rng/sampler/step stay referenced for the rest of
+        # train() (the RNG fingerprint below), not a second copy of the weights and Adam state.
+        del resumed_ckpt["model"], resumed_ckpt["optimizer"], resumed_ckpt["scaler"]
+        step = resumed_ckpt["step"]
+        decay_start_step = resumed_ckpt.get("decay_start_step")
+        grad_skip_count = resumed_ckpt.get("grad_skip_count", 0)
     if cooldown_now and decay_start_step is None:
         decay_start_step = step
+    # Explicit decay window (extension runs) always comes from the config, never from a
+    # checkpoint: --init-from takes its weights from a run with a different schedule.
+    decay_end_step: int | None = None
+    if cfg.optim.decay_start is not None:
+        if cooldown_now:
+            raise ValueError("--cooldown-now cannot be combined with optim.decay_start/decay_end")
+        decay_start_step, decay_end_step = cfg.optim.decay_start, cfg.optim.decay_end
+    # Where the decay phase begins, for checkpoint retention only (the LR schedule keeps using
+    # `decay_start_step`, which stays None unless --cooldown-now). Before this was derived from
+    # the schedule, `keep_decay_phase` protected nothing in a normal run (main run, 2026-10-02).
+    retention_decay_start, _ = wsd_decay_window(
+        cfg.optim.warmup_steps,
+        cfg.optim.planned_steps,
+        cfg.optim.cooldown_frac,
+        decay_start_step,
+        decay_end_step,
+    )
 
     # fork_rng: the probe's random inputs and dropout would otherwise advance the CUDA RNG that
     # training (and the RNG fingerprint) depends on.
@@ -1070,7 +1235,9 @@ def train(
     print(sdpa["summary"])
     provenance = collect_run_provenance(cfg, device, precision, tf32, sdpa, model, shard_dir)
     provenance["precision_requested"] = cfg.precision
-    provenance["resumed"] = resumed_ckpt is not None
+    provenance["resumed"] = resumed_ckpt is not None and init_info is None
+    if init_info is not None:
+        provenance.update(init_info)
     provenance["resume_count"] = resume_count
     provenance["wait_seconds_total"] = wait_seconds
     (run_dir / "run_info.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
@@ -1097,7 +1264,7 @@ def train(
                 {"eval_disabled_reason": eval_disabled_reason}, allow_val_change=True
             )
 
-    resumed = resumed_ckpt is not None
+    resumed = resumed_ckpt is not None and init_info is None
     if resumed_ckpt is not None:
         # Restore RNG as late as possible (after W&B init, the SDPA probe, dataset construction),
         # so nothing between restore and the first training step can consume it, then fingerprint
@@ -1105,8 +1272,17 @@ def train(
         _restore_rng_state(resumed_ckpt["rng"])
         saved_fp = rng_fingerprint(resumed_ckpt["rng"], resumed_ckpt["sampler"])
         live_fp = rng_fingerprint(_rng_state(), sampler.state_dict())
-        print(f"RESUMED step={step} rng_fingerprint={live_fp} matches_saved={live_fp == saved_fp}")
-        print(f"RESUME_CONTEXT last_losses={_last_logged_losses(metrics_path, step)}")
+        if init_info is not None:
+            print(
+                f"INIT_FROM step={step} path={init_info['init_from']} "
+                f"sha256={init_info['init_from_sha256']} rng_fingerprint={live_fp} "
+                f"matches_saved={live_fp == saved_fp}"
+            )
+        else:
+            print(
+                f"RESUMED step={step} rng_fingerprint={live_fp} matches_saved={live_fp == saved_fp}"
+            )
+            print(f"RESUME_CONTEXT last_losses={_last_logged_losses(metrics_path, step)}")
     if stop_after_first_ckpt and resumed:
         print("stop-after-first-ckpt ignored: resumed run")
     post_resume_losses: list[float] = []
@@ -1146,6 +1322,7 @@ def train(
         end_invocation("oom_abort")
         raise SystemExit(EX_TEMPFAIL)
 
+    watch = OverfitWatch.from_metrics(metrics_path, step) if cfg.eval.overfit_watch else None
     oom_marker = run_dir / DEBUG_OOM_MARKER
     micro_iter = _iter_micro_batches(sampler)
     last_ckpt_time = time.monotonic()
@@ -1176,6 +1353,7 @@ def train(
                     cfg.optim.planned_steps,
                     cfg.optim.cooldown_frac,
                     decay_start_step,
+                    decay_end_step,
                 )
                 lr = cfg.optim.lr * lr_scale
                 for group in optimizer.param_groups:
@@ -1281,6 +1459,27 @@ def train(
                     with autocast_context(device, precision):
                         extra = eval_fn(model, step, wandb_run)
                     eval_row = {"step": step, "val_loss": val_loss, **extra}
+                    if watch is not None and val_loss is not None:
+                        flagged = watch.update(step, val_loss)
+                        eval_row.update(
+                            overfit_flag=int(flagged),
+                            val_loss_running_min=watch.min_loss,
+                            val_loss_rises=watch.rises,
+                        )
+                        if flagged:
+                            print(
+                                f"OVERFIT_WATCH FLAG step={step} val_loss={val_loss:.4f} "
+                                f"running_min={watch.min_loss:.4f} (step {watch.min_step}) "
+                                f"consecutive_rises={watch.rises}: E1 val loss is rising; report "
+                                "to GG, who decides whether to cut the run (training continues).",
+                                flush=True,
+                            )
+                            if wandb_run is not None:
+                                with contextlib.suppress(Exception):
+                                    wandb_run.summary["overfit_flag"] = True
+                                    wandb_run.summary["overfit_flag_first_step"] = (
+                                        wandb_run.summary.get("overfit_flag_first_step") or step
+                                    )
                     metrics_file.write(json.dumps({"eval": eval_row}) + "\n")
                     metrics_file.flush()
                     if wandb_run is not None:
@@ -1290,7 +1489,9 @@ def train(
                 oom_abort()
 
             due_by_time = (time.monotonic() - last_ckpt_time) / 60.0 >= cfg.ckpt.ckpt_minutes
-            due_by_steps = cfg.ckpt.ckpt_steps is not None and step % cfg.ckpt.ckpt_steps == 0
+            due_by_steps = (
+                cfg.ckpt.ckpt_steps is not None and step % cfg.ckpt.ckpt_steps == 0
+            ) or step in cfg.ckpt.milestone_steps
             # A finished run wins over a stop request (its final checkpoint is saved anyway).
             stop_reason = _read_stop_request(run_dir) if step < target_steps else None
             if due_by_time or due_by_steps or step >= target_steps or stop_reason is not None:
@@ -1310,7 +1511,11 @@ def train(
                 )
                 print(f"CKPT_SAVED step={step} rng_fingerprint={fp} path={ckpt_path}", flush=True)
                 prune_checkpoints(
-                    ckpt_dir, cfg.ckpt.keep_last, decay_start_step, cfg.ckpt.keep_decay_phase
+                    ckpt_dir,
+                    cfg.ckpt.keep_last,
+                    retention_decay_start,
+                    cfg.ckpt.keep_decay_phase,
+                    cfg.ckpt.milestone_steps,
                 )
                 last_ckpt_time = time.monotonic()
                 last_ckpt_step = step
@@ -1407,6 +1612,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "only, as wait_seconds_total).",
     )
     parser.add_argument(
+        "--init-from",
+        default=None,
+        help="Extension mode: start this (new) run from another run's checkpoint step_<N>.pt "
+        "(model, optimizer, scaler, data cursor, RNG; step continues at N). Used only while "
+        "ckpt.dir is empty; the source is read-only. See PREREG 2026-10-02 rule 4.",
+    )
+    parser.add_argument(
         "--debug-raise-oom-at-step",
         type=int,
         default=None,
@@ -1475,6 +1687,7 @@ def main(argv: list[str] | None = None) -> None:
         resume_count=args.resume_count,
         wait_seconds=args.wait_seconds,
         debug_raise_oom_at_step=args.debug_raise_oom_at_step,
+        init_from=Path(args.init_from) if args.init_from else None,
         eval_fn=default_eval_fn if args.synthetic else build_eval_fn(cfg, args.seed),
     )
 
