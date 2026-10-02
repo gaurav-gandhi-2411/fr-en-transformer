@@ -48,6 +48,20 @@ jobs:
         if: matrix.python-version == '3.12'
         run: uv run pytest -q
 
+      # The scorer-encoding tests guard the Windows/UTF-8 scoring path; a silent skip would hide a
+      # regression, so show every test as PASSED/FAILED in the log and fail on any SKIPPED line.
+      - name: Scorer-encoding tests, verbose (must run, not skip)
+        if: matrix.python-version == '3.12'
+        shell: bash
+        run: |
+          set -eo pipefail
+          uv run pytest tests/test_scorer_encoding.py tests/test_official_scorer.py -v -rs \
+            | tee "$RUNNER_TEMP/scorer_encoding.log"
+          if grep -q " SKIPPED" "$RUNNER_TEMP/scorer_encoding.log"; then
+            echo "scorer-encoding tests were SKIPPED; they must run" >&2
+            exit 1
+          fi
+
       # ---- 3.13: Colab's interpreter, reproduced the way the Colab notebook installs ---------
       # Plain pip in a venv (no uv): preinstalled torch + `requirements-colab.txt` under a torch
       # constraint + `pip install -e . --no-deps`, i.e. the exact sequence of the notebook's

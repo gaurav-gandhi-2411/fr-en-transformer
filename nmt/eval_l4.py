@@ -197,8 +197,44 @@ def ensure_private_repo(api: Any, repo_id: str) -> None:
     assert_repo_private(api, repo_id, "before upload")
 
 
+PROBE_PATH = "_write_probe.txt"  # repo root, outside runs/: no manifest, verify or pull reads it
+PROBE_CONTENT = b"write probe: fr-en-transformer eval repo; safe to ignore\n"
+# A title distinct from commit_message(run): hf-verify matches upload commits by exact title.
+PROBE_COMMIT_MESSAGE = "eval_l4: write probe"
+
+
+def _write_probe(api: Any, repo_id: str) -> str:
+    """Prove the token can really write: commit one tiny file unless it is already there.
+
+    Returns "committed" or "already present". Presence of PROBE_PATH proves an earlier successful
+    write by the repo owner (only a write-capable token can have put it there), so it is not
+    repeated; it does not prove THIS token can write, so the upload step's own 401/403 mapping
+    remains the backstop for that. 401/403 on the probe is HFWriteTokenError.
+    """
+    from huggingface_hub import CommitOperationAdd
+
+    try:
+        if api.file_exists(repo_id=repo_id, filename=PROBE_PATH, repo_type="model"):
+            return "already present"
+        api.create_commit(
+            repo_id=repo_id,
+            repo_type="model",
+            operations=[CommitOperationAdd(path_in_repo=PROBE_PATH, path_or_fileobj=PROBE_CONTENT)],
+            commit_message=PROBE_COMMIT_MESSAGE,
+        )
+    except Exception as exc:
+        if _is_auth_error(exc):
+            raise HFWriteTokenError(
+                write_token_message(repo_id, f"write probe refused: {exc}")
+            ) from exc
+        raise
+    return "committed"
+
+
 def hf_check(api: Any, repo_id: str) -> dict[str, Any]:
-    """Early fail-fast check: token scope, and (if the repo exists) that it is private."""
+    """Early fail-fast check, before any GPU time: token scope, the repo exists and is private
+    (created private if missing), and a REAL write probe (token metadata alone cannot prove the
+    token can write). Privacy is asserted again after the probe commit."""
     if not _REPO_ID_RE.match(repo_id):
         raise EvalStepError(f"HF_EVAL_REPO={repo_id!r} is not '<owner>/<name>'")
     account = check_write_token(api, repo_id)
@@ -214,7 +250,19 @@ def hf_check(api: Any, repo_id: str) -> dict[str, Any]:
         exists = False
     if exists:
         assert_repo_private(api, repo_id, "hf-check")
-    return {"account": account, "repo": repo_id, "exists": exists}
+    try:
+        api.create_repo(repo_id=repo_id, repo_type="model", private=True, exist_ok=True)
+    except Exception as exc:
+        if not _is_auth_error(exc):
+            raise
+        if not exists:  # cannot create it and it is not there: the token cannot write
+            raise HFWriteTokenError(
+                write_token_message(repo_id, f"create_repo refused: {exc}")
+            ) from exc
+    assert_repo_private(api, repo_id, "hf-check, before the write probe")
+    probe = _write_probe(api, repo_id)
+    assert_repo_private(api, repo_id, "hf-check, after the write probe")
+    return {"account": account, "repo": repo_id, "exists": exists, "probe": probe}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1074,7 +1122,10 @@ def main(argv: list[str] | None = None) -> int:
 def _dispatch(args: argparse.Namespace) -> int:
     if args.cmd == "hf-check":
         info = hf_check(_hf_api(), args.repo)
-        print(f"hf-check: OK account={info['account']} repo={args.repo} exists={info['exists']}")
+        print(
+            f"hf-check: OK account={info['account']} repo={args.repo} exists={info['exists']} "
+            f"private=True probe: {info['probe']} ({PROBE_PATH})"
+        )
     elif args.cmd == "hf-verify":
         state = verify_run_on_hf(_hf_api(), args.repo, args.run)
         # One machine-readable line (the notebook parses it) then the human reason.

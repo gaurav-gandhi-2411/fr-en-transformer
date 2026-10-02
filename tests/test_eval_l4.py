@@ -532,8 +532,14 @@ class FakeApi:
         self.commits.append([op.path_in_repo for op in kwargs["operations"]])
         self.titles.append(kwargs["commit_message"])
         for op in kwargs["operations"]:
-            self.remote[op.path_in_repo] = Path(op.path_or_fileobj).read_bytes()
+            src = op.path_or_fileobj
+            self.remote[op.path_in_repo] = (
+                bytes(src) if isinstance(src, bytes) else Path(src).read_bytes()
+            )
         return types.SimpleNamespace(oid=REVISION)
+
+    def file_exists(self, **kwargs: Any) -> bool:
+        return kwargs["filename"] in self.remote
 
     def list_repo_tree(self, **kwargs: Any) -> Any:
         if self.list_error:
@@ -588,12 +594,80 @@ def test_hf_check_passes_for_a_missing_repo_and_a_private_one_but_not_a_public_o
         "account": "gg",
         "repo": REPO,
         "exists": False,
+        "probe": "committed",
     }
     assert ev.hf_check(FakeApi(), REPO)["exists"] is True
     with pytest.raises(ev.HFNotPrivateError):
         ev.hf_check(FakeApi(private=False), REPO)
     with pytest.raises(ev.EvalStepError, match="<owner>/<name>"):
         ev.hf_check(FakeApi(), "not-a-repo-id")
+
+
+def test_write_probe_commits_once_and_is_idempotent() -> None:
+    api = FakeApi()
+    assert ev.hf_check(api, REPO)["probe"] == "committed"
+    assert api.commits == [[ev.PROBE_PATH]] and api.titles == ["eval_l4: write probe"]
+    assert api.remote[ev.PROBE_PATH] == ev.PROBE_CONTENT
+    assert ev.hf_check(api, REPO)["probe"] == "already present"
+    assert len(api.commits) == 1  # the second check made no commit
+    assert api.created and all(c["private"] is True for c in api.created)
+
+
+def test_write_probe_title_never_matches_an_upload_commit_title() -> None:
+    assert all(ev.commit_message(r) != ev.PROBE_COMMIT_MESSAGE for r in ev.RUNS)
+    assert not ev.PROBE_PATH.startswith("runs/")  # outside every runs/<run>/ prefix
+
+
+def test_write_denied_on_the_probe_is_caught_though_token_metadata_looks_fine() -> None:
+    api = FakeApi(commit_error=_HttpError(403))  # WRITE metadata passes write_scope_problem
+    assert ev.write_scope_problem(api.who, REPO) is None
+    with pytest.raises(ev.HFWriteTokenError) as err:
+        ev.hf_check(api, REPO)
+    assert "HF_TOKEN_WRITE" in str(err.value) and REPO in str(err.value)
+    assert api.commits == []
+
+
+def test_hf_check_cli_exits_nonzero_on_a_denied_probe_and_prints_probe_status(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    denied = FakeApi(commit_error=_HttpError(401))
+    monkeypatch.setattr(ev, "_hf_api", lambda: denied)
+    assert ev.main(["hf-check", "--repo", REPO]) == 1
+    assert "cannot write" in capsys.readouterr().err
+    ok = FakeApi()
+    monkeypatch.setattr(ev, "_hf_api", lambda: ok)
+    assert ev.main(["hf-check", "--repo", REPO]) == 0
+    assert "probe: committed" in capsys.readouterr().out
+    assert ev.main(["hf-check", "--repo", REPO]) == 0
+    assert "probe: already present" in capsys.readouterr().out
+
+
+def test_non_private_repo_is_refused_before_any_probe_commit() -> None:
+    for api in (FakeApi(private=False), FakeApi(private=None)):
+        with pytest.raises(ev.HFNotPrivateError):
+            ev.hf_check(api, REPO)
+        assert api.commits == []
+
+
+def test_repo_that_cannot_be_created_or_seen_is_a_write_token_error() -> None:
+    api = FakeApi(exists=False, create_error=_HttpError(403))
+    with pytest.raises(ev.HFWriteTokenError, match="create_repo refused"):
+        ev.hf_check(api, REPO)
+    assert api.commits == []
+
+
+def test_repo_flipping_public_after_the_probe_is_refused() -> None:
+    with pytest.raises(ev.HFNotPrivateError, match="after the write probe"):
+        ev.hf_check(FakeApi(flip_after_commit=True), REPO)
+
+
+def test_probe_file_does_not_disturb_a_complete_run_verification(tmp_path: Path) -> None:
+    api = FakeApi()
+    ev.hf_check(api, REPO)
+    ev.upload_run(api, REPO, "main", _eval_dir(tmp_path))
+    assert ev.verify_run_on_hf(api, REPO, "main")["complete"] is True
+    assert ev.hf_check(api, REPO)["probe"] == "already present"
+    assert ev.verify_run_on_hf(api, REPO, "main")["complete"] is True
 
 
 def _eval_dir(tmp_path: Path, run: str = "main", winner: str = "avg_decay") -> Path:
