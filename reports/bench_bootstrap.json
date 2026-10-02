@@ -1,0 +1,171 @@
+{
+  "machine": {
+    "cpu": "AMD Ryzen 7 6800H with Radeon Graphics",
+    "python": "3.13.5",
+    "platform": "Windows-11-10.0.26300-SP0"
+  },
+  "n_resamples": 1000,
+  "seed": 1234,
+  "old_definition": "per resample: rebuild resampled lists, official corpus_bleu / mean chrf_sentence (the components of official score_slice)",
+  "new_definition": "nmt.evaluate.bootstrap_ci_official: stats once + numpy resample + CI",
+  "exact_match_old_vs_new_same_indices": {
+    "n": 60,
+    "resamples": 25,
+    "bleu_max_abs_diff": 3.3306690738754696e-16,
+    "bleu_ci_max_abs_diff": 0.0,
+    "chrf_max_abs_diff": 3.552713678800501e-15,
+    "chrf_ci_max_abs_diff": 0.0
+  },
+  "splits": {
+    "dev": {
+      "n": 150,
+      "hypotheses": "smoke_tuned predictions (dev_predictions.json)",
+      "metrics": {
+        "bleu": {
+          "old_seconds": 45.989,
+          "old_extrapolated": false,
+          "old_timed_resamples": 1000,
+          "new_seconds": 0.1,
+          "speedup": 459.0,
+          "new_point": 0.407458861228655,
+          "new_ci": [
+            0.2871157762307947,
+            0.5152151877023534
+          ]
+        },
+        "chrf": {
+          "old_seconds": 148.442,
+          "old_extrapolated": false,
+          "old_timed_resamples": 1000,
+          "new_seconds": 0.153,
+          "speedup": 969.9,
+          "new_point": 9.966793934143801,
+          "new_ci": [
+            9.364767742903354,
+            10.580600777372043
+          ]
+        }
+      }
+    },
+    "e1": {
+      "n": 1940,
+      "hypotheses": "smoke_tuned predictions (e1_predictions.json)",
+      "metrics": {
+        "bleu": {
+          "old_seconds": 674.002,
+          "old_extrapolated": true,
+          "old_timed_resamples": 50,
+          "new_seconds": 0.903,
+          "speedup": 746.3,
+          "new_point": 0.16571633847688885,
+          "new_ci": [
+            0.14220599644514834,
+            0.1868495322033886
+          ]
+        },
+        "chrf": {
+          "old_seconds": 1703.546,
+          "old_extrapolated": true,
+          "old_timed_resamples": 50,
+          "new_seconds": 2.223,
+          "speedup": 766.4,
+          "new_point": 9.66738893265018,
+          "new_ci": [
+            9.480695897018187,
+            9.863688253377873
+          ]
+        }
+      }
+    },
+    "e2": {
+      "n": 1000,
+      "hypotheses": "smoke_tuned predictions (e2_predictions.json)",
+      "metrics": {
+        "bleu": {
+          "old_seconds": 574.296,
+          "old_extrapolated": true,
+          "old_timed_resamples": 50,
+          "new_seconds": 0.494,
+          "speedup": 1162.7,
+          "new_point": 0.24539023818703712,
+          "new_ci": [
+            0.16201388247103987,
+            0.31608594342420554
+          ]
+        },
+        "chrf": {
+          "old_seconds": 2388.583,
+          "old_extrapolated": true,
+          "old_timed_resamples": 50,
+          "new_seconds": 2.501,
+          "speedup": 955.0,
+          "new_point": 14.487184275170774,
+          "new_ci": [
+            14.286238538573672,
+            14.674626877772903
+          ]
+        }
+      }
+    },
+    "e3": {
+      "n": 1000,
+      "hypotheses": "smoke_tuned predictions (e3_predictions.json)",
+      "metrics": {
+        "bleu": {
+          "old_seconds": 355.653,
+          "old_extrapolated": true,
+          "old_timed_resamples": 50,
+          "new_seconds": 0.512,
+          "speedup": 695.2,
+          "new_point": 0.23020149936947087,
+          "new_ci": [
+            0.14919216741803817,
+            0.3217083188649657
+          ]
+        },
+        "chrf": {
+          "old_seconds": 1021.445,
+          "old_extrapolated": true,
+          "old_timed_resamples": 50,
+          "new_seconds": 1.114,
+          "speedup": 916.6,
+          "new_point": 9.957589101208935,
+          "new_ci": [
+            9.69274739226348,
+            10.23448597745898
+          ]
+        }
+      }
+    },
+    "e2synth": {
+      "n": 300,
+      "hypotheses": "references with deterministic 25% word-drop corruption (seed 42)",
+      "metrics": {
+        "bleu": {
+          "old_seconds": 179.611,
+          "old_extrapolated": true,
+          "old_timed_resamples": 50,
+          "new_seconds": 0.332,
+          "speedup": 541.0,
+          "new_point": 51.11353179038438,
+          "new_ci": [
+            50.097117956840684,
+            52.20682081505879
+          ]
+        },
+        "chrf": {
+          "old_seconds": 762.647,
+          "old_extrapolated": true,
+          "old_timed_resamples": 50,
+          "new_seconds": 0.762,
+          "speedup": 1000.2,
+          "new_point": 70.88634414378417,
+          "new_ci": [
+            70.21578449383996,
+            71.56155038179627
+          ]
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@ from __future__ import annotations
 # E-set. Spec §8.
 import importlib.util
 import json
+import math
 import random
 import subprocess
 import sys
@@ -219,6 +220,41 @@ def _bleu_resample(stats: _BleuStats, idx: np.ndarray) -> np.ndarray:
     )
 
 
+def _bleu_point_from_stats(stats: _BleuStats, max_n: int = 4) -> float:
+    """Full-set corpus BLEU from per-sentence stats, in scalar Python with the same operation
+    order as `official/score.py::corpus_bleu` (integer sums are exact, so this is bit-for-bit the
+    official value, not merely within float noise) -- lets the point estimate reuse the cached
+    stats instead of re-tokenizing every string a second time."""
+    hyp_len = int(stats.hyp_len.sum())
+    ref_len = int(stats.ref_len.sum())
+    if hyp_len == 0:
+        return 0.0
+    match = stats.match.sum(axis=0).tolist()
+    total = stats.total.sum(axis=0).tolist()
+    precs = []
+    for k in range(max_n):
+        m, t = match[k], total[k]
+        if t == 0:
+            precs.append(0.0)
+        elif k == 0:
+            precs.append(m / t if m > 0 else 1e-9)
+        else:
+            precs.append((m + 1) / (t + 1))
+    if min(precs) <= 0:
+        return 0.0
+    geo = math.exp(sum(math.log(p) for p in precs) / max_n)
+    bp = 1.0 if hyp_len > ref_len else math.exp(1 - ref_len / hyp_len)
+    return 100.0 * bp * geo
+
+
+def _chrf_point_from_values(chrf_vals: np.ndarray) -> float:
+    """Official chrF over a set: `sum(sentence chrF) / n` with Python's left-to-right `sum`, exactly
+    as `score_slice` does (`np.mean`'s pairwise summation would differ in the last ULPs)."""
+    if len(chrf_vals) == 0:
+        return 0.0
+    return sum(chrf_vals.tolist()) / len(chrf_vals)
+
+
 def _chrf_sentence_stats(hyps: list[str], refs: list[str]) -> np.ndarray:
     """Per-sentence `chrf_sentence` values (official chrF is a plain sentence average, so this
     *is* the sufficient statistic -- no further reduction is needed to resample it)."""
@@ -248,6 +284,7 @@ class _VectorizableMetric:
 
     name: str
     point_fn: Callable[[list[str], list[str]], float]
+    point_from_stats_fn: Callable[[Any], float]
     stats_fn: Callable[[list[str], list[str]], Any]
     resample_fn: Callable[[Any, np.ndarray], np.ndarray]
 
@@ -258,17 +295,22 @@ class _VectorizableMetric:
 def _chrf_point(hyps: list[str], refs: list[str]) -> float:
     if not refs:
         return 0.0
-    return float(_chrf_sentence_stats(hyps, refs).mean())
+    return _chrf_point_from_values(_chrf_sentence_stats(hyps, refs))
 
 
 _BLEU_METRIC = _VectorizableMetric(
     name="bleu",
     point_fn=lambda h, r: load_official_module().corpus_bleu(h, r),
+    point_from_stats_fn=_bleu_point_from_stats,
     stats_fn=_bleu_sentence_stats,
     resample_fn=_bleu_resample,
 )
 _CHRF_METRIC = _VectorizableMetric(
-    name="chrf", point_fn=_chrf_point, stats_fn=_chrf_sentence_stats, resample_fn=_chrf_resample
+    name="chrf",
+    point_fn=_chrf_point,
+    point_from_stats_fn=_chrf_point_from_values,
+    stats_fn=_chrf_sentence_stats,
+    resample_fn=_chrf_resample,
 )
 
 
@@ -300,8 +342,8 @@ def bootstrap_ci(
     runs in well under a second); any other callable falls back to a plain Python loop.
     """
     n = len(refs)
-    point = metric_fn(hyps, refs)
     if n == 0:
+        point = metric_fn(hyps, refs)
         return {
             "point": point,
             "ci_low": point,
@@ -310,12 +352,14 @@ def bootstrap_ci(
             "n": 0,
         }
     if isinstance(metric_fn, _VectorizableMetric):
-        stats = metric_fn.stats_fn(hyps, refs)
+        stats = metric_fn.stats_fn(hyps, refs)  # the ONLY tokenization pass for this call
+        point = metric_fn.point_from_stats_fn(stats)
         idx = _resample_indices(n, n_resamples, seed)
         samples = np.sort(metric_fn.resample_fn(stats, idx))
         lo = float(samples[int(0.025 * n_resamples)])
         hi = float(samples[min(n_resamples - 1, int(0.975 * n_resamples))])
     else:
+        point = metric_fn(hyps, refs)
         rng = random.Random(seed)
         samples_list = []
         for _ in range(n_resamples):
@@ -390,16 +434,11 @@ def bootstrap_official_overall(
     bleu_stats = _bleu_sentence_stats(hyps_all, refs_all)
     chrf_vals = _chrf_sentence_stats(hyps_all, refs_all)
 
-    bleu_point = float(
-        _bleu_from_aggregated(
-            bleu_stats.match.sum(axis=0),
-            bleu_stats.total.sum(axis=0),
-            bleu_stats.hyp_len.sum(),
-            bleu_stats.ref_len.sum(),
-        )
+    bleu_point = _bleu_point_from_stats(bleu_stats)
+    chrf_all_point = _chrf_point_from_values(chrf_vals)
+    chrf_unseen_point = (
+        _chrf_point_from_values(chrf_vals[is_unseen]) if is_unseen.any() else chrf_all_point
     )
-    chrf_all_point = float(chrf_vals.mean())
-    chrf_unseen_point = float(chrf_vals[is_unseen].mean()) if is_unseen.any() else chrf_all_point
     point = 0.40 * bleu_point + 0.40 * chrf_all_point + 0.20 * chrf_unseen_point
 
     idx = _resample_indices(n, n_resamples, seed)
@@ -439,10 +478,8 @@ def paired_bootstrap(
     Python loop.
     """
     n = len(refs)
-    point_a = metric_fn(hyps_a, refs)
-    point_b = metric_fn(hyps_b, refs)
-    delta_point = point_a - point_b
     if n == 0:
+        delta_point = metric_fn(hyps_a, refs) - metric_fn(hyps_b, refs)
         return {
             "delta": delta_point,
             "ci_low": delta_point,
@@ -451,15 +488,19 @@ def paired_bootstrap(
             "n_resamples": n_resamples,
         }
     if isinstance(metric_fn, _VectorizableMetric):
-        idx = _resample_indices(n, n_resamples, seed)
+        idx = _resample_indices(n, n_resamples, seed)  # one index matrix shared by A and B
         stats_a = metric_fn.stats_fn(hyps_a, refs)
         stats_b = metric_fn.stats_fn(hyps_b, refs)
+        delta_point = metric_fn.point_from_stats_fn(stats_a) - metric_fn.point_from_stats_fn(
+            stats_b
+        )
         deltas_arr = metric_fn.resample_fn(stats_a, idx) - metric_fn.resample_fn(stats_b, idx)
         count_b_ge_a = int(np.sum(deltas_arr <= 0))
         deltas_arr = np.sort(deltas_arr)
         lo = float(deltas_arr[int(0.025 * n_resamples)])
         hi = float(deltas_arr[min(n_resamples - 1, int(0.975 * n_resamples))])
     else:
+        delta_point = metric_fn(hyps_a, refs) - metric_fn(hyps_b, refs)
         rng = random.Random(seed)
         deltas = []
         count_b_ge_a = 0
@@ -513,7 +554,6 @@ def length_bucket_view(
     BLEU/chrF per non-empty length bucket, each with a bootstrap 95% CI (`bleu_ci`/`chrf_ci`,
     spec §8: "per slice and metric" -- length buckets are a reported view alongside slices/E-sets)
     computed on that bucket's own sentences."""
-    module = load_official_module()
     buckets: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for row in rows:
         label = length_bucket_label(len(row["source"].split()))
@@ -524,10 +564,17 @@ def length_bucket_view(
             continue
         hs = [p[0] for p in pairs]
         rs = [p[1] for p in pairs]
-        scores = module.score_slice(hs, rs)
-        scores["bleu_ci"] = bootstrap_ci_official(hs, rs, "bleu", n_resamples, seed)
-        scores["chrf_ci"] = bootstrap_ci_official(hs, rs, "chrf", n_resamples, seed)
-        result[label] = scores
+        # Point estimates come from the bootstrap's own cached stats (bit-for-bit what
+        # `module.score_slice` returns), so each bucket is tokenized once per metric, not twice.
+        bleu_ci = bootstrap_ci_official(hs, rs, "bleu", n_resamples, seed)
+        chrf_ci = bootstrap_ci_official(hs, rs, "chrf", n_resamples, seed)
+        result[label] = {
+            "n": len(rs),
+            "bleu": bleu_ci["point"],
+            "chrf": chrf_ci["point"],
+            "bleu_ci": bleu_ci,
+            "chrf_ci": chrf_ci,
+        }
     return result
 
 

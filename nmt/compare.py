@@ -30,11 +30,12 @@ import numpy as np
 from nmt.evaluate import (
     SYNTHETIC_SPLIT_LABELS,
     _bleu_from_aggregated,
+    _bleu_point_from_stats,
     _bleu_sentence_stats,
     _BleuStats,
+    _chrf_point_from_values,
     _chrf_sentence_stats,
     _official_metric_fn,
-    load_official_module,
     load_split,
     paired_bootstrap,
 )
@@ -81,22 +82,41 @@ def _objective_inputs(eval_dir: Path, split: str) -> tuple[list[str], list[str]]
     return [pred[i] for i in ids], [label_by_id[i] for i in ids]
 
 
+def _objective_point_from_stats(
+    bleu1: _BleuStats, chrf1: np.ndarray, bleu2: _BleuStats, chrf2: np.ndarray
+) -> dict[str, float]:
+    """The selection objective from the already-cached per-sentence stats (no second tokenization
+    pass). Union BLEU sums E1+E2's integer stats; union chrF is Python's left-to-right `sum` over
+    the E1-then-E2 sentence values -- the same lists, order and operations as
+    `official.score_slice(E1 + E2)` inside `nmt.selection.selection_objective`, so the value is
+    bit-for-bit identical (checked in tests/test_compare.py)."""
+    union = _BleuStats(
+        hyp_len=np.concatenate([bleu1.hyp_len, bleu2.hyp_len]),
+        ref_len=np.concatenate([bleu1.ref_len, bleu2.ref_len]),
+        match=np.concatenate([bleu1.match, bleu2.match]),
+        total=np.concatenate([bleu1.total, bleu2.total]),
+    )
+    bleu_union = _bleu_point_from_stats(union)
+    chrf_union = _chrf_point_from_values(np.concatenate([chrf1, chrf2]))
+    chrf_e1 = _chrf_point_from_values(chrf1)
+    return {
+        "objective": _W_BLEU_UNION * bleu_union + _W_CHRF_UNION * chrf_union + _W_CHRF_E1 * chrf_e1,
+        "bleu_union": bleu_union,
+        "chrf_union": chrf_union,
+        "chrf_e1": chrf_e1,
+    }
+
+
 def _objective_point(
     hyps_e1: list[str], refs_e1: list[str], hyps_e2: list[str], refs_e2: list[str]
 ) -> dict[str, float]:
-    """The selection objective via the same official `score_slice` calls, on the same lists, in the
-    same order as `nmt.selection.selection_objective` -- so the value is bit-for-bit identical."""
-    module = load_official_module()
-    combined = module.score_slice(hyps_e1 + hyps_e2, refs_e1 + refs_e2)
-    e1_only = module.score_slice(hyps_e1, refs_e1)
-    return {
-        "objective": _W_BLEU_UNION * combined["bleu"]
-        + _W_CHRF_UNION * combined["chrf"]
-        + _W_CHRF_E1 * e1_only["chrf"],
-        "bleu_union": combined["bleu"],
-        "chrf_union": combined["chrf"],
-        "chrf_e1": e1_only["chrf"],
-    }
+    """String-input form of `_objective_point_from_stats` (builds the stats itself)."""
+    return _objective_point_from_stats(
+        _bleu_sentence_stats(hyps_e1, refs_e1),
+        _chrf_sentence_stats(hyps_e1, refs_e1),
+        _bleu_sentence_stats(hyps_e2, refs_e2),
+        _chrf_sentence_stats(hyps_e2, refs_e2),
+    )
 
 
 def _objective_samples(
@@ -139,21 +159,18 @@ def paired_bootstrap_objective(
     n1, n2 = len(r1), len(r2)
     if n1 == 0 or n2 == 0:
         raise ValueError("selection-objective bootstrap needs non-empty E1 and E2")
-    point_a = _objective_point(h1a, r1, h2a, r2)
-    point_b = _objective_point(h1b, r1, h2b, r2)
     rng = np.random.default_rng(seed)
     idx1 = rng.integers(0, n1, size=(n_bootstrap, n1))
     idx2 = rng.integers(0, n2, size=(n_bootstrap, n2))
     samples = {}
+    points = {}
     for key, (h1, h2) in (("a", (h1a, h2a)), ("b", (h1b, h2b))):
-        samples[key] = _objective_samples(
-            _bleu_sentence_stats(h1, r1),
-            _chrf_sentence_stats(h1, r1),
-            _bleu_sentence_stats(h2, r2),
-            _chrf_sentence_stats(h2, r2),
-            idx1,
-            idx2,
-        )
+        # Stats computed once per (system, set); the point estimate and every resample reuse them.
+        bleu1, chrf1 = _bleu_sentence_stats(h1, r1), _chrf_sentence_stats(h1, r1)
+        bleu2, chrf2 = _bleu_sentence_stats(h2, r2), _chrf_sentence_stats(h2, r2)
+        points[key] = _objective_point_from_stats(bleu1, chrf1, bleu2, chrf2)
+        samples[key] = _objective_samples(bleu1, chrf1, bleu2, chrf2, idx1, idx2)
+    point_a, point_b = points["a"], points["b"]
     deltas = samples["a"] - samples["b"]
     count_b_ge_a = int(np.sum(deltas <= 0))
     deltas = np.sort(deltas)
