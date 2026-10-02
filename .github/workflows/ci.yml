@@ -100,3 +100,15 @@ jobs:
           # The notebook's defaults are the real L4 main run; say "smoke" explicitly here.
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
             --set CONFIG='"smoke"' --set PLANNED_STEPS=None --set RESUME_TEST=False
+
+      # CONFIG="ablations_l4" (s1 -> s2 -> s3 in one Colab session) executed end to end as a DRY
+      # RUN: every cell runs on the synthetic shards built by the smoke step above, the per-config
+      # plan (dirs, skip/resume/fresh decision, exact argv) is printed, and NOTHING is trained.
+      # execute_notebook.py refuses this config without DRY_RUN=True. PLANNED_STEPS is left at its
+      # default on purpose: it must be ignored (loudly) in this mode.
+      - name: Execute colab/train.ipynb in ablations_l4 DRY_RUN mode (synthetic shards, 3.13)
+        if: matrix.python-version == '3.13'
+        run: |
+          PY="$RUNNER_TEMP/venv/bin/python"
+          "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
+            --set CONFIG='"ablations_l4"' --set DRY_RUN=True

@@ -50,7 +50,8 @@ def test_parameters_cell_defaults_are_the_l4_main_run() -> None:
         'GIT_REF = "v0.2.2-colab"',
     ):
         assert any(ln.startswith(expected) for ln in lines), expected
-    assert 'ALLOWED_CONFIGS = ("smoke", "pilot", "main")' in lines  # pilot/smoke stay selectable
+    # pilot/smoke stay selectable; ablations_l4 (s1 -> s2 -> s3 in one session) is the addition
+    assert 'ALLOWED_CONFIGS = ("smoke", "pilot", "main", "ablations_l4")' in lines
 
 
 # --- preflight GPU rule -----------------------------------------------------------------------

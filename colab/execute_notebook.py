@@ -9,11 +9,14 @@ from __future__ import annotations
 # smoke execution must say so explicitly: `--set NAME=<python literal>` rewrites that top-level
 # assignment in memory before executing (an unknown NAME is an error), and the run is refused
 # unless CONFIG ends up "smoke" (a CPU "main" run would never finish); --allow-non-smoke
-# overrides that guard knowingly.
+# overrides that guard knowingly. The one other mode accepted is CONFIG="ablations_l4" together
+# with DRY_RUN=True (it prints the three-config plan and launches nothing, so it is CPU-safe);
+# a real ablations run on CPU is refused even with --allow-non-smoke.
 #
 # Usage: python colab/execute_notebook.py [notebook-path] [timeout-seconds]
 #            [--set NAME=LITERAL ...] [--allow-non-smoke]
 #   e.g. --set CONFIG='"smoke"' --set PLANNED_STEPS=None --set RESUME_TEST=False
+#        --set CONFIG='"ablations_l4"' --set DRY_RUN=True
 import ast
 import re
 import sys
@@ -55,6 +58,15 @@ def effective_config(nb: nbformat.NotebookNode) -> str:
     return match.group(1)
 
 
+def effective_param(nb: nbformat.NotebookNode, name: str) -> str | None:
+    """The literal text of the Parameters cell's top-level `NAME = <literal>` (comment dropped),
+    or None if there is no such assignment.
+    """
+    pattern = rf"^{re.escape(name)} = ([^#\n]*?)\s*(#.*)?$"
+    match = re.search(pattern, _params_cell(nb).source, re.MULTILINE)
+    return match.group(1) if match else None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     allow_non_smoke = "--allow-non-smoke" in args
@@ -73,7 +85,15 @@ def main(argv: list[str] | None = None) -> int:
     nb = nbformat.read(path, as_version=4)
     apply_overrides(nb, overrides)
     config = effective_config(nb)
-    if config != "smoke" and not allow_non_smoke:
+    if config == "ablations_l4":
+        if effective_param(nb, "DRY_RUN") != "True":
+            print(
+                "refusing to execute CONFIG='ablations_l4' without DRY_RUN=True (a real "
+                "ablations run on CPU never finishes): pass --set DRY_RUN=True.",
+                file=sys.stderr,
+            )
+            return 2
+    elif config != "smoke" and not allow_non_smoke:
         print(
             f"refusing to execute with CONFIG={config!r} (a CPU run of it never finishes): pass "
             "--set CONFIG='\"smoke\"' (or --allow-non-smoke).",
