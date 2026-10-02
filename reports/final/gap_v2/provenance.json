@@ -1,6 +1,6 @@
 {
   "label": "EXPLORATORY / POST-HOC (not pre-registered)",
-  "code_commit_sha": "9724f9e51a6e8cdfe6f13de7bc0415d699e79dd5",
+  "code_commit_sha": "1294f52fb03e7bebb1a3753aea5179f5ff975cf6",
   "code_tree_dirty": false,
   "command": "uv run python -m scripts.gap_v2 --pulls <dest of scripts.gap_v2_pull>",
   "eval_repo": {
@@ -55,14 +55,14 @@
   },
   "word_list_sha256": "ce42d239b492e7830b20dde1fd8c0d712dffeb9526abc9b81a66bc702c58fa5d",
   "runtime_seconds": {
-    "verify": 0.34,
-    "data_chrf": 8.52,
-    "train_counts": 23.08,
-    "features": 1.31,
-    "nll": 60.57,
-    "nll_breakdown": 1.75,
-    "decomposition": 283.99,
-    "total": 378.3
+    "verify": 0.01,
+    "data_chrf": 6.57,
+    "train_counts": 17.48,
+    "features": 1.05,
+    "nll": 51.51,
+    "nll_breakdown": 1.14,
+    "decomposition": 226.38,
+    "total": 303.31
   },
   "python": "3.13.5",
   "seed": 1234,

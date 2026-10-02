@@ -383,8 +383,8 @@
     }
   },
   "bootstrap_runtime_seconds": {
-    "primary_5groups": 73.3,
-    "sensitivity_6groups_plus_length_control": 150.6,
-    "second_outcome_nll_5groups": 58.2
+    "primary_5groups": 55.1,
+    "sensitivity_6groups_plus_length_control": 114.9,
+    "second_outcome_nll_5groups": 55.1
   }
 }

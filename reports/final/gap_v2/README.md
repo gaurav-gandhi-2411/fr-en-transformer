@@ -51,9 +51,9 @@ Teacher-forced NLL of the reference (fp32, eval mode, no label smoothing, EOS ex
 
 ## Provenance
 
-- code commit (the commit the numbers were generated from): `9724f9e51a6e8cdfe6f13de7bc0415d699e79dd5` (tree dirty: False)
+- code commit (the commit the numbers were generated from): `1294f52fb03e7bebb1a3753aea5179f5ff975cf6` (tree dirty: False)
 - eval repo `OWNER/fr-en-transformer-eval` @ `c3d8598252853fcd7df1ef4a00e8b0382b8f4351` (private=True, manifest sha256 `613ea8c0d2e22958e6ef5fc55fe63c8d8f6c218c63958ed5edeb5b33b5ca37d1`, model files verified: True)
 - data repo `OWNER/fr-en-transformer-data` @ `c40e393740f41dd3aac3e615952ac7b86d4e58e0` (private=True; shard + spm sha256 verified against `data/shards/manifest.json`)
-- word list sha256 `ce42d239b492e7830b20dde1fd8c0d712dffeb9526abc9b81a66bc702c58fa5d`; runtime {'verify': 0.34, 'data_chrf': 8.52, 'train_counts': 23.08, 'features': 1.31, 'nll': 60.57, 'nll_breakdown': 1.75, 'decomposition': 283.99, 'total': 378.3}
+- word list sha256 `ce42d239b492e7830b20dde1fd8c0d712dffeb9526abc9b81a66bc702c58fa5d`; runtime {'verify': 0.01, 'data_chrf': 6.57, 'train_counts': 17.48, 'features': 1.05, 'nll': 51.51, 'nll_breakdown': 1.14, 'decomposition': 226.38, 'total': 303.31}
 - input file sha256 values: `provenance.json` (`input_files_sha256`, `eval_model_sha256`, `data_repo_files_sha256`)
 - line endings: LF (files are written as bytes)
