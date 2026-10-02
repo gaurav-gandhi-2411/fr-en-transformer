@@ -752,10 +752,29 @@ def _bg(jobs: list[dict[str, Any]]) -> dict[str, Any]:
             None if j["bg_cpu_pct_before"] is None else round(j["bg_cpu_pct_before"], 1)
             for j in jobs
         ],
+        "during_other_cpu_pct_per_run": [
+            None
+            if j["result"].get("other_cpu_pct_during") is None
+            else round(j["result"]["other_cpu_pct_during"], 1)
+            for j in jobs
+        ],
         "max_pct": max(vals) if vals else None,
         "mean_pct": statistics.fmean(vals) if vals else None,
         "any_above_flag": any(v > BG_FLAG_PCT for v in vals),
     }
+
+
+def _low_bg(jobs: list[dict[str, Any]]) -> list[bool]:
+    """Per job: was total CPU at or below BG_FLAG_PCT in the 5 s before it started."""
+    return [
+        j["bg_cpu_pct_before"] is not None and j["bg_cpu_pct_before"] <= BG_FLAG_PCT for j in jobs
+    ]
+
+
+def _restricted(per_run: list[dict], jobs: list[dict], keys: list[str]) -> dict[str, Any] | None:
+    """`aggregate_runs` over only the runs whose pre-run background load was <= BG_FLAG_PCT."""
+    keep = [r for r, ok in zip(per_run, _low_bg(jobs), strict=True) if ok]
+    return {"n_runs": len(keep), **aggregate_runs(keep, keys)} if keep else None
 
 
 def aggregate_latency(jobs: list[dict[str, Any]]) -> tuple[dict, dict]:
@@ -776,11 +795,13 @@ def aggregate_latency(jobs: list[dict[str, Any]]) -> tuple[dict, dict]:
                 "n_runs": len(runs),
                 "n_requests_per_run": per_run[0]["n"],
                 "across_runs": aggregate_runs(per_run, ["p50", "p95", "p99", "mean"]),
+                "across_runs_bg_le_flag": _restricted(per_run, runs, ["p50", "p95", "p99", "mean"]),
                 "pooled_over_runs": summarize_latency(pooled_ms),
                 "per_run": per_run,
                 "background_cpu": _bg(runs),
                 "peak_rss_mb_per_run": [j["result"]["peak_rss_mb"] for j in runs],
                 "rss_after_load_mb_per_run": [j["result"]["rss_after_load_mb"] for j in runs],
+                "rss_after_run_mb_per_run": [j["result"]["rss_after_run_mb"] for j in runs],
                 "torch_num_threads_used": runs[0]["result"]["torch_num_threads_used"],
             }
             raw[key] = [j["result"]["latency"][mode]["ms"] for j in runs]
@@ -802,9 +823,13 @@ def aggregate_throughput(jobs: list[dict[str, Any]]) -> dict:
                 "across_runs": aggregate_runs(
                     per_run, ["sentences_per_second", "output_tokens_per_second"]
                 ),
+                "across_runs_bg_le_flag": _restricted(
+                    per_run, js, ["sentences_per_second", "output_tokens_per_second"]
+                ),
                 "per_run": per_run,
                 "background_cpu": _bg(js),
                 "peak_rss_mb_per_run": [j["result"]["peak_rss_mb"] for j in js],
+                "rss_after_run_mb_per_run": [j["result"]["rss_after_run_mb"] for j in js],
                 "torch_num_threads_used": js[0]["result"]["torch_num_threads_used"],
             }
     return summary
@@ -933,6 +958,20 @@ def _ratio(results: dict, key_a: str, key_b: str, stat: str = "p50") -> float | 
         return None
 
 
+PRE_RECORD_CODE_SHA = "d3d4f01ee4a28f46b4df3e7e4d449b2d38e8c7cd"
+
+
+def _job_code_shas(jobs: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """{code sha: [job names]}. Jobs of repetitions 1-3 and the quality/size jobs predate the
+    per-job `code_sha` field (added in a later, additive-instrumentation commit); they ran from
+    the clean tree at PRE_RECORD_CODE_SHA, recorded here by hand (label in the key)."""
+    out: dict[str, list[str]] = {}
+    for j in jobs:
+        sha = j.get("code_sha") or f"{PRE_RECORD_CODE_SHA} (not recorded per job; clean tree)"
+        out.setdefault(sha, []).append(j["job"])
+    return out
+
+
 def aggregate_main(args: argparse.Namespace) -> int:
     work_dir, out_dir = Path(args.work_dir), Path(args.out_dir)
     model_dir = Path(args.model_dir)
@@ -945,6 +984,7 @@ def aggregate_main(args: argparse.Namespace) -> int:
             **git_state(),
             "model": verify_model(model_dir, Path(args.pull_record)),
             "script": "scripts/production_benchmark.py",
+            "job_code_shas": _job_code_shas(jobs),
             "script_sha256": file_sha256(Path(__file__)),
             "scorer": "nmt.evaluate.run_official_scorer (official/score.py as shipped, UTF-8)",
             "official_score_py_sha256": file_sha256(REPO_ROOT / "official" / "score.py"),
@@ -1001,6 +1041,11 @@ def _verdict(ratio: float | None, what: str) -> str:
     if ratio > 1.05:
         return f"{what}: int8 is {ratio:.2f}x SLOWER (ratio {ratio:.2f})"
     return f"{what}: int8 is within +-5% of fp32 (ratio {ratio:.2f})"
+
+
+def _low_cell(cell: dict[str, Any], key: str, nd: int = 1) -> str:
+    low = cell.get("across_runs_bg_le_flag")
+    return "none" if not low else f"{_fmt_range(low[key], nd)} (n={low['n_runs']})"
 
 
 def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
@@ -1069,8 +1114,11 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
         "p99 of 200 requests rests on the top two values and is noisy."
     )
     a("")
-    a("| threads | mode | precision | runs | p50 | p95 | p99 | mean | bg CPU % before (max) |")
-    a("|---|---|---|---|---|---|---|---|---|")
+    a(
+        "| threads | mode | precision | runs | p50 | p95 | p99 | mean | bg CPU % before (max) "
+        "| p50, runs with bg <= 30% only (n) |"
+    )
+    a("|---|---|---|---|---|---|---|---|---|---|")
     for th in THREAD_SETTINGS:
         for mode in MODES:
             for pr in PRECISIONS:
@@ -1083,15 +1131,18 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
                 a(
                     f"| {th} | {mode} | {pr} | {c['n_runs']} | {_fmt_range(ar['p50'])} | "
                     f"{_fmt_range(ar['p95'])} | {_fmt_range(ar['p99'])} | "
-                    f"{_fmt_range(ar['mean'])} | {bgs} |"
+                    f"{_fmt_range(ar['mean'])} | {bgs} | {_low_cell(c, 'p50')} |"
                 )
     a("")
     a("`beam5_noseg` was measured in the first repetition only (single run, no spread).")
     a("")
     a("## Throughput, batches of 32 (320 E1 sentences per run)")
     a("")
-    a("| threads | mode | precision | runs | sentences/s | output tokens/s | bg CPU % (max) |")
-    a("|---|---|---|---|---|---|---|")
+    a(
+        "| threads | mode | precision | runs | sentences/s | output tokens/s | bg CPU % (max) "
+        "| sentences/s, runs with bg <= 30% only (n) |"
+    )
+    a("|---|---|---|---|---|---|---|---|")
     for th in THREAD_SETTINGS:
         for mode in ("greedy", "beam5"):
             for pr in PRECISIONS:
@@ -1104,7 +1155,8 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
                 a(
                     f"| {th} | {mode} | {pr} | {c['n_runs']} | "
                     f"{_fmt_range(ar['sentences_per_second'], 2)} | "
-                    f"{_fmt_range(ar['output_tokens_per_second'], 1)} | {bgs} |"
+                    f"{_fmt_range(ar['output_tokens_per_second'], 1)} | {bgs} | "
+                    f"{_low_cell(c, 'sentences_per_second', 2)} |"
                 )
     a("")
     a(
@@ -1149,18 +1201,19 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
     a(
         "| precision | params (fp32 model) | safetensors on disk (bytes) | torch.save(state_dict) "
         "(bytes) | peak RSS, latency workers (MiB, median / max) | peak RSS, throughput workers "
-        "(MiB, median / max) |"
+        "(MiB, median / max) | working set after the run, latency workers (MiB, median) |"
     )
-    a("|---|---|---|---|---|---|")
+    a("|---|---|---|---|---|---|---|")
     for pr in PRECISIONS:
         sz = size.get(pr, {})
         rss_l = [v for k, c in lat.items() if f"|{pr}|" in k for v in c["peak_rss_mb_per_run"]]
         rss_t = [v for k, c in tp.items() if f"|{pr}|" in k for v in c["peak_rss_mb_per_run"]]
+        rss_a = [v for k, c in lat.items() if f"|{pr}|" in k for v in c["rss_after_run_mb_per_run"]]
         a(
             f"| {pr} | {sz.get('param_count_fp32', 0):,} | {sz.get('safetensors_bytes', 0):,} | "
             f"{sz.get('state_dict_torch_save_bytes', 0):,} | "
             f"{statistics.median(rss_l):.0f} / {max(rss_l):.0f} | "
-            f"{statistics.median(rss_t):.0f} / {max(rss_t):.0f} |"
+            f"{statistics.median(rss_t):.0f} / {max(rss_t):.0f} | {statistics.median(rss_a):.0f} |"
         )
     sel = size.get("fp32", {}).get("module_selection", {})
     if sel:
@@ -1215,6 +1268,23 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
         f"{len(spread)} of {len(lat)} latency cells have a relative p50 spread above "
         f"{res['config']['spread_flag_fraction']:.0%}."
     )
+    during = [
+        v
+        for c in cells.values()
+        for v in c["background_cpu"]["during_other_cpu_pct_per_run"]
+        if v is not None
+    ]
+    if during:
+        a(
+            "- other-process CPU (machine-wide minus the worker's own share) DURING the "
+            f"{len(during)} runs that recorded it (the repeat repetition): min {min(during):.1f}%, "
+            f"max {max(during):.1f}% of the machine; earlier runs have only the pre-run sample."
+        )
+    a(
+        "- repetitions: 3 planned (1-3), then one more full pass (4) because several pre-run "
+        "samples were above 30% or spreads were large; all runs are in the cells above, the "
+        "`bg <= 30%` column restricts to runs whose pre-run sample was at or below 30%."
+    )
     a("")
     a("## Limits")
     a("")
@@ -1247,6 +1317,9 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
     a(f"- code SHA: `{prov['code_sha']}` (tracked files dirty: {prov['tracked_files_dirty']})")
     a(f"- HF revision: `{m['hf_revision']}` (`{m['hf_repo']}`, private, read-only pull)")
     a(f"- official/score.py sha256: `{prov['official_score_py_sha256']}`")
+    a("- code SHA the measurement jobs ran from (jobs per SHA):")
+    for sha, names in prov["job_code_shas"].items():
+        a(f"  - `{sha}`: {len(names)} jobs")
     a("- file sha256 (LF line endings verified at write time: no CR byte in any listed file):")
     for name, h in file_hashes.items():
         a(f"  - `{name}`: `{h}`")

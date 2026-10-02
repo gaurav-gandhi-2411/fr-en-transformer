@@ -225,8 +225,13 @@ def _cell(p50: float, key: str = "p50") -> dict:
             )
         }
         | {"spread_large": False},
-        "background_cpu": {"max_pct": 12.0, "any_above_flag": False},
+        "background_cpu": {
+            "max_pct": 12.0,
+            "any_above_flag": False,
+            "during_other_cpu_pct_per_run": [3.0, None, 5.0],
+        },
         "peak_rss_mb_per_run": [500.0, 510.0, 505.0],
+        "rss_after_run_mb_per_run": [400.0, 410.0, 405.0],
     }
 
 
@@ -254,6 +259,7 @@ def test_render_readme_from_synthetic_results() -> None:
             "code_sha": "abc",
             "tracked_files_dirty": False,
             "official_score_py_sha256": "d",
+            "job_code_shas": {"abc": ["j1", "j2"]},
             "model": {"hf_repo": "r", "hf_revision": "v" * 40, "model_safetensors_sha256": "s"},
         },  # fmt: skip
         "config": {
@@ -310,3 +316,23 @@ def test_render_readme_from_synthetic_results() -> None:
     assert "int8 is 1.30x SLOWER" in text  # 130 / 100 from the synthetic cells
     assert "Test CPU" in text and "`" + "0" * 64 + "`" in text
     json.dumps(res)  # synthetic results are JSON-serialisable like the real ones
+
+
+def test_restricted_stats_use_only_low_background_runs() -> None:
+    jobs = [{"bg_cpu_pct_before": 10.0}, {"bg_cpu_pct_before": 45.0}, {"bg_cpu_pct_before": None}]
+    assert pb._low_bg(jobs) == [True, False, False]
+    per_run = [{"p50": 100.0}, {"p50": 900.0}, {"p50": 800.0}]
+    low = pb._restricted(per_run, jobs, ["p50"])
+    assert low is not None and low["n_runs"] == 1 and low["p50"]["median"] == 100.0
+    assert pb._restricted(per_run, [{"bg_cpu_pct_before": 99.0}] * 3, ["p50"]) is None
+
+
+def test_load_meter_reports_own_and_other_share() -> None:
+    meter = pb.LoadMeter()
+    meter.start()
+    sum(i * i for i in range(2_000_000))  # burn a little CPU in this process
+    out = meter.stop()
+    assert set(out) == {"system_cpu_pct_during", "own_cpu_pct_of_machine", "other_cpu_pct_during"}
+    if out["system_cpu_pct_during"] is not None:  # psutil present
+        assert out["own_cpu_pct_of_machine"] > 0.0
+        assert 0.0 <= out["other_cpu_pct_during"] <= 100.0
