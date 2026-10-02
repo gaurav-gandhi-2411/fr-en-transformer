@@ -636,6 +636,24 @@ def _provenance(out_root: Path, code_sha: str) -> str:
     return "\n".join(lines)
 
 
+def _comet_note(out_root: Path) -> list[str]:
+    """A visible statement of COMET coverage: the table cells say '-' only when it is absent."""
+    if all((out_root / r / v / "comet_summary.json").is_file() for r in RUNS for v in VARIANTS):
+        return []
+    partial = out_root / "comet_partial_cpu_INCOMPLETE" / "partial_summary.json"
+    extra = (
+        f" A partial CPU run is kept, clearly marked, in `{partial.parent.name}/` "
+        "(not used in any table here)."
+        if partial.is_file()
+        else ""
+    )
+    return [
+        "**COMET-22: NOT MEASURED in this report.** The local CPU run was stopped because its "
+        "projected time exceeded the 2 h budget; COMET moves to a GPU session." + extra,
+        "",
+    ]
+
+
 def build_summary(out_root: Path, code_sha: str) -> str:
     extras = _read(out_root / "compare" / "extras.json")
     sanity = _read(out_root / "sanity.json")
@@ -648,6 +666,7 @@ def build_summary(out_root: Path, code_sha: str) -> str:
         "(PREREG §1). Each model is shown at its own tuned decoding config (the config it would "
         "ship with); the segmentation-OFF numbers are in the seg-off section.",
         "",
+        *_comet_note(out_root),
         "## Selection check (HF `selection.json`)",
         "",
         "| run | winner | objective | alpha | beam | T |",
