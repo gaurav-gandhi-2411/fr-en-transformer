@@ -427,38 +427,40 @@ Source: `<run>/<variant>/analysis.json` (`metric_artifact_share`).
 
 ### Failure-mode rates per slice (tuned config)
 
-| model | group | n | repetition | truncation | untranslated copy | over-long | mean hyp/ref ratio |
-|---|---|---|---|---|---|---|---|
-| main | dev:seen | 60 | 0.000 | 0.033 | 0.000 | 0.083 | 1.059 |
-| main | dev:long | 30 | 0.000 | 0.000 | 0.000 | 0.067 | 1.076 |
-| main | dev:unseen_domain | 60 | 0.000 | 0.000 | 0.000 | 0.017 | 0.991 |
-| main | e1 | 1940 | 0.005 | 0.022 | 0.000 | 0.040 | 1.013 |
-| main | e2 | 1000 | 0.030 | 0.007 | 0.000 | 0.037 | 1.029 |
-| main | e2synth | 300 | 0.073 | 0.000 | 0.000 | 0.000 | 1.005 |
-| main | e3 | 1000 | 0.003 | 0.012 | 0.000 | 0.023 | 0.983 |
-| s1_sin_l4 | dev:seen | 60 | 0.000 | 0.033 | 0.000 | 0.067 | 1.048 |
-| s1_sin_l4 | dev:long | 30 | 0.000 | 0.000 | 0.000 | 0.067 | 1.099 |
-| s1_sin_l4 | dev:unseen_domain | 60 | 0.000 | 0.017 | 0.000 | 0.017 | 0.981 |
-| s1_sin_l4 | e1 | 1940 | 0.014 | 0.024 | 0.000 | 0.045 | 1.013 |
-| s1_sin_l4 | e2 | 1000 | 0.035 | 0.005 | 0.000 | 0.036 | 1.044 |
-| s1_sin_l4 | e2synth | 300 | 0.080 | 0.000 | 0.000 | 0.003 | 1.015 |
-| s1_sin_l4 | e3 | 1000 | 0.002 | 0.023 | 0.000 | 0.029 | 0.985 |
-| s2_rope_l4 | dev:seen | 60 | 0.000 | 0.033 | 0.000 | 0.083 | 1.079 |
-| s2_rope_l4 | dev:long | 30 | 0.000 | 0.000 | 0.000 | 0.067 | 1.101 |
-| s2_rope_l4 | dev:unseen_domain | 60 | 0.000 | 0.000 | 0.000 | 0.033 | 1.023 |
-| s2_rope_l4 | e1 | 1940 | 0.014 | 0.024 | 0.000 | 0.042 | 1.013 |
-| s2_rope_l4 | e2 | 1000 | 0.042 | 0.005 | 0.000 | 0.037 | 1.049 |
-| s2_rope_l4 | e2synth | 300 | 0.113 | 0.000 | 0.000 | 0.003 | 1.023 |
-| s2_rope_l4 | e3 | 1000 | 0.003 | 0.016 | 0.000 | 0.032 | 0.994 |
-| s3_rope_concat_l4 | dev:seen | 60 | 0.000 | 0.033 | 0.000 | 0.067 | 1.062 |
-| s3_rope_concat_l4 | dev:long | 30 | 0.000 | 0.000 | 0.000 | 0.067 | 1.100 |
-| s3_rope_concat_l4 | dev:unseen_domain | 60 | 0.000 | 0.000 | 0.000 | 0.033 | 1.010 |
-| s3_rope_concat_l4 | e1 | 1940 | 0.014 | 0.021 | 0.000 | 0.046 | 1.019 |
-| s3_rope_concat_l4 | e2 | 1000 | 0.037 | 0.006 | 0.000 | 0.035 | 1.048 |
-| s3_rope_concat_l4 | e2synth | 300 | 0.083 | 0.000 | 0.000 | 0.003 | 1.018 |
-| s3_rope_concat_l4 | e3 | 1000 | 0.004 | 0.013 | 0.000 | 0.027 | 0.988 |
+| model | group | n | repetition (hyp) | repetition (ref) | truncation | untranslated copy (subword, see caveat) | word-copy heuristic: sentences (words) | over-long | mean hyp/ref ratio |
+|---|---|---|---|---|---|---|---|---|---|
+| main | dev:seen | 60 | 0.000 | 0.000 | 0.033 | 0.000 | 0.217 (13 sent., 18 words) | 0.083 | 1.059 |
+| main | dev:long | 30 | 0.000 | 0.067 | 0.000 | 0.000 | 0.500 (15 sent., 18 words) | 0.067 | 1.076 |
+| main | dev:unseen_domain | 60 | 0.000 | 0.000 | 0.000 | 0.000 | 0.150 (9 sent., 9 words) | 0.017 | 0.991 |
+| main | e1 | 1940 | 0.005 | 0.047 | 0.022 | 0.000 | 0.255 (495 sent., 820 words) | 0.040 | 1.013 |
+| main | e2 | 1000 | 0.030 | 0.147 | 0.007 | 0.000 | 0.503 (503 sent., 889 words) | 0.037 | 1.029 |
+| main | e2synth | 300 | 0.073 | 0.250 | 0.000 | 0.000 | 0.803 (241 sent., 637 words) | 0.000 | 1.005 |
+| main | e3 | 1000 | 0.003 | 0.020 | 0.012 | 0.000 | 0.323 (323 sent., 1320 words) | 0.023 | 0.983 |
+| s1_sin_l4 | dev:seen | 60 | 0.000 | 0.000 | 0.033 | 0.000 | 0.283 (17 sent., 22 words) | 0.067 | 1.048 |
+| s1_sin_l4 | dev:long | 30 | 0.000 | 0.067 | 0.000 | 0.000 | 0.633 (19 sent., 26 words) | 0.067 | 1.099 |
+| s1_sin_l4 | dev:unseen_domain | 60 | 0.000 | 0.000 | 0.017 | 0.000 | 0.183 (11 sent., 13 words) | 0.017 | 0.981 |
+| s1_sin_l4 | e1 | 1940 | 0.014 | 0.047 | 0.024 | 0.000 | 0.333 (646 sent., 1114 words) | 0.045 | 1.013 |
+| s1_sin_l4 | e2 | 1000 | 0.035 | 0.147 | 0.005 | 0.000 | 0.595 (595 sent., 1161 words) | 0.036 | 1.044 |
+| s1_sin_l4 | e2synth | 300 | 0.080 | 0.250 | 0.000 | 0.000 | 0.847 (254 sent., 827 words) | 0.003 | 1.015 |
+| s1_sin_l4 | e3 | 1000 | 0.002 | 0.020 | 0.023 | 0.000 | 0.438 (438 sent., 1515 words) | 0.029 | 0.985 |
+| s2_rope_l4 | dev:seen | 60 | 0.000 | 0.000 | 0.033 | 0.000 | 0.250 (15 sent., 22 words) | 0.083 | 1.079 |
+| s2_rope_l4 | dev:long | 30 | 0.000 | 0.067 | 0.000 | 0.000 | 0.600 (18 sent., 23 words) | 0.067 | 1.101 |
+| s2_rope_l4 | dev:unseen_domain | 60 | 0.000 | 0.000 | 0.000 | 0.000 | 0.250 (15 sent., 17 words) | 0.033 | 1.023 |
+| s2_rope_l4 | e1 | 1940 | 0.014 | 0.047 | 0.024 | 0.000 | 0.341 (662 sent., 1113 words) | 0.042 | 1.013 |
+| s2_rope_l4 | e2 | 1000 | 0.042 | 0.147 | 0.005 | 0.000 | 0.597 (597 sent., 1165 words) | 0.037 | 1.049 |
+| s2_rope_l4 | e2synth | 300 | 0.113 | 0.250 | 0.000 | 0.000 | 0.870 (261 sent., 816 words) | 0.003 | 1.023 |
+| s2_rope_l4 | e3 | 1000 | 0.003 | 0.020 | 0.016 | 0.000 | 0.425 (425 sent., 1526 words) | 0.032 | 0.994 |
+| s3_rope_concat_l4 | dev:seen | 60 | 0.000 | 0.000 | 0.033 | 0.000 | 0.283 (17 sent., 24 words) | 0.067 | 1.062 |
+| s3_rope_concat_l4 | dev:long | 30 | 0.000 | 0.067 | 0.000 | 0.000 | 0.600 (18 sent., 23 words) | 0.067 | 1.100 |
+| s3_rope_concat_l4 | dev:unseen_domain | 60 | 0.000 | 0.000 | 0.000 | 0.000 | 0.183 (11 sent., 13 words) | 0.033 | 1.010 |
+| s3_rope_concat_l4 | e1 | 1940 | 0.014 | 0.047 | 0.021 | 0.000 | 0.336 (652 sent., 1109 words) | 0.046 | 1.019 |
+| s3_rope_concat_l4 | e2 | 1000 | 0.037 | 0.147 | 0.006 | 0.000 | 0.592 (592 sent., 1157 words) | 0.035 | 1.048 |
+| s3_rope_concat_l4 | e2synth | 300 | 0.083 | 0.250 | 0.000 | 0.000 | 0.867 (260 sent., 826 words) | 0.003 | 1.018 |
+| s3_rope_concat_l4 | e3 | 1000 | 0.004 | 0.020 | 0.013 | 0.000 | 0.441 (441 sent., 1555 words) | 0.027 | 0.988 |
 
 Shares of sentences (definitions in `<run>/seg_tuned/diagnostics.json`). Source: `<run>/seg_tuned/diagnostics.json` (`failure_modes`).
+
+Caveats. (1) *Repetition* counts ANY repeated word 3-gram, including legitimate ones (references repeat 3-grams too); the reference-side share is printed next to the hypothesis share and a hypothesis rate at or below it is not a degeneration signal by itself. (2) *Untranslated copy (subword)* counts only hypothesis subwords that never occurred on the train target side, so it is 0.000 almost by construction and must NOT be read as 'no untranslated copies'. The *word-copy heuristic* column measures it directly but crudely: hypothesis words of length >= 4 identical to a source word and absent from the reference (a heuristic; names the reference spells differently, and legitimate cognates, are counted).
 
 ### Chrf by source-rarity bucket (tuned config)
 
@@ -485,7 +487,7 @@ Source: `sanity.json`.
 
 ## Provenance
 
-- Code: commit `695a8d7d47bab33f30fba05252af31b301f754b2` (HEAD when the artifacts were generated), eval tag of the Colab decodes `v0.2.4-colab` (adb3c8c781dc70e204e0f48d1a48123b7bcd261f).
+- Code: commit `5c33f9680fa79289e61141656d384063cb3c452b` (HEAD when the artifacts were generated), eval tag of the Colab decodes `v0.2.4-colab` (adb3c8c781dc70e204e0f48d1a48123b7bcd261f).
 - Bootstrap: 1,000 resamples, seed 1234, 95% percentile CIs; paired tests share resample indices.
 - HF repo `OWNER/fr-en-transformer-eval` (private), pinned revisions (each `pull_record.json` has `verified: true`):
   - `main`: `c3d8598252853fcd7df1ef4a00e8b0382b8f4351`
@@ -502,44 +504,44 @@ Files (sha256):
 | `main/selection.json` | `132ab16997ea349f7bb62b11a5568ec4094bc813ef3e41b5028ee751df8619c8` |
 | `main/seg_off/eval.json` | `e01abda0cb5903fe0585ddc4e9b84b1b80c75663d867891e046a38ede8a694f0` |
 | `main/seg_off/analysis.json` | `75538cc2045c23dc485916915eb1edbb2ab07ef3f68689f753d7d348f5516801` |
-| `main/seg_off/diagnostics.json` | `18f8697381a16eb8eb845c3ec67c5d6c9fa3d300dd2a105d04c6d05c3ee5268d` |
+| `main/seg_off/diagnostics.json` | `b1b391e53ad6d8cdb5087db17bd9150157cff566eeb16c45353554ffa2a3314c` |
 | `main/seg_off/examples.json` | `0285eb545a81c81d20f8b48bde3689ef69fb725ef5d148997ef0376819224205` |
 | `main/seg_tuned/eval.json` | `f3ce82a632969f8e229f842577b670b46d3b3d73a6348f82093abc6eb176673c` |
 | `main/seg_tuned/analysis.json` | `f6c0821d7b576cfd43692fe25e3ff29b3334f1bde9622e05c2c198865da62752` |
-| `main/seg_tuned/diagnostics.json` | `b6648c4553d06f04018c84f9f735676fd2bf268683fc79b0fd2f0aae821e3a7f` |
+| `main/seg_tuned/diagnostics.json` | `85fc9eac67411a497c68d1dd8effee990ecbf86cbb35334cb7c28e817faec80c` |
 | `main/seg_tuned/examples.json` | `0285eb545a81c81d20f8b48bde3689ef69fb725ef5d148997ef0376819224205` |
 | `s1_sin_l4/pull_record.json` | `f12f78c20b701d7ab5bdb1c985a8e4db3039f6fde83766f4ab3c4907f7aaeede` |
 | `s1_sin_l4/index.json` | `9c19485a1a2d10646b98becff5ca7271c4c55dc22532eeea2d97ea045516f296` |
 | `s1_sin_l4/selection.json` | `721ce49134730eb79bbfdd4b504c11bb58284b4e352c667b3ad4bde240d6b065` |
 | `s1_sin_l4/seg_off/eval.json` | `46ee3e99bbd5e64e2d08b5b8b5d4e0d52fec2ff748f487d780515e598a6cadb4` |
 | `s1_sin_l4/seg_off/analysis.json` | `298c770fd9330f5da11c1268ab0b74207d7f23d319d999e3de1bf63adb344b92` |
-| `s1_sin_l4/seg_off/diagnostics.json` | `fba6991a689a6fc08b67bee7707da201c325b305f6dc22e2e82f4297b208ed55` |
+| `s1_sin_l4/seg_off/diagnostics.json` | `f2266452178fd5fd8a92c9121d9c2e98610fae77891afeadadfc08bd4f39abcf` |
 | `s1_sin_l4/seg_off/examples.json` | `f579fa57872f3a183babebe6e8b74e25c9923e1ef7e58679f7067028d96fc187` |
 | `s1_sin_l4/seg_tuned/eval.json` | `1dc9b9bdcb93caae6b196ece560f68134f2af06c359b3e9538c10a21129d49eb` |
 | `s1_sin_l4/seg_tuned/analysis.json` | `4f36bd3ae29b9d90df4ca08c932d240db389406643e3613f0b5cecba08d6bdc0` |
-| `s1_sin_l4/seg_tuned/diagnostics.json` | `d009a1e47a0fc1983992da0be11b15c612fa3097063e9d9cfd261361d73772ed` |
+| `s1_sin_l4/seg_tuned/diagnostics.json` | `8da98ac4bac25f6af2360656407258e38fd5976946934f103f8e8b5a3c9f7f6a` |
 | `s1_sin_l4/seg_tuned/examples.json` | `762b823e9bd6fa6e9ff72f211c5a4a928d9913d59fcc68b8b57be6f241e3be95` |
 | `s2_rope_l4/pull_record.json` | `582f3b0330f2df3efe778ac75173824f0b5fd49ec75231a3789dcae6d9186a7a` |
 | `s2_rope_l4/index.json` | `2359a3950d197dc380ef05eaae3ff9471e6558a4c7bb686d5c654c74a6829342` |
 | `s2_rope_l4/selection.json` | `841752e2dd9142249aad5035386066c77c2c029b1dc6f3dad6e361c64a376c05` |
 | `s2_rope_l4/seg_off/eval.json` | `c1946276dfb36fdd6fce49c80b28a5c2fb96a68beea542004c4442e1fb726323` |
 | `s2_rope_l4/seg_off/analysis.json` | `63b7ac8253d49e333a32bcba5ee22448de2442d3a910108a58b98acd7725f7d5` |
-| `s2_rope_l4/seg_off/diagnostics.json` | `9946265ea1f84d377c67ca60a3f0526994644128e6981ff4d15e135c42dcee71` |
+| `s2_rope_l4/seg_off/diagnostics.json` | `482ec1db8c51d2488210e3c5c9947abafd58ea2e8dd518bfaa8e04952abb03c9` |
 | `s2_rope_l4/seg_off/examples.json` | `315e625665e09ca3ccde0eabd17d9f27f2079ae861b2c3d2a6b6d2ccdd69f22e` |
 | `s2_rope_l4/seg_tuned/eval.json` | `5052056e9f278208305a5110459a327d64d4878a331e214d4d3b34f785c969e2` |
 | `s2_rope_l4/seg_tuned/analysis.json` | `5b50d02cc8fc3d5d90fd2c4aba600118a1e9ff3abac6fd764d61362fc7e20fae` |
-| `s2_rope_l4/seg_tuned/diagnostics.json` | `7f079f52401fa47a28dcd4ee36e2a57d83d6da99fbd11e60bc5ea9d6bc2705f3` |
+| `s2_rope_l4/seg_tuned/diagnostics.json` | `97c11c958fd91d99b2382fe49269d4cecd16a64e3c2d6b553727a047dc81aa51` |
 | `s2_rope_l4/seg_tuned/examples.json` | `bd54d57e37a6748bf63cead6ad350630c4d249f39f352685eb66fbf0243daa7f` |
 | `s3_rope_concat_l4/pull_record.json` | `f58ae4ad1023c2ce37269fdd7846a878490e9be4a9771e2e67d110dcc84426ef` |
 | `s3_rope_concat_l4/index.json` | `3c87f2c17081450cc0eef435cf06308a27f23c92c8e9bea0101845a2b3b4fb44` |
 | `s3_rope_concat_l4/selection.json` | `8a1e88f315e18a269ba81478964346f4c5a48b45566031ca82c4e49127608e01` |
 | `s3_rope_concat_l4/seg_off/eval.json` | `2e8fce07c4d28eb7da63f1686e08b7328fcc01095759321aab7d40770cc5bb42` |
 | `s3_rope_concat_l4/seg_off/analysis.json` | `6bd9a06822d5c56eeb23cf5e747c74c3292b6e1137f488fb0bea8192e3c58cb8` |
-| `s3_rope_concat_l4/seg_off/diagnostics.json` | `78248b26dfba7452cbfd38da80eb5518ba542c690ff428ba0db9d10fa980ff0b` |
+| `s3_rope_concat_l4/seg_off/diagnostics.json` | `160bfd33d1c1ad0e90b23a0746fdb01bef9f2ff9c277de4dd956ff5a6d98f67c` |
 | `s3_rope_concat_l4/seg_off/examples.json` | `c852cc8d737a73486a49d0b9ac8d7d433175be4ba7cb5e0cb4f4fb10fa326b18` |
 | `s3_rope_concat_l4/seg_tuned/eval.json` | `f3b23e6d1b066b399c3055f0f77d3755fda46d3d6f6d731cc36a716ac18e46c2` |
 | `s3_rope_concat_l4/seg_tuned/analysis.json` | `57dab66028596a7c025dcb4df20f64e307f56402abccb8ec46f0b5f91a9935d7` |
-| `s3_rope_concat_l4/seg_tuned/diagnostics.json` | `6ac793db852a9bffe8e303a5d1c94a66c39d5eec32702c84b4c576cf508b1bd8` |
+| `s3_rope_concat_l4/seg_tuned/diagnostics.json` | `135180bb1a4df143d098328201f64e3c819e41a1289d08cf20e53cee1b3e9211` |
 | `s3_rope_concat_l4/seg_tuned/examples.json` | `66dfe19d8176c6496223de6551b4f1fc1842d0521168229c74d52e36d2551fe0` |
 | `compare/extras.json` | `e6b94d36a9a22f43dab53ab7ce68f7dfba6fe162e29235b43b830166de10177a` |
 | `compare/H1_s2_rope_l4_vs_s1_sin_l4_seg_off.json` | `e6aa88d3b56ad62414ab6e5442e7e3c9c99cf57dc08943176dcca7c20d30d375` |

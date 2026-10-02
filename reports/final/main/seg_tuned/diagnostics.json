@@ -9,7 +9,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.05333333333333334,
    "length_ratio_mean": 1.034884236404425,
-   "length_ratio_median": 1.0
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.013333333333333334,
+   "word_copy_sentence_rate": 0.24666666666666667,
+   "word_copy_sentences": 37,
+   "word_copy_words": 45
   },
   "dev:long": {
    "n": 30,
@@ -18,7 +22,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.06666666666666667,
    "length_ratio_mean": 1.0759211204338306,
-   "length_ratio_median": 1.032258064516129
+   "length_ratio_median": 1.032258064516129,
+   "ref_repetition_rate": 0.06666666666666667,
+   "word_copy_sentence_rate": 0.5,
+   "word_copy_sentences": 15,
+   "word_copy_words": 18
   },
   "dev:seen": {
    "n": 60,
@@ -27,7 +35,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.08333333333333333,
    "length_ratio_mean": 1.0586469234918723,
-   "length_ratio_median": 1.0
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.0,
+   "word_copy_sentence_rate": 0.21666666666666667,
+   "word_copy_sentences": 13,
+   "word_copy_words": 18
   },
   "dev:unseen_domain": {
    "n": 60,
@@ -36,7 +48,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.016666666666666666,
    "length_ratio_mean": 0.9906031073022743,
-   "length_ratio_median": 1.0
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.0,
+   "word_copy_sentence_rate": 0.15,
+   "word_copy_sentences": 9,
+   "word_copy_words": 9
   },
   "e1": {
    "n": 1940,
@@ -45,7 +61,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.04020618556701031,
    "length_ratio_mean": 1.0133750337241976,
-   "length_ratio_median": 1.0
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.04742268041237113,
+   "word_copy_sentence_rate": 0.2551546391752577,
+   "word_copy_sentences": 495,
+   "word_copy_words": 820
   },
   "e2": {
    "n": 1000,
@@ -54,7 +74,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.037,
    "length_ratio_mean": 1.0288992021075876,
-   "length_ratio_median": 1.0
+   "length_ratio_median": 1.0,
+   "ref_repetition_rate": 0.147,
+   "word_copy_sentence_rate": 0.503,
+   "word_copy_sentences": 503,
+   "word_copy_words": 889
   },
   "e2synth": {
    "n": 300,
@@ -63,7 +87,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.0,
    "length_ratio_mean": 1.0048541506627662,
-   "length_ratio_median": 0.9961832061068703
+   "length_ratio_median": 0.9961832061068703,
+   "ref_repetition_rate": 0.25,
+   "word_copy_sentence_rate": 0.8033333333333333,
+   "word_copy_sentences": 241,
+   "word_copy_words": 637
   },
   "e2synth:e2synth_400_600": {
    "n": 100,
@@ -72,7 +100,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.0,
    "length_ratio_mean": 1.01335910824151,
-   "length_ratio_median": 1.0119115144639819
+   "length_ratio_median": 1.0119115144639819,
+   "ref_repetition_rate": 0.1,
+   "word_copy_sentence_rate": 0.77,
+   "word_copy_sentences": 77,
+   "word_copy_words": 172
   },
   "e2synth:e2synth_600_800": {
    "n": 100,
@@ -81,7 +113,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.0,
    "length_ratio_mean": 1.0065086630937692,
-   "length_ratio_median": 0.9958333333333333
+   "length_ratio_median": 0.9958333333333333,
+   "ref_repetition_rate": 0.26,
+   "word_copy_sentence_rate": 0.75,
+   "word_copy_sentences": 75,
+   "word_copy_words": 213
   },
   "e2synth:e2synth_800_900": {
    "n": 100,
@@ -90,7 +126,11 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.0,
    "length_ratio_mean": 0.9946946806530186,
-   "length_ratio_median": 0.9824223267288567
+   "length_ratio_median": 0.9824223267288567,
+   "ref_repetition_rate": 0.39,
+   "word_copy_sentence_rate": 0.89,
+   "word_copy_sentences": 89,
+   "word_copy_words": 252
   },
   "e3": {
    "n": 1000,
@@ -99,14 +139,43 @@
    "untranslated_copy_rate": 0.0,
    "overlong_rate": 0.023,
    "length_ratio_mean": 0.9827156039731069,
-   "length_ratio_median": 0.9775025278058644
+   "length_ratio_median": 0.9775025278058644,
+   "ref_repetition_rate": 0.02,
+   "word_copy_sentence_rate": 0.323,
+   "word_copy_sentences": 323,
+   "word_copy_words": 1320
   }
  },
+ "rule_based_examples": [
+  {
+   "id": "e1_01118",
+   "source": "MODIFICATIONS DU RÈGLEMENT D'EXÉCUTION DU PCT (dont l'entrée en vigueur est fixée au 1er juillet 2008) Règle 4 Requête (contenu) 4.1 Contenu obligatoire et contenu facultatif; signature a) [Sans changement] b) La requête doit comporter, le cas échéant : i) [sans changement] ii) les indications relatives à une recherche antérieure prévues aux règles 4.12.i) et 12bis.1.c) et f); iii) et iv) [sans changement] c) La requête peut comporter : i) à iv) [sans changement] v) une requête en restauration du droit de priorité; vi) une déclaration prévue à la règle 4.12.ii). d) [Sans changement] 4.2 à 4.10 [Sans changement] 4.11 Mention d'une demande de \"continuation\" ou de \"continuation-in-part\" ou d'une demande principale ou d'un brevet principal a) Si i) le déposant a l'intention d'indiquer, conformément à la règle 49bis.1.a) ou b), qu'il souhaite que la demande internationale soit traitée, dans tout État désigné, comme une demande de brevet d'addition, de certificat d'addition, de certificat d'auteur d'invention additionnel ou de certificat d'utilité additionnel; ou ii) le déposant a l'intention d'indiquer, conformément à la règle 49bis.1.d), qu'il souhaite que la demande internationale soit traitée, dans tout État désigné, comme une demande de \"continuation\" ou de \"continuation-in-part\" d'une demande antérieure, la requête doit l'indiquer et indiquer la demande principale, le brevet principal ou le titre principal correspondant.",
+   "reference": "(b) The inclusion in the request of an indication under paragraph (a) shall have no effect on the operation of Rule 4.9.",
+   "hyp": "MODIFICATIONS OF THE PCT EXECUTION REGULATIONS (whose entry into force is 1 July 2008) Rule 4 Request (content) 4.1 Mandatory Content and Optional Content; signature (a) [No change] (b) The request shall include: (i) [without change] (ii) indications relating to prior research provided for in Rules 4.12.i) and 12bis.1(c) and (f); (iii) and (iv) [without change] (c) The request may include: (i) to (iv) [without change] (v) a request for restoration of the right of priority; (vi) a statement provided for in Rule 4.12.ii). (d) [No change] 4.2 to 4.10 [Without change] 4.11 Notice of a request for \"continuation\" or \"contination-in-part\" or a principal application or patent (a) If (i) the applicant intends to indicate, in accordance with Rule 49bis.1(a) or (b), that the applicant wishes that the international application be processed, in any designated State, as an application for an addition patent, certificate of addition, author certificate of additional invention or an additional utility certificate; or (ii) the applicant intends to indicate, in accordance with Rule 49bis.1(d), that he wishes the international application to be processed, in any designated State, as a request for \"continuation\" or \"contination-in-part\" of an earlier application, the request must indicate it and indicate the relevant principal application, principal patent or principal title.",
+   "slice": "e1",
+   "rule": "A: largest length-ratio deviation (ref >= 5 words)",
+   "length_ratio": 9.826086956521738,
+   "hyp_repetition_rate": 0.10714285714285714
+  },
+  {
+   "id": "e2_00474",
+   "source": "d’asile, telles que par exemple la « Lagerpflicht » (l’obligation de résider dans un camp), la « Residenzpflicht » (l’obligation de vivre sur un territoire donné) et les expulsions, reposent toutes sur la discrimination raciste.",
+   "reference": "Mo st of the activists who are involved in 'asylum-seeker' issues believe that current legislations on asylum seekers' life, such as 'Lagerpflicht' (obligatory residence in camps) and 'Residenzpflicht' (obligation to live within certain boundaries) and deportation are all based on racial discrimination.",
+   "hyp": "Asylum, such as the \"Lagerpflicht\" (the obligation to reside in a camp), the \"Residenzp Flicht\", and the obligation to live in a given territory, all based on racist discrimination.",
+   "slice": "e2",
+   "rule": "B: highest hypothesis repetition (reference has none)",
+   "length_ratio": 0.6744186046511628,
+   "hyp_repetition_rate": 0.037037037037037035
+  }
+ ],
  "failure_mode_definitions": {
   "repetition_rate": "share of sentences with any repeated word 3-gram in the hypothesis",
   "truncation_rate": "share with hyp/ref word-count ratio < 0.5",
   "untranslated_copy_rate": "share with > 10% of hypothesis subwords copied from the source and never seen on the train target side",
-  "overlong_rate": "share with hyp/ref word-count ratio > 1.5"
+  "overlong_rate": "share with hyp/ref word-count ratio > 1.5",
+  "ref_repetition_rate": "the same repeated-3-gram share computed on the REFERENCES: repeated 3-grams occur legitimately, so the hypothesis rate is not a degeneration signal by itself",
+  "word_copy_sentence_rate": "HEURISTIC: share of sentences with >= 1 hypothesis word of length >= 4 identical to a source word and absent from the reference",
+  "word_copy_words": "number of such words in the group (word_copy_sentences = sentences)"
  },
  "rarity_buckets_e1_e2_e3": {
   "definition": "quintiles of the source's mean subword train frequency, edges from the pooled E1+E2+E3 sources (model independent); bucket 1 = most common sources",
