@@ -1,0 +1,214 @@
+{
+  "info": {
+    "path": "gauravgandhi429-gaurav-gandhi/fr-en-transformer/5d9fc85d",
+    "state": "finished",
+    "created_at": "2026-10-02T03:50:33Z",
+    "heartbeat_at": "2026-10-02T07:24:45Z",
+    "name": "main",
+    "url": "https://wandb.ai/gauravgandhi429-gaurav-gandhi/fr-en-transformer/runs/5d9fc85d"
+  },
+  "config": {
+    "ckpt": {
+      "dir": "/content/drive/MyDrive/fr-en-transformer/runs/main/ckpt",
+      "keep_last": 5,
+      "ckpt_steps": null,
+      "ckpt_minutes": 15,
+      "keep_decay_phase": true
+    },
+    "data": {
+      "shard_dir": "/content/data_cache/data/shards",
+      "eval_split": "e1",
+      "train_split": "train"
+    },
+    "eval": {
+      "e1_n": 500,
+      "e2_n": 300,
+      "e3_n": 300,
+      "eval_every": 500,
+      "n_samples_table": 20
+    },
+    "name": "main",
+    "seed": 1234,
+    "tf32": true,
+    "batch": {
+      "chunk_size": 512,
+      "max_tokens": 4096,
+      "concat_prob": 0.15,
+      "num_workers": 0,
+      "concat_max_len": 256,
+      "tokens_per_step": 25000
+    },
+    "group": "main",
+    "model": {
+      "pos": "rope",
+      "d_ff": 2048,
+      "d_model": 512,
+      "dropout": 0.1,
+      "max_len": 512,
+      "n_heads": 8,
+      "rope_base": 10000,
+      "dec_layers": 4,
+      "enc_layers": 8,
+      "vocab_size": 16000
+    },
+    "optim": {
+      "lr": 0.0007,
+      "eps": 1e-09,
+      "betas": [
+        0.9,
+        0.98
+      ],
+      "grad_clip": 1,
+      "max_minutes": 240,
+      "warmup_steps": 4000,
+      "weight_decay": 0.01,
+      "cooldown_frac": 0.2,
+      "planned_steps": 24645
+    },
+    "device": "auto",
+    "git_sha": "9524bac73dfeec223421de4a89c08774f8a63451",
+    "logging": {
+      "run_dir": "/content/drive/MyDrive/fr-en-transformer/runs/main",
+      "log_every": 50,
+      "wandb_mode": "offline",
+      "wandb_entity": "gauravgandhi429-gaurav-gandhi",
+      "wandb_project": "fr-en-transformer"
+    },
+    "resumed": false,
+    "gpu_name": "NVIDIA L4",
+    "platform": "Linux-6.6.122+-x86_64-with-glibc2.39",
+    "git_dirty": false,
+    "precision": "bf16",
+    "param_count": 50229248,
+    "sdpa_kernel": "efficient",
+    "resume_count": 0,
+    "preflight_gpu": "NVIDIA L4",
+    "torch_compile": false,
+    "torch_version": "2.11.0+cu130",
+    "cuda_available": true,
+    "driver_version": "580.82.07",
+    "preflight_mode": "colab",
+    "label_smoothing": 0.1,
+    "preflight_cudnn": 92700,
+    "preflight_torch": "2.11.0+cu130",
+    "preflight_python": "3.13.15",
+    "torch_cuda_version": "13.0",
+    "wait_seconds_total": 0,
+    "gpu_total_memory_mb": 22563.125,
+    "precision_requested": "auto",
+    "preflight_gpu_count": 1,
+    "preflight_precision": "bf16",
+    "sdpa_kernel_summary": "SDPA kernel: efficient (flash unavailable: Flash Attention does not support non-null attn_mask.)",
+    "data_manifest_sha256": "3821d2f7d54347294fb4a70d1ac120f5dd0230f7810c09029660d025e964616d",
+    "preflight_torch_cuda": "13.0",
+    "sdpa_kernel_per_site": {
+      "cross": "efficient",
+      "decoder_self": "efficient",
+      "encoder_self": "efficient"
+    },
+    "shard_manifest_sha256": "0ef19bd9fee2b730a0d0d81469987a7912fdcfdefb9ddd23a9895c2a2fb14ff6",
+    "preflight_nvidia_driver": "580.82.07",
+    "preflight_gpu_total_memory_gib": 22.03
+  },
+  "summary": {
+    "_runtime": 12850.502868708,
+    "_step": 24600,
+    "_timestamp": 1790925861.3977427,
+    "_wandb.runtime": 12850,
+    "epoch_fraction": 8.815617676598594,
+    "eval/dev_long_bleu": 37.606651203588825,
+    "eval/dev_long_chrf": 62.30499708338486,
+    "eval/dev_long_n": 30,
+    "eval/dev_seen_bleu": 33.88801778627959,
+    "eval/dev_seen_chrf": 49.88730055876782,
+    "eval/dev_seen_n": 60,
+    "eval/dev_unseen_domain_bleu": 20.658260727234833,
+    "eval/dev_unseen_domain_chrf": 43.87064695884173,
+    "eval/dev_unseen_domain_n": 60,
+    "eval/e1_bleu": 33.432706332575485,
+    "eval/e1_chrf": 53.87165725444002,
+    "eval/e1_n": 500,
+    "eval/e2_bleu": 37.1229455456019,
+    "eval/e2_chrf": 60.5997890227886,
+    "eval/e2_n": 300,
+    "eval/e3_reporting_only_bleu": 18.44752569789548,
+    "eval/e3_reporting_only_chrf": 40.40015251112093,
+    "eval/e3_reporting_only_n": 300,
+    "eval/sample_translations": "{'path': 'media/table/eval/sample_translations_24500_5b119843aaa2eec2bca6.table.json', 'size': 6341, '_type': 'table-file', 'ncols': 5, 'nrows': 20, 'sha256': '5b119843aaa2eec2bca64e07205a55a3e8b457bc0d8f44c15a8dbccef7bf46c3', 'log_mode': 'IMMUTABLE', 'artifact_path': 'wandb-client-artifact://xo5ltm0290lpbpjwpofdhsn4qauwvqs1ho1s4r3gb3l01ynhzksjkafmyza065upscamm86cmqykds26p21gy1e6874oc1gesb2lh0rrgls48a3kh76gbdidtznj5cpn/eval/sample_translations.table.json', '_latest_artifact_path': 'wandb-client-artifact://8p8yhuls3tvf0opbj3e8rw5lte1fwlqyoh361twbnpyjocoft93yron0kkf874ew4cytmpb5h1oy47cilsfuodl7faw0r10clt5nivppb800cpoqgdgxn7zzr3gehgtq:latest/eval/sample_translations.table.json'}",
+    "eval/val_loss": 2.904052645759428,
+    "exit_reason": "completed",
+    "final_step": 24645,
+    "gpu_mem_mb": 5975.9501953125,
+    "gpu_reserved_mb": 17062,
+    "grad_norm": 0.21617916226387024,
+    "grad_skip_count": 0,
+    "loss": 2.687640393722661,
+    "loss_scale": 1,
+    "lr": 6.532765266788376e-06,
+    "optimizer_stepped": true,
+    "ppl": 14.696955944311108,
+    "redo_steps": 0,
+    "resume_count": 0,
+    "resumed": false,
+    "step": 24600,
+    "tok_per_sec": 76002.26821940967,
+    "train_wall_seconds": 11791.83147286308,
+    "wait_seconds_total": 0,
+    "wall_step_s": 0.4477753989995108
+  },
+  "metadata": {
+    "os": "Linux-6.6.122+-x86_64-with-glibc2.39",
+    "python": "CPython 3.13.15",
+    "startedAt": "2026-10-02T03:50:32.766233Z",
+    "args": [
+      "--config",
+      "configs/main.yaml",
+      "--resume",
+      "--wandb",
+      "online",
+      "--run-dir",
+      "/content/drive/MyDrive/fr-en-transformer/runs/main",
+      "--ckpt-dir",
+      "/content/drive/MyDrive/fr-en-transformer/runs/main/ckpt",
+      "--data-dir",
+      "/content/data_cache/data/shards",
+      "--planned-steps",
+      "24645"
+    ],
+    "program": "/content/fr-en-transformer/colab/run_train.py",
+    "codePath": "colab/run_train.py",
+    "codePathLocal": "colab/run_train.py",
+    "git": {
+      "remote": "https://github.com/gaurav-gandhi-2411/fr-en-transformer.git",
+      "commit": "9524bac73dfeec223421de4a89c08774f8a63451"
+    },
+    "email": "redacted@example.invalid",
+    "root": "/content/fr-en-transformer/wandb",
+    "host": "1d3f0fd82e43",
+    "executable": "/usr/bin/python3",
+    "cpu_count": 6,
+    "cpu_count_logical": 12,
+    "gpu": "NVIDIA L4",
+    "gpu_count": 1,
+    "disk": {
+      "/": {
+        "total": "253055008768",
+        "used": "46625312768"
+      }
+    },
+    "memory": {
+      "total": "56863334400"
+    },
+    "gpu_nvidia": [
+      {
+        "name": "NVIDIA L4",
+        "memoryTotal": "24152899584",
+        "cudaCores": 7424,
+        "architecture": "Ada",
+        "uuid": "GPU-d2e489b4-7603-ef49-b3d0-9d5f18f85461"
+      }
+    ],
+    "cudaVersion": "13.0",
+    "writerId": "fex5ib26f6mwsjcv934kiposnmc1mbvk"
+  }
+}
