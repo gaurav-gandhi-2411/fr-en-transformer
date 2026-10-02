@@ -10,7 +10,7 @@ import torch
 from nmt.decode import DecodeConfig, beam_search_decode, greedy_decode
 from nmt.ensemble import Ensemble, EnsembleError, check_compatible
 from nmt.hub import NMTModel, export_checkpoint
-from nmt.mbr import MBRConfig
+from nmt.mbr import MBRConfig, beam_pool, sample_pool
 from nmt.model.transformer import ModelConfig, Transformer
 from nmt.translate import Translator
 
@@ -143,3 +143,15 @@ def test_ensemble_translator_mbr_and_refusal(tmp_path: Path) -> None:
         f.write(b"\x00")
     with pytest.raises(EnsembleError, match="different SentencePiece"):
         load_ensemble_translator([a, other], device="cpu")
+
+
+def test_members_are_in_eval_mode_after_construction_and_after_decode_helpers() -> None:
+    # members built by _tiny are eval(); force train mode first so only Ensemble.__init__ can fix it
+    a, b = _tiny(6).train(), _tiny(7).train()
+    ens = Ensemble([a, b])
+    assert not ens.training and not a.training and not b.training
+    src, mask = _src()
+    beam_pool(ens, src, mask, 2, 3, 0, n=3, alpha=1.0)
+    assert not ens.training and not a.training and not b.training
+    sample_pool(ens, src, mask, 2, 3, ["a", "b", "c"], n=3)
+    assert not ens.training and not a.training and not b.training
