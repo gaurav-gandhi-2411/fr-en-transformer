@@ -110,6 +110,36 @@ def candidate_by_name(name: str) -> FinalAllCandidate:
     raise ev.EvalStepError(f"unknown final_all candidate {name!r}")
 
 
+# The three models of the run and where their FINAL checkpoints live on Drive:
+# model name -> (run dir under runs/, checkpoint step, configs/<name>.yaml of that run).
+# main: the main run's last checkpoint (the `final` candidate of its own eval); A and B: the ends of
+# the PREREG rule-4 extension branches (A decays 30,000 -> 37,500; B 40,000 -> 50,000).
+FINAL_ALL_CHECKPOINTS: dict[str, tuple[str, int, str]] = {
+    "main": ("main", 24645, "main"),
+    "A": ("ext_branch_a_l4", 37500, "ext_branch_a_l4"),
+    "B": ("ext_branch_b_l4", 50000, "ext_branch_b_l4"),
+}
+
+
+def final_all_checkpoint_paths(runs_base: Path, run_prefix: str = "") -> dict[str, Path]:
+    """The checkpoint FILE of each model: <runs_base>/<run_prefix><run>/ckpt/step_<step>.pt."""
+    return {
+        name: ev.checkpoint_path(Path(runs_base) / f"{run_prefix}{run}" / "ckpt", step)
+        for name, (run, step, _cfg) in FINAL_ALL_CHECKPOINTS.items()
+    }
+
+
+def check_final_all_checkpoints(paths: Mapping[str, Path]) -> None:
+    """Raise EvalStepError naming EVERY missing checkpoint file (before any GPU time is spent);
+    no neighbouring step may stand in for a missing one."""
+    missing = [str(p) for p in paths.values() if not Path(p).is_file()]
+    if missing:
+        raise ev.EvalStepError(
+            f"final_all: {len(missing)} required checkpoint file(s) missing, refusing before any "
+            "GPU time; the three models are fixed by PREREG:\n  " + "\n  ".join(missing)
+        )
+
+
 def parse_model_args(specs: Sequence[str]) -> dict[str, Path]:
     """`["main=DIR", "A=DIR", "B=DIR"]` -> {"main": Path, ...}; refuses unknown/duplicate names."""
     out: dict[str, Path] = {}
@@ -859,6 +889,36 @@ def _model_args(models: Mapping[str, Path]) -> list[str]:
     return out
 
 
+def final_all_export_steps(
+    ckpt_files: Mapping[str, Path], models_root: Path, repo_dir: Path, python: str | None = None
+) -> list[tuple[str, list[str]]]:
+    """One `nmt.eval_l4 candidates` export per model (the existing export machinery: a single
+    checkpoint is its own weights) into <models_root>/<name>/, from its own run's config."""
+    py = python or sys.executable
+    steps = []
+    for name, (_run, step, cfg) in FINAL_ALL_CHECKPOINTS.items():
+        steps.append(
+            (
+                f"export:{name}",
+                [
+                    py,
+                    "-m",
+                    "nmt.eval_l4",
+                    "candidates",
+                    "--ckpt-dir",
+                    str(Path(ckpt_files[name]).parent),
+                    "--config",
+                    str(Path(repo_dir) / "configs" / f"{cfg}.yaml"),
+                    "--out-dir",
+                    str(models_root),
+                    "--candidate",
+                    f"{name}={step}",
+                ],
+            )
+        )
+    return steps
+
+
 def plan_final_all(
     *,
     eval_root: Path,
@@ -866,6 +926,8 @@ def plan_final_all(
     models: Mapping[str, Path],
     batch_size: int = ev.EVAL_BATCH_SIZE,
     python: str | None = None,
+    ckpt_files: Mapping[str, Path] | None = None,
+    repo_dir: Path | None = None,
 ) -> list[tuple[str, list[str]]]:
     """The ordered (step name, argv) list of the staged `final_all` session, each argv a fresh
     interpreter: hf-verify (the notebook's skip check: it parses HF_RUN_COMPLETE and skips the rest
@@ -874,7 +936,10 @@ def plan_final_all(
     (`tune-stage2 --pool P --rank 1|2`, which read the top 2 from stage1.json at run time), select
     (10 candidates), report (bootstrap + latency), decode (+test) for the winner, validate-test,
     and the PRIVATE upload last. The plan is static: only the model sets of the stage-2 steps
-    depend on stage 1, and they are resolved when those steps run."""
+    depend on stage 1, and they are resolved when those steps run. With `ckpt_files` (and
+    `repo_dir`) the three `export:<name>` steps go right after hf-check (so the export, which
+    reads Drive, comes after the token check but before bench); `models` must then point at
+    <eval_root>/models/<name>."""
     py = python or sys.executable
     root = Path(eval_root)
     base = [py, "-m", "nmt.eval_l4"]
@@ -886,6 +951,11 @@ def plan_final_all(
     plan: list[tuple[str, list[str]]] = [
         ("hf-verify", [*base, "hf-verify", "--repo", hf_repo, "--run", ev.FINAL_ALL_RUN]),
         ("hf-check", [*base, "hf-check", "--repo", hf_repo]),
+        *(
+            final_all_export_steps(ckpt_files, root / "models", repo_dir or ev.REPO_ROOT, py)
+            if ckpt_files is not None
+            else []
+        ),
         (
             "bench",  # the main model, beam 5: the measured rates feed estimate_final_all
             [
@@ -946,6 +1016,112 @@ def plan_final_all(
         ),
     ]
     return plan
+
+
+STAGE2_NOTE = "depends on stage1-select top-2"
+
+
+def describe_plan(plan: Sequence[tuple[str, Sequence[str]]]) -> list[str]:
+    """Printable lines of a plan; the stage-2 steps are marked as depending on the stage-1 top 2
+    (their model set is read from stage1.json when they run)."""
+    lines = []
+    for name, argv in plan:
+        mark = f"   <- {STAGE2_NOTE}" if name.startswith("tune-stage2") else ""
+        lines.append(f"  [{name}] {' '.join(argv)}{mark}")
+    return lines
+
+
+def _read(path: Path) -> dict[str, Any] | None:
+    data = ev._read_json(path)
+    return data if isinstance(data, dict) else None
+
+
+def format_final_all_summary(
+    eval_root: Path, git_sha: str, preflight: Mapping[str, Any], hf_repo: str
+) -> list[str]:
+    """Summary-cell lines of a final_all session: SHA, GPU, bench, stage-1 objectives and top 2,
+    stage-2 objectives, winner / runner-up / production, the bootstrap deltas, latency, the test
+    validation, the HF repo + revision + private flag. Missing pieces say NOT DONE."""
+    root = Path(eval_root)
+    lines = [
+        "eval run: final_all (staged selection, PREREG 2026-10-03)",
+        f"git commit SHA: {git_sha}",
+        f"GPU: {preflight.get('preflight_gpu')} (runtime-resolved precision "
+        f"{preflight.get('preflight_precision')}; decoding itself runs in fp32)",
+    ]
+    bench = _read(root / "bench.json")
+    if bench:
+        for label, mode in bench.get("modes", {}).items():
+            lines.append(
+                f"bench {label} (main final): {mode.get('sentences_per_second')} sent/s, "
+                f"{mode.get('output_tokens_per_second')} out-tok/s ({bench.get('gpu')})"
+            )
+    else:
+        lines.append("bench: NOT DONE")
+    stage1 = _read(root / "stage1.json")
+    if stage1:
+        for name in stage1["candidate_order"]:
+            c = stage1["candidates"][name]
+            t = c["config"]["segment_threshold"]
+            lines.append(
+                f"stage 1 {name}: objective {c['objective']:.4f} alpha={c['config']['alpha']} "
+                f"beam={c['config']['beam']} T={'off' if t is None else t}"
+            )
+        lines.append("stage 1 TOP 2: " + ", ".join(stage1["top2"]))
+    else:
+        lines.append("stage 1: NOT DONE")
+    sel = _read(root / "selection.json")
+    if sel and "runner_up" in sel:
+        for name in sel["stage2_candidates"]:
+            lines.append(f"stage 2 {name}: objective {sel['candidates'][name]['objective']:.4f}")
+        lines.append(f"final ranking ({len(sel['ranking'])}): " + " > ".join(sel["ranking"]))
+        w, r = sel["winner"], sel["runner_up"]
+        wt = w["segment_threshold"]
+        lines.append(
+            f"WINNER: {w['candidate']} objective {w['objective']:.4f}; alpha={w['alpha']} "
+            f"beam={w['beam']} T={'off' if wt is None else wt} mbr={w.get('mbr')}"
+        )
+        lines.append(f"runner-up: {r['candidate']} objective {r['objective']:.4f}")
+        lines.append(f"production config: {sel['production']['candidate']}")
+        lines.append(f"tie rule: {sel['tie_rule']}")
+    else:
+        lines.append("selection: NOT DONE")
+    report = _read(root / REPORT_NAME)
+    if report:
+        for key, b in report["bootstrap"].items():
+            if "ci95" in b:
+                lines.append(
+                    f"bootstrap {key}: delta {b['delta']:+.3f} [{b['ci95'][0]:+.3f}, "
+                    f"{b['ci95'][1]:+.3f}] p={b['p_value']} "
+                    f"(n={b['n_resamples']}, seed {b['seed']})"
+                )
+            else:
+                lines.append(f"bootstrap {key}: {b.get('note')}")
+        for role, lat in report["latency"].items():
+            lines.append(
+                f"latency {role}: {lat['sentences_per_second']} sent/s, "
+                f"{lat['output_tokens_per_second']} out-tok/s ({lat.get('gpu')}, "
+                f"batch {lat['settings']['batch_size']}, 200 E2 sentences)"
+            )
+    else:
+        lines.append("report (bootstrap + latency): NOT DONE")
+    val = _read(root / "validation.json")
+    if val and val.get("valid"):
+        lines.append(f"test validation: OK ({val['n_ids']} ids, {val['empty_strings']} empty)")
+    else:
+        lines.append(
+            f"test validation: {'FAILED: ' + str(val.get('error')) if val else 'NOT DONE'}"
+        )
+    up = _read(root / "hf_upload.json")
+    if up:
+        lines.append(
+            f"HF repo: {up['repo']} revision: {up['revision']} private: {up['private']} "
+            "(prefix runs/final_all/)"
+        )
+        lines.append(f"HF_EVAL_REVISION={up['revision']}")
+    else:
+        lines.append(f"HF upload to {hf_repo}: NOT DONE")
+    return lines
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1131,10 +1307,30 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--batch-size", type=int, default=ev.EVAL_BATCH_SIZE)
     s.add_argument("--test", action="store_true")
 
-    s = sub.add_parser("plan", help="print the ordered step list")
+    s = sub.add_parser("plan", help="print the ordered step list (the notebook uses --json)")
     s.add_argument("--eval-root", required=True, type=Path)
     s.add_argument("--repo", required=True)
-    s.add_argument("--model", action="append", required=True)
+    s.add_argument(
+        "--model",
+        action="append",
+        default=[],
+        help="main|A|B=DIR; default <eval-root>/models/<name> (where the export steps write)",
+    )
+    s.add_argument(
+        "--ckpt-file",
+        action="append",
+        default=[],
+        help="main|A|B=checkpoint file: adds the three export steps after hf-check",
+    )
+    s.add_argument("--repo-dir", type=Path, default=ev.REPO_ROOT, help="for configs/<name>.yaml")
+    s.add_argument("--json", action="store_true", help="print [[name, argv], ...] as JSON")
+
+    s = sub.add_parser("summary", help="print the Summary-cell lines of a finished session")
+    s.add_argument("--eval-root", required=True, type=Path)
+    s.add_argument("--hf-repo", required=True)
+    s.add_argument("--git-sha", default="?")
+    s.add_argument("--gpu", default=None)
+    s.add_argument("--precision", default=None)
 
     s = sub.add_parser("estimate", help="print the cost ESTIMATE of the staged flow")
     s.add_argument("--workload", type=Path, default=ev.REPO_ROOT / "colab" / "eval_workload.json")
@@ -1181,11 +1377,25 @@ def _dispatch(args: argparse.Namespace) -> int:
             args.eval_dir, parse_model_args(args.model), args.batch_size, include_test=args.test
         )
     elif args.cmd == "plan":
-        models = parse_model_args(args.model)
-        for name, argv in plan_final_all(
-            eval_root=args.eval_root, hf_repo=args.repo, models=models
-        ):
-            print(f"{name}: {' '.join(argv)}")
+        models = (
+            parse_model_args(args.model)
+            if args.model
+            else {n: args.eval_root / "models" / n for n in MODEL_NAMES}
+        )
+        plan = plan_final_all(
+            eval_root=args.eval_root,
+            hf_repo=args.repo,
+            models=models,
+            ckpt_files=parse_model_args(args.ckpt_file) if args.ckpt_file else None,
+            repo_dir=args.repo_dir,
+        )
+        if args.json:
+            print(json.dumps([[name, argv] for name, argv in plan]))
+        else:
+            print("\n".join(describe_plan(plan)))
+    elif args.cmd == "summary":
+        pre = {"preflight_gpu": args.gpu, "preflight_precision": args.precision}
+        print("\n".join(format_final_all_summary(args.eval_root, args.git_sha, pre, args.hf_repo)))
     elif args.cmd == "estimate":
         workload = json.loads(args.workload.read_text(encoding="utf-8"))
         rates, basis = None, None

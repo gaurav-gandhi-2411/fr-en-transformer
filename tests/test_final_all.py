@@ -1087,3 +1087,67 @@ def test_estimate_stage2_scenarios_and_comparison_with_the_exhaustive_figure() -
     text = "\n".join(lines)
     assert lines[0].startswith("ESTIMATE") and "not a measurement" in lines[0]
     assert "beam 4 ASSUMED equal" in text and "20.6 h" in text and "stage 2 (cheapest" in text
+
+
+# --- notebook support: exports in the plan, plan --json, summary -------------------------------
+
+
+def test_plan_with_checkpoints_adds_the_three_exports_right_after_hf_check() -> None:
+    ckpts = fa.final_all_checkpoint_paths(Path("/d/runs"), "")
+    plan = fa.plan_final_all(
+        eval_root=Path("/d/eval/final_all"),
+        hf_repo="o/r",
+        models={n: Path("/d/eval/final_all/models") / n for n in fa.MODEL_NAMES},
+        python="py",
+        ckpt_files=ckpts,
+        repo_dir=Path("/repo"),
+    )
+    names = [n for n, _ in plan]
+    assert names[:6] == ["hf-verify", "hf-check", "export:main", "export:A", "export:B", "bench"]
+    assert len(names) == 27
+    exports = dict(plan)
+    for name, (run, step, cfg) in fa.FINAL_ALL_CHECKPOINTS.items():
+        argv = exports[f"export:{name}"]
+        assert argv[:4] == ["py", "-m", "nmt.eval_l4", "candidates"]
+        assert argv[argv.index("--candidate") + 1] == f"{name}={step}"
+        assert Path(argv[argv.index("--config") + 1]) == Path("/repo/configs") / f"{cfg}.yaml"
+        assert Path(argv[argv.index("--ckpt-dir") + 1]) == Path("/d/runs") / run / "ckpt"
+        assert Path(argv[argv.index("--out-dir") + 1]) == Path("/d/eval/final_all/models")
+        assert ev._parser().parse_args(argv[3:]).cmd == "candidates"
+    # without checkpoints the plan is the 24-step one (existing behaviour)
+    assert len(_plan()) == 24
+
+
+def test_describe_plan_marks_only_the_stage2_steps() -> None:
+    lines = fa.describe_plan(_plan())
+    marked = [ln for ln in lines if fa.STAGE2_NOTE in ln]
+    assert len(marked) == 8 and all("[tune-stage2:" in ln for ln in marked)
+    assert fa.STAGE2_NOTE == "depends on stage1-select top-2"
+
+
+def test_cli_plan_json_and_summary_round_trip(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ckpt = [f"{n}={tmp_path / n / 'ckpt' / 'x.pt'}" for n in fa.MODEL_NAMES]
+    args = ["plan", "--json", "--eval-root", str(tmp_path / "e"), "--repo", "o/r"]
+    for c in ckpt:
+        args += ["--ckpt-file", c]
+    assert fa.main(args) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert [n for n, _ in plan][:3] == ["hf-verify", "hf-check", "export:main"]
+    assert any(a == f"A={tmp_path / 'e' / 'models' / 'A'}" for n, argv in plan for a in argv)
+    # summary of an empty dir: every missing piece says NOT DONE, and nothing crashes
+    assert fa.main(["summary", "--eval-root", str(tmp_path / "none"), "--hf-repo", "o/r"]) == 0
+    out = capsys.readouterr().out
+    for needle in ("bench: NOT DONE", "stage 1: NOT DONE", "selection: NOT DONE"):
+        assert needle in out
+    assert "report (bootstrap + latency): NOT DONE" in out and "HF upload to o/r: NOT DONE" in out
+
+
+def test_checkpoint_paths_are_the_three_final_files() -> None:
+    paths = fa.final_all_checkpoint_paths(Path("/runs"), "notebook_")
+    assert {n: (p.parent.parent.name, p.name) for n, p in paths.items()} == {
+        "main": ("notebook_main", "step_00024645.pt"),
+        "A": ("notebook_ext_branch_a_l4", "step_00037500.pt"),
+        "B": ("notebook_ext_branch_b_l4", "step_00050000.pt"),
+    }
