@@ -233,3 +233,47 @@ ablation and main-run selection results exist and states what was already known)
   - **Unchanged:** §1 metrics and bootstrap, §2 objective, §3 hypotheses and decision rules,
     selection-set separation (dev / E2-synth / E3 never enter selection).
 
+- **2026-10-03 — staged final selection (supersedes rule 5 and the beam grid of rule 1 of the
+  2026-10-02 post-selection amendment; made before any extension, MBR or ensemble result
+  exists).**
+  - **Why:** rule 5 as written is an exhaustive search of 35 candidates (7 model sets × {1 beam
+    + 4 MBR pools}). Its cost is about 20.6 h of Colab time (ESTIMATE from `python -m
+    nmt.final_all estimate` with assumed decode rates, before the L4 rates were measured), and
+    picking the maximum of 35 noisy E1 + E2 objectives inflates the winner's score (winner's
+    curse). A staged search tests fewer candidates and reaches the same kind of answer.
+  - **What was known when this was written:** the same as the 2026-10-02 amendment's list, plus
+    the L4 benchmark of the `main` final model (greedy 41.097 sentences/s and 2,305.93 output
+    tokens/s; beam 5 21.345 sentences/s and 1,198.86 output tokens/s). No extension, MBR or
+    ensemble score exists. No dev, E3 or E2-synth score of any new candidate exists.
+  - **Stage 1 (beam, 7 model sets).** Each of the 7 model sets (main `final`, branch A, branch
+    B, and the four ensembles of rule 3) is tuned with beam search over α ∈ {1.2, 1.4, 1.6, 1.8,
+    2.0} × beam ∈ {4, 5}, then the T step as in §1, all chosen by the §2 objective on E1 + E2.
+    (Beam 1 is dropped from the extended grid.) The 2 model sets with the highest objective go
+    to stage 2; ties go to the earlier-listed model set.
+  - **Stage 2 (MBR, top 2 only).** The 4 MBR pools of rule 2 (beam n-best N ∈ {8, 16}; epsilon
+    sampling ε = 0.02, N ∈ {8, 16}, seed 1234), on those 2 model sets only. Beam settings inside
+    a pool use that model set's stage-1 winner α; T is re-tuned for MBR candidates as before.
+  - **Final pick.** Among the 2 stage-1 beam winners and the 8 MBR configs (10 candidates), the
+    highest §2 objective on E1 + E2 is the submission, at its own tuned config; ties go to the
+    earlier-listed candidate (model-set order, beam before MBR).
+  - **Reported alongside (not gates):**
+    - paired bootstrap (`nmt/compare.py --objective`, 1,000 resamples, seed 1234) of the winner
+      vs the runner-up, and of the winner vs the production config;
+    - **production config** = the best single model (main `final`, A or B, by stage-1 objective)
+      with beam search only, no MBR and no ensemble;
+    - measured latency for the winner and for the production config, with the benchmark settings
+      stated;
+    - the winner's E1 + E2 objective remains optimistic, since it is chosen on those sets; dev and
+      E3 are the unbiased view.
+  - **Unchanged:** the §2 objective; dev, E2-synth and E3 stay report-only and are decoded once,
+    for the winner; the v1 submission stays the fallback; rules 2, 3 and 4 of the 2026-10-02
+    amendment (MBR definition, ensemble members, extension training) are unchanged.
+- **2026-10-03 — clarification of the 2026-10-02 retention disclosure (c) above.** The
+  retention bug (`keep_decay_phase` protecting nothing without `--cooldown-now`) was real, but
+  the main run's decay-phase checkpoints did not suffer: with checkpoints roughly every 1,750
+  steps (time-based, `ckpt_minutes` 15 in `reports/main_l4/run_meta.json`), four were written
+  after the decay start at step 19,716 (20,757, 22,500, 24,269, 24,645) and all four survive.
+  "Not every one written" in the disclosure should be read as "not every checkpoint of the run",
+  not as a loss of decay-phase files. This is inferred from the file spacing; a Drive listing was
+  not available to confirm it.
+
