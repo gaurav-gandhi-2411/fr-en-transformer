@@ -436,6 +436,15 @@ def test_run_cell_stops_a_run_at_its_first_failing_step_and_starts_nothing_later
     assert failed["status"] == "FAILED" and "tune:avg_last5" in failed["error"]
 
 
+def test_a_failing_hf_check_stops_the_run_before_any_gpu_step(tmp_path: Path) -> None:
+    """hf-check (the real write probe) is the first plan step; its failure runs nothing later."""
+    rec = FakeRunStep(outputs=_bench(tmp_path), fail_at="hf-check")
+    ns = _single(tmp_path, rec)
+    with pytest.raises(RuntimeError, match="hf-check"):
+        _exec(EVAL_RUN, ns)
+    assert [n for n, _ in rec.calls] == ["hf-verify", "hf-check"]  # verify is read-only
+
+
 def test_run_cell_rerun_issues_the_same_steps_so_the_subprocesses_can_skip(
     tmp_path: Path,
 ) -> None:
