@@ -774,9 +774,9 @@ _MODEL_FILES = ("model.safetensors", "config.json", "spm.model")
 def expected_candidates(run: str) -> tuple[str, ...]:
     """The candidate names a finished `run` must have tuned (pre-registered)."""
     if run == FINAL_ALL_RUN:
-        from nmt.final_all import FINAL_ALL_CANDIDATES  # lazy: final_all imports this module
+        from nmt.final_all import STAGE1_CANDIDATES  # lazy: final_all imports this module
 
-        return FINAL_ALL_CANDIDATES
+        return STAGE1_CANDIDATES  # the 7 stage-1 tunings; stage 2 is listed by the manifest
     return MAIN_CANDIDATES if run == "main" else ABLATION_CANDIDATES
 
 
@@ -788,13 +788,20 @@ def required_rels(run: str, candidate_order: Sequence[str]) -> list[str]:
     if run in ("main", FINAL_ALL_RUN):
         rels += ["test_predictions.json", "validation.json"]
     if run == FINAL_ALL_RUN:
-        return rels  # the winner's member models are listed per winner: final_all_model_rels
+        # stage-1 file and the report (bootstrap + latency); the winner's member models and the
+        # stage-2 tunings depend on the winner / top 2 and are listed by the manifest
+        return [*rels, "stage1.json", "report.json"]
     return rels + [f"model/{name}" for name in _MODEL_FILES]
 
 
 def final_all_model_rels(members: Sequence[str]) -> list[str]:
     """Paths under runs/final_all/ of the winning candidate's member models (one dir each)."""
     return [f"models/{m}/{name}" for m in members for name in _MODEL_FILES]
+
+
+def final_all_stage2_rels(stage2_candidates: Sequence[str]) -> list[str]:
+    """Paths under runs/final_all/ of the stage-2 (MBR) tunings of the top-2 model sets."""
+    return [f"tuning/{c}.json" for c in stage2_candidates]
 
 
 def collect_upload_files(
@@ -811,6 +818,8 @@ def collect_upload_files(
     files = []
     rels = required_rels(run, selection["candidate_order"])
     if run == FINAL_ALL_RUN:
+        rels = required_rels(run, expected_candidates(run))  # the 7 stage-1 tunings
+        rels += final_all_stage2_rels(selection.get("stage2_candidates") or [])
         members = selection["winner"].get("members")
         if not members or not model_dirs or any(m not in model_dirs for m in members):
             raise EvalStepError(
@@ -854,6 +863,8 @@ def build_manifest(run: str, files: Sequence[tuple[Path, str]], eval_dir: Path) 
         },
     }
     if run == FINAL_ALL_RUN:  # hf-verify needs the member list to know which model files to require
+        manifest["candidate_order"] = list(expected_candidates(run))  # the 7 stage-1 tunings
+        manifest["stage2_candidates"] = list(selection.get("stage2_candidates", []))
         manifest["winner_members"] = list((selection.get("winner") or {}).get("members", []))
     return manifest
 
@@ -947,6 +958,10 @@ def verify_run_on_hf(api: Any, repo_id: str, run: str) -> dict[str, Any]:
         if not isinstance(members, list) or not members:
             return no("manifest.json lacks winner_members")
         needed += final_all_model_rels(members)
+        stage2 = manifest.get("stage2_candidates")
+        if not isinstance(stage2, list) or not stage2:
+            return no("manifest.json lacks stage2_candidates")
+        needed += final_all_stage2_rels(stage2)
     absent = [r for r in needed if r not in listed]
     if absent:
         return no(f"manifest.json lacks required file(s): {', '.join(absent)}")

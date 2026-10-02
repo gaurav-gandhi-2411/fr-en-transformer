@@ -1,45 +1,48 @@
 from __future__ import annotations
 
-# The `final_all` selection run (PREREG 2026-10-02 "post-selection amendment", rules 1-3, 5, 6):
-# the exhaustive candidate set
+# The `final_all` run: STAGED final selection (PREREG 2026-10-03, which supersedes rule 5 and the
+# beam grid of rule 1 of the 2026-10-02 post-selection amendment; rules 2-4 and 6 stand).
 #
-#   {main final, branch A, branch B, {main,A}, {main,B}, {A,B}, {main,A,B}}
-#     x {beam (rule-1 grid), MBR beam n-best N=8, N=16, MBR epsilon sampling (0.02) N=8, N=16}
-#
-# = 7 x 5 = 35 candidates, each tuned on the FULL E1 + E2 with the section 2 objective
-# (nmt.selection via nmt.tune), then one winner (ties to the earlier-listed candidate), decoded on
-# dev / E1 / E2 / E2-synth / E3 (+ the 330-id test set) and uploaded with a manifest under the run
-# name `final_all`. PREREG fixes the set: nothing here prunes it. `estimate_final_all` prices it.
-#
-# Order of the candidate list (the tie-break order): model-set major in the order above, decode
-# kind minor (beam, mbr_beam8, mbr_beam16, mbr_eps0.02_n8, mbr_eps0.02_n16).
+#   Stage 1: each of 7 model sets {main final, A, B, {main,A}, {main,B}, {A,B}, {main,A,B}} tuned
+#            with BEAM only (alpha {1.2,1.4,1.6,1.8,2.0} x beam {4,5}, then the T step) on the full
+#            E1 + E2 by the section 2 objective; the 2 best sets go on (ties: earlier model set).
+#   Stage 2: the 4 MBR pools (beam n-best N=8/16, epsilon-0.02 sampling N=8/16, seed 1234) on those
+#            2 sets only; alpha = that set's stage-1 winner alpha; T re-tuned.
+#   Final:   2 stage-1 beam winners + 8 MBR configs = 10 candidates, same objective; the winner is
+#            decoded on dev / E1 / E2 / E2-synth / E3 (+ the 330-id test set) and uploaded with a
+#            manifest under the run name `final_all`. Ties: model-set order, beam before MBR.
+#   Report:  paired bootstrap (nmt.compare, 1,000 resamples, seed 1234) winner vs runner-up and
+#            winner vs the production config (best single model, beam only), and the latency of
+#            the winner and of the production config. Reported, not gates.
 #
 # Interpretations of the rule text (also in the PR description, none changes the candidate set):
-#   * "Beam settings inside a pool use the winner of rule 1 for that model": an MBR candidate takes
-#     the GNMT alpha of the winning (alpha, beam) of the SAME model-set's `beam` candidate. The
-#     pool size N, not that beam width, sets the beam width of the n-best pool (an N-best list
-#     needs beam >= N). Sampling pools do not use alpha. The segmentation threshold T is then tuned
-#     for the MBR candidate exactly like rule 1's T step (E1 undecoded-segmented, E2 per T).
-#   * Every beam candidate runs the unchanged nmt.tune procedure on the rule-1 grid
-#     alpha {1.2,1.4,1.6,1.8,2.0} x beam {1,4,5}, then the T step.
+#   * An MBR candidate takes the GNMT alpha of the winning (alpha, beam) of the SAME model-set's
+#     stage-1 beam candidate. The pool size N, not that beam width, sets the beam width of the
+#     n-best pool (an N-best list needs beam >= N). Sampling pools do not use alpha. T is tuned for
+#     the MBR candidate like the T step of section 1 (E1 undecoded-segmented, E2 per T).
+#   * The candidate NAMES still span the full 35-name space (7 sets x {beam + 4 pools}), but only
+#     the 7 beam names and the 8 MBR names of the top-2 sets are ever tuned.
 #
-# Step CLI (each step is idempotent: output written last, skipped when it validates):
-#   python -m nmt.final_all tune|select|decode|plan|estimate ...
+# Step CLI (each step is idempotent: output written last, skipped when it validates; a tuning file
+# is also checked against the CURRENT weights' sha256 and, for MBR, the current stage-1 alpha):
+#   python -m nmt.final_all tune|stage1-select|tune-stage2|select|report|decode|plan|estimate ...
 # The planning function `plan_final_all` returns the ordered (step name, argv) list; this module's
 # top level imports only the stdlib (the Colab kernel rule): torch and the model code are imported
 # inside the step functions, which run in their own subprocesses.
 import argparse
 import json
 import sys
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from nmt import eval_l4 as ev
 
-FINAL_ALL_ALPHAS: tuple[float, ...] = (1.2, 1.4, 1.6, 1.8, 2.0)  # PREREG rule 1
-FINAL_ALL_BEAMS: tuple[int, ...] = (1, 4, 5)  # the unchanged section 1 beam grid
+FINAL_ALL_ALPHAS: tuple[float, ...] = (1.2, 1.4, 1.6, 1.8, 2.0)  # PREREG rule 1 (extended)
+FINAL_ALL_BEAMS: tuple[int, ...] = (4, 5)  # PREREG 2026-10-03: beam 1 is dropped
+STAGE1_TOP_N = 2  # model sets that go on to stage 2
 MODEL_NAMES: tuple[str, ...] = ("main", "A", "B")
 # PREREG rules 3 and 5: the single models, then exactly the four ensembles, in this order.
 MODEL_SETS: tuple[tuple[str, ...], ...] = (
@@ -56,12 +59,6 @@ POOL_SPECS: tuple[tuple[str, int], ...] = (("beam", 8), ("beam", 16), ("sample",
 SAMPLING_EPSILON = 0.02  # PREREG rule 2 (== nmt.mbr.DEFAULT_EPSILON, checked by a test)
 SAMPLING_SEED = 1234  # PREREG rule 2 (== nmt.mbr.DEFAULT_SAMPLING_SEED)
 BEAM_KIND = "beam"
-FINAL_ALL_TIE_RULE = (
-    f"candidates within {ev.TIE_EPSILON:g} of the best objective are tied; the tie goes to the "
-    "earliest candidate in the pre-registered order (model-set major: main, A, B, main+A, main+B, "
-    "A+B, main+A+B; decode kind minor: beam, mbr_beam8, mbr_beam16, mbr_eps0.02_n8, "
-    "mbr_eps0.02_n16)"
-)
 
 
 def pool_label(kind: str, n: int) -> str:
@@ -71,7 +68,7 @@ def pool_label(kind: str, n: int) -> str:
 
 @dataclass(frozen=True)
 class FinalAllCandidate:
-    """One of the 35 candidates: which models, and beam search (`pool is None`) or an MBR pool."""
+    """One candidate of the 35-name space: which models, beam search (`pool is None`) or MBR."""
 
     name: str
     members: tuple[str, ...]
@@ -95,17 +92,19 @@ def candidate_name(members: Sequence[str], pool: tuple[str, int] | None) -> str:
     return "+".join(members) + "__" + kind
 
 
-def final_all_candidates() -> list[FinalAllCandidate]:
-    """All 35 candidates in the pre-registered (tie-break) order."""
+def candidate_space() -> list[FinalAllCandidate]:
+    """The 35 NAMES of the candidate space (7 model sets x {beam, 4 MBR pools}) in tie-break order.
+    Only 7 + 8 of them are ever tuned (stage 1 and stage 2)."""
     pools: list[tuple[str, int] | None] = [None, *POOL_SPECS]
     return [FinalAllCandidate(candidate_name(m, p), m, p) for m in MODEL_SETS for p in pools]
 
 
-FINAL_ALL_CANDIDATES: tuple[str, ...] = tuple(c.name for c in final_all_candidates())
+STAGE1_CANDIDATES: tuple[str, ...] = tuple(candidate_name(m, None) for m in MODEL_SETS)
+POOL_LABELS = tuple(pool_label(k, n) for k, n in POOL_SPECS)
 
 
 def candidate_by_name(name: str) -> FinalAllCandidate:
-    for c in final_all_candidates():
+    for c in candidate_space():
         if c.name == name:
             return c
     raise ev.EvalStepError(f"unknown final_all candidate {name!r}")
@@ -189,7 +188,7 @@ def build_translator(
 
 
 def grid_matches(tuning: Any) -> bool:
-    """True iff a beam candidate's tuning file used exactly the rule-1 grid (alpha x beam)."""
+    """True iff a beam candidate's tuning file used exactly the staged grid (alpha x beam {4,5})."""
     if not isinstance(tuning, dict):
         return False
     grid = (tuning.get("alpha_beam") or {}).get("grid") or []
@@ -347,14 +346,42 @@ def tune_candidate(
 
 
 # ---------------------------------------------------------------------------------------------
-# select + decode
+# stage 1 (beam, 7 model sets) -> top 2
 # ---------------------------------------------------------------------------------------------
+
+STAGE1_TIE_RULE = (
+    f"model sets within {ev.TIE_EPSILON:g} of an objective are tied; the tie goes to the "
+    "earlier-listed model set (main, A, B, main+A, main+B, A+B, main+A+B)"
+)
+FINAL_TIE_RULE = (
+    f"candidates within {ev.TIE_EPSILON:g} of the best objective are tied; the tie goes to the "
+    "earlier-listed candidate: model-set order (main, A, B, main+A, main+B, A+B, main+A+B), "
+    "beam before MBR (mbr_beam8, mbr_beam16, mbr_eps0.02_n8, mbr_eps0.02_n16)"
+)
+
+
+def stage1_candidates() -> list[FinalAllCandidate]:
+    """The 7 stage-1 candidates (one beam candidate per model set), in model-set order."""
+    return [candidate_by_name(n) for n in STAGE1_CANDIDATES]
+
+
+def _rank(order: Sequence[str], objectives: Mapping[str, float]) -> list[str]:
+    """`order` sorted by objective, best first; at every rank the earliest-listed candidate within
+    TIE_EPSILON of the best remaining objective goes first (the tie rule, applied at each rank)."""
+    remaining = list(order)
+    out: list[str] = []
+    while remaining:
+        best = max(objectives[n] for n in remaining)
+        pick = next(n for n in remaining if best - objectives[n] <= ev.TIE_EPSILON)
+        out.append(pick)
+        remaining.remove(pick)
+    return out
 
 
 def _check_consistent(tunings: Mapping[str, dict[str, Any]]) -> None:
-    """Refuse a mix of stale and fresh tuning files (no model dirs are needed here): every
-    candidate must record the same hash for the same member, and an MBR candidate's alpha must be
-    its beam candidate's current winner alpha."""
+    """Refuse a mix of stale and fresh tuning files (no model dirs are needed here): every file must
+    record the same hash for the same member, and an MBR candidate's alpha must be its beam
+    candidate's current winner alpha (the beam candidate must be among `tunings`)."""
     seen: dict[str, str] = {}
     for name, t in tunings.items():
         for member, sha in (t.get("member_sha256") or {}).items():
@@ -363,60 +390,230 @@ def _check_consistent(tunings: Mapping[str, dict[str, Any]]) -> None:
                     f"select: {name} was tuned with different weights for member {member!r} than "
                     "another candidate (a model changed between tuning steps); redo the tunes"
                 )
-    for c in final_all_candidates():
-        if c.pool is not None:
-            want = tunings[c.beam_name]["winner"]["alpha"]
-            if (tunings[c.name].get("alpha_beam") or {}).get("alpha") != want:
-                raise ev.EvalStepError(
-                    f"select: {c.name} used a different alpha than the current winner of "
-                    f"{c.beam_name} ({want}); redo its tune"
-                )
+    for name in tunings:
+        cand = candidate_by_name(name)
+        if cand.pool is None:
+            continue
+        base = tunings.get(cand.beam_name)
+        if base is None:
+            raise ev.EvalStepError(f"select: {name} needs the stage-1 tuning {cand.beam_name}")
+        want = base["winner"]["alpha"]
+        if (tunings[name].get("alpha_beam") or {}).get("alpha") != want:
+            raise ev.EvalStepError(
+                f"select: {name} used a different alpha than the current winner of "
+                f"{cand.beam_name} ({want}); redo its tune"
+            )
 
 
-def run_final_select(tuning_dir: Path, out_path: Path) -> dict[str, Any]:
-    """selection.json over the 35 candidates (nmt.selection objective on E1 + E2): every
-    candidate's objective and config, the winner (with its member list and MBR pool), the tie
-    rule. Refuses a missing / non-full / wrong-grid tuning."""
+def _read_stage1_tunings(tuning_dir: Path) -> dict[str, dict[str, Any]]:
     tunings: dict[str, dict[str, Any]] = {}
-    for cand in final_all_candidates():
+    for cand in stage1_candidates():
         data = ev._read_json(Path(tuning_dir) / f"{cand.name}.json")
         if not _tuning_ok(data, cand):
             raise ev.EvalStepError(
-                f"select: {tuning_dir}/{cand.name}.json is missing, not a full E1+E2 tuning, or "
+                f"stage1: {tuning_dir}/{cand.name}.json is missing, not a full E1+E2 tuning, or "
                 "not on the pre-registered grid"
             )
         tunings[cand.name] = data
     _check_consistent(tunings)
+    return tunings
+
+
+def _stage1_data(tuning_dir: Path) -> dict[str, Any]:
+    """The stage-1 result computed from the 7 tuning files: objectives, ranking, top 2."""
+    tunings = _read_stage1_tunings(tuning_dir)
+    entries = {n: ev.candidate_objective(t) for n, t in tunings.items()}
+    for n, e in entries.items():
+        e["members"] = list(candidate_by_name(n).members)
+    ranking = _rank(STAGE1_CANDIDATES, {n: e["objective"] for n, e in entries.items()})
+    return {
+        "stage": 1,
+        "grid": {"alphas": list(FINAL_ALL_ALPHAS), "beams": list(FINAL_ALL_BEAMS)},
+        "candidate_order": list(STAGE1_CANDIDATES),
+        "candidates": entries,
+        "ranking": ranking,
+        "top2": ranking[:STAGE1_TOP_N],
+        "tie_rule": STAGE1_TIE_RULE,
+    }
+
+
+def run_stage1_select(tuning_dir: Path, out_path: Path) -> dict[str, Any]:
+    """stage1.json: the 7 beam candidates' objectives and the top 2 model sets (PREREG staged
+    selection, stage 1). Refuses a missing / smoke / wrong-grid / mixed-weights tuning."""
+    data = _stage1_data(tuning_dir)
+    ev._write_json(out_path, data)
+    print(
+        "stage1-select: top 2 = "
+        + ", ".join(f"{n} ({data['candidates'][n]['objective']:.4f})" for n in data["top2"])
+    )
+    return data
+
+
+def stage1_is_valid(path: Path, tuning_dir: Path) -> bool:
+    """stage1.json exists, equals what the 7 CURRENT tuning files give, and no tuning file is
+    newer than it (so a re-tuned stage-1 candidate invalidates it, and with it stage 2)."""
+    p = Path(path)
+    data = ev._read_json(p)
+    if not isinstance(data, dict):
+        return False
+    try:
+        if data != _stage1_data(tuning_dir):
+            return False
+    except ev.EvalStepError:
+        return False
+    return all(
+        (Path(tuning_dir) / f"{n}.json").stat().st_mtime <= p.stat().st_mtime
+        for n in STAGE1_CANDIDATES
+    )
+
+
+def _require_stage1(stage1_path: Path, tuning_dir: Path) -> dict[str, Any]:
+    if not stage1_is_valid(stage1_path, tuning_dir):
+        raise ev.EvalStepError(
+            f"{stage1_path} is missing or stale (a stage-1 tuning changed or is invalid); "
+            "run stage1-select again before any stage-2 step"
+        )
+    return ev._read_json(stage1_path)  # type: ignore[return-value]
+
+
+def stage2_candidate_name(stage1: Mapping[str, Any], rank: int, pool: str) -> str:
+    """Name of the stage-2 candidate for the model set ranked `rank` (1 or 2) and pool label."""
+    if rank not in range(1, STAGE1_TOP_N + 1):
+        raise ev.EvalStepError(f"--rank must be 1..{STAGE1_TOP_N}, got {rank}")
+    if pool not in POOL_LABELS:
+        raise ev.EvalStepError(f"unknown pool {pool!r}; one of {POOL_LABELS}")
+    members = candidate_by_name(stage1["top2"][rank - 1]).members
+    return "+".join(members) + "__" + pool
+
+
+def tune_stage2(
+    pool: str,
+    rank: int,
+    models: Mapping[str, Path],
+    tuning_dir: Path,
+    stage1_path: Path,
+    batch_size: int = ev.EVAL_BATCH_SIZE,
+    device: str | None = None,
+) -> tuple[str, bool]:
+    """Tune the MBR candidate (`pool`) of the model set ranked `rank` in the CURRENT stage 1. The
+    model set is read from stage1.json at run time (the plan is a static argv list); a missing or
+    stale stage1.json refuses. Returns (candidate name, ran)."""
+    stage1 = _require_stage1(stage1_path, tuning_dir)
+    name = stage2_candidate_name(stage1, rank, pool)
+    return name, tune_candidate(name, models, tuning_dir, batch_size, device)
+
+
+# ---------------------------------------------------------------------------------------------
+# final selection (10 candidates) + decode
+# ---------------------------------------------------------------------------------------------
+
+
+def final_candidates(stage1: Mapping[str, Any]) -> list[FinalAllCandidate]:
+    """The 10 final candidates: for each of the top-2 model sets (in model-set order) its beam
+    winner then its 4 MBR configs."""
+    sets = sorted(
+        (candidate_by_name(n).members for n in stage1["top2"]), key=lambda m: MODEL_SETS.index(m)
+    )
+    pools: list[tuple[str, int] | None] = [None, *POOL_SPECS]
+    return [candidate_by_name(candidate_name(m, p)) for m in sets for p in pools]
+
+
+def production_config(stage1: Mapping[str, Any]) -> dict[str, Any]:
+    """The production config: the best SINGLE model (main / A / B) by stage-1 objective (ties to
+    the earlier-listed), with its stage-1 beam winner; no MBR, no ensemble."""
+    singles = [n for n in STAGE1_CANDIDATES if len(candidate_by_name(n).members) == 1]
+    best = _rank(singles, {n: stage1["candidates"][n]["objective"] for n in singles})[0]
+    entry = stage1["candidates"][best]
+    return {
+        "candidate": best,
+        "objective": entry["objective"],
+        "members": entry["members"],
+        "mbr": None,
+        **entry["config"],
+    }
+
+
+def _stage2_tunings(tuning_dir: Path, cands: Sequence[FinalAllCandidate]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for c in cands:
+        data = ev._read_json(Path(tuning_dir) / f"{c.name}.json")
+        base = ev._read_json(Path(tuning_dir) / f"{c.beam_name}.json")
+        alpha = base["winner"]["alpha"] if isinstance(base, dict) and base.get("winner") else None
+        if not _tuning_ok(data, c, None, alpha):
+            raise ev.EvalStepError(
+                f"select: {tuning_dir}/{c.name}.json is missing, not a full E1+E2 tuning, not on "
+                "the pre-registered grid, or used another alpha than its stage-1 winner"
+            )
+        out[c.name] = data
+    return out
+
+
+def run_final_select(tuning_dir: Path, stage1_path: Path, out_path: Path) -> dict[str, Any]:
+    """selection.json: stage-1 objectives and top 2, stage-2 objectives, the 10-candidate ranking
+    (objective on E1 + E2), winner, runner-up, production config, tie rules. Refuses a stale
+    stage 1 and any missing / stale stage-2 tuning of the top-2 sets."""
+    stage1 = _require_stage1(stage1_path, tuning_dir)
+    cands = final_candidates(stage1)
+    tunings = _stage2_tunings(tuning_dir, cands)
+    stage1_tunings = _read_stage1_tunings(tuning_dir)
+    tunings = {c.name: tunings[c.name] for c in cands}
+    for c in cands:  # the beam candidates ARE the stage-1 tunings (same file)
+        if c.pool is None:
+            tunings[c.name] = stage1_tunings[c.name]
+    _check_consistent({**stage1_tunings, **tunings})
     result = ev.select_winner(tunings)
-    result["tie_rule"] = FINAL_ALL_TIE_RULE
-    result["objective_formula"] += "; final_all: PREREG post-selection amendment rule 5"
     for name, entry in result["candidates"].items():
         entry["members"] = list(candidate_by_name(name).members)
-    win = result["winner"]
-    win["members"] = list(candidate_by_name(win["candidate"]).members)
+    ranking = _rank(list(tunings), {n: e["objective"] for n, e in result["candidates"].items()})
+    winner = result["winner"]["candidate"]
+    assert ranking[0] == winner  # select_winner and _rank apply the same tie rule
+    runner = ranking[1]
+    result["winner"]["members"] = list(candidate_by_name(winner).members)
+    result["runner_up"] = {
+        "candidate": runner,
+        "objective": result["candidates"][runner]["objective"],
+        "members": list(candidate_by_name(runner).members),
+        **result["candidates"][runner]["config"],
+    }
+    result.update(
+        {
+            "run": "final_all staged selection (PREREG 2026-10-03)",
+            "stage1": stage1,
+            "top2": list(stage1["top2"]),
+            "stage2_candidates": [c.name for c in cands if c.pool is not None],
+            "ranking": ranking,
+            "production": production_config(stage1),
+            "tie_rule": FINAL_TIE_RULE,
+        }
+    )
     ev._write_json(out_path, result)
+    w, r = result["winner"], result["runner_up"]
     print(
-        f"select: winner {win['candidate']} objective={win['objective']:.4f} alpha={win['alpha']} "
-        f"beam={win['beam']} segment_threshold={win['segment_threshold']} mbr={win.get('mbr')}"
+        f"select: winner {w['candidate']} objective={w['objective']:.4f} alpha={w['alpha']} "
+        f"beam={w['beam']} segment_threshold={w['segment_threshold']} mbr={w.get('mbr')}; "
+        f"runner-up {r['candidate']} objective={r['objective']:.4f}"
     )
     return result
 
 
-def final_selection_is_valid(path: Path, tuning_dir: Path) -> bool:
-    """selection.json exists for the 35 candidates and no tuning file is newer than it."""
+def final_selection_is_valid(path: Path, tuning_dir: Path, stage1_path: Path) -> bool:
+    """selection.json is for the CURRENT stage 1's 10 candidates and no input is newer than it."""
     p = Path(path)
     data = ev._read_json(p)
+    if not stage1_is_valid(stage1_path, tuning_dir):
+        return False
+    stage1 = ev._read_json(stage1_path)
+    cands = final_candidates(stage1)  # type: ignore[arg-type]
     if not (
         isinstance(data, dict)
-        and data.get("candidate_order") == list(FINAL_ALL_CANDIDATES)
-        and (data.get("winner") or {}).get("candidate") in FINAL_ALL_CANDIDATES
+        and data.get("candidate_order") == [c.name for c in cands]
+        and data.get("stage1") == stage1
         and (data.get("winner") or {}).get("members")
+        and (data.get("runner_up") or {}).get("candidate")
     ):
         return False
-    return all(
-        (Path(tuning_dir) / f"{c}.json").stat().st_mtime <= p.stat().st_mtime
-        for c in FINAL_ALL_CANDIDATES
-    )
+    inputs = [Path(stage1_path)] + [Path(tuning_dir) / f"{c.name}.json" for c in cands]
+    return all(i.stat().st_mtime <= p.stat().st_mtime for i in inputs)
 
 
 def decode_winner(
@@ -445,6 +642,212 @@ def decode_winner(
 
 
 # ---------------------------------------------------------------------------------------------
+# report: paired bootstrap (winner vs runner-up, vs production) + latency
+# ---------------------------------------------------------------------------------------------
+
+BOOTSTRAP_RESAMPLES = 1000  # PREREG staged selection: nmt/compare.py --objective
+BOOTSTRAP_SEED = 1234
+LATENCY_N_SENTENCES = ev.BENCH_N_SENTENCES  # the first 200 E2 sentences, like bench.json
+REPORT_NAME = "report.json"
+
+
+def latency_benchmark(
+    translator: Any,
+    texts: Sequence[str],
+    *,
+    alpha: float,
+    beam: int | None,
+    segment_threshold: int | None,
+    mbr: Mapping[str, Any] | None,
+    members: Sequence[str],
+    batch_size: int = ev.EVAL_BATCH_SIZE,
+    warmup: int = 8,
+) -> dict[str, Any]:
+    """Wall-clock decode of `texts` with the config exactly as deployed: one `translate()` call
+    (length-sorted batches of `batch_size`) after one untimed warm-up call. For an MBR winner the
+    time includes pool generation AND the chrF utility; for an ensemble every member runs every
+    step. Output tokens are SentencePiece tokens of the detokenized outputs (as bench.json)."""
+    texts = list(texts)
+    kw: dict[str, Any] = {
+        "batch_size": batch_size,
+        "beam": beam if beam is not None else 1,
+        "alpha": alpha,
+        "segment_threshold": segment_threshold,
+    }
+    translator.translate(texts[:warmup], **kw)
+    ev._sync(translator.device)
+    t0 = time.perf_counter()
+    outputs = translator.translate(texts, **kw)
+    ev._sync(translator.device)
+    wall = time.perf_counter() - t0
+    out_tokens = sum(len(translator.sp.encode(h, out_type=int)) for h in outputs)
+    return {
+        "n_sentences": len(texts),
+        "wall_seconds": round(wall, 4),
+        "sentences_per_second": round(len(texts) / wall, 3) if wall > 0 else None,
+        "output_tokens": out_tokens,
+        "output_tokens_per_second": round(out_tokens / wall, 2) if wall > 0 else None,
+        "settings": {
+            "split": "e2 (first 200 sentences in file order)",
+            "batch_size": batch_size,
+            "alpha": alpha,
+            "beam": beam,
+            "mbr": dict(mbr) if mbr else None,
+            "segment_threshold": segment_threshold,
+            "members": list(members),
+            "includes_pool_generation_and_chrf_utility": mbr is not None,
+            "decode_precision": "fp32 (no autocast in nmt.translate)",
+            "warmup": f"one untimed translate of the first {warmup} sentences",
+        },
+    }
+
+
+def _hardware() -> dict[str, Any]:
+    import torch
+
+    cuda = torch.cuda.is_available()
+    return {
+        "device": "cuda" if cuda else "cpu",
+        "gpu": torch.cuda.get_device_name(0) if cuda else "cpu",
+        "torch": torch.__version__,
+    }
+
+
+def report_is_valid(path: Path, selection_path: Path) -> bool:
+    data = ev._read_json(path)
+    sel = ev._read_json(selection_path)
+    if not (isinstance(data, dict) and isinstance(sel, dict)):
+        return False
+    return bool(
+        data.get("winner") == sel["winner"]["candidate"]
+        and data.get("runner_up") == sel["runner_up"]["candidate"]
+        and data.get("production") == sel["production"]["candidate"]
+        and Path(path).stat().st_mtime >= Path(selection_path).stat().st_mtime
+    )
+
+
+def run_report(
+    eval_dir: Path,
+    models: Mapping[str, Path],
+    batch_size: int = ev.EVAL_BATCH_SIZE,
+    device: str | None = None,
+    n_bootstrap: int = BOOTSTRAP_RESAMPLES,
+    seed: int = BOOTSTRAP_SEED,
+    load_e12: Callable[[str], list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """Reported alongside the selection (not gates): paired bootstrap of the selection objective
+    (nmt.compare.paired_bootstrap_objective, 1,000 resamples, seed 1234) of winner vs runner-up and
+    winner vs the production config, and the latency of the winner and the production config.
+
+    Each distinct config is decoded on E1 (no segmentation) and E2 (its tuned T) -- exactly how the
+    selection objective was defined -- into <eval_dir>/report/predictions/<candidate>/ (per-file
+    resumable), and its latency is measured once. report.json is written last."""
+    from nmt import compare
+    from nmt.evaluate import load_split
+
+    eval_dir = Path(eval_dir)
+    sel_path = eval_dir / "selection.json"
+    sel = ev._read_json(sel_path)
+    if not isinstance(sel, dict) or "runner_up" not in sel:
+        raise ev.EvalStepError(f"report: {sel_path} missing or not a staged selection")
+    if report_is_valid(eval_dir / REPORT_NAME, sel_path):
+        print(f"report: SKIP (valid {eval_dir / REPORT_NAME})")
+        return ev._read_json(eval_dir / REPORT_NAME)  # type: ignore[return-value]
+    roles = {
+        "winner": sel["winner"],
+        "runner_up": sel["runner_up"],
+        "production": sel["production"],
+    }
+    load = load_e12 or (lambda split: load_split(split)[0])
+    e1_rows, e2_rows = load("e1"), load("e2")
+    configs: dict[str, dict[str, Any]] = {}
+    for cfg in roles.values():
+        configs.setdefault(cfg["candidate"], cfg)
+    latency: dict[str, Any] = {}
+    for name, cfg in configs.items():
+        translator = build_translator(models, cfg["members"], mbr=cfg.get("mbr"), device=device)
+        pdir = eval_dir / "report" / "predictions" / name
+        for split, rows, seg in (("e1", e1_rows, None), ("e2", e2_rows, cfg["segment_threshold"])):
+            path = pdir / f"{split}_predictions.json"
+            if ev.prediction_file_valid(path, [r["id"] for r in rows]):
+                print(f"report {name}/{split}: SKIP (valid)")
+                continue
+            ev._decode_to_file(
+                translator,
+                rows,
+                path,
+                beam=cfg["beam"] if cfg["beam"] is not None else 1,
+                alpha=cfg["alpha"],
+                segment_threshold=seg,
+                batch_size=batch_size,
+            )
+        lat_path = eval_dir / "report" / "latency" / f"{name}.json"
+        lat = ev._read_json(lat_path)
+        if not (isinstance(lat, dict) and lat.get("config") == _config_key(cfg)):
+            lat = latency_benchmark(
+                translator,
+                [r["source"] for r in e2_rows[:LATENCY_N_SENTENCES]],
+                alpha=cfg["alpha"],
+                beam=cfg["beam"],
+                segment_threshold=cfg["segment_threshold"],
+                mbr=cfg.get("mbr"),
+                members=cfg["members"],
+                batch_size=batch_size,
+            )
+            lat.update({"candidate": name, "config": _config_key(cfg), **_hardware()})
+            ev._write_json(lat_path, lat)
+        latency[name] = lat
+
+    def inputs(name: str) -> tuple[list[str], list[str], list[str], list[str]]:
+        d = eval_dir / "report" / "predictions" / name
+        h1, r1 = compare._objective_inputs(d, "e1")
+        h2, r2 = compare._objective_inputs(d, "e2")
+        return h1, h2, r1, r2
+
+    def boot(a: str, b: str) -> dict[str, Any]:
+        if a == b:
+            return {"note": "same candidate: no comparison", "delta": 0.0}
+        h1a, h2a, r1, r2 = inputs(a)
+        h1b, h2b, _, _ = inputs(b)
+        res = compare.paired_bootstrap_objective(
+            (h1a, h2a), (h1b, h2b), (r1, r2), n_bootstrap, seed
+        )
+        return {
+            "a": a,
+            "b": b,
+            "delta": res["delta"],
+            "ci95": [res["ci_low"], res["ci_high"]],
+            "p_value": res["p_value"],
+            "objective_a": res["a"]["objective"],
+            "objective_b": res["b"]["objective"],
+            "n_resamples": res["n_resamples"],
+            "seed": seed,
+            "resampling": res["resampling"],
+        }
+
+    w, r, p = (roles[k]["candidate"] for k in ("winner", "runner_up", "production"))
+    report = {
+        "winner": w,
+        "runner_up": r,
+        "production": p,
+        "winner_is_production": w == p,
+        "bootstrap": {"winner_vs_runner_up": boot(w, r), "winner_vs_production": boot(w, p)},
+        "latency": {"winner": latency[w], "production": latency[p]},
+        "note": "E1 + E2 objectives are optimistic for the winner (it was chosen on them); "
+        "dev and E3 are the unbiased view. E1 is decoded without segmentation and E2 at each "
+        "config's tuned T, as in the selection objective.",
+    }
+    ev._write_json(eval_dir / REPORT_NAME, report)
+    return report
+
+
+def _config_key(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        k: cfg.get(k) for k in ("candidate", "alpha", "beam", "segment_threshold", "mbr", "members")
+    }
+
+
+# ---------------------------------------------------------------------------------------------
 # plan (what the notebook's eval_plan does for the other runs)
 # ---------------------------------------------------------------------------------------------
 
@@ -464,18 +867,22 @@ def plan_final_all(
     batch_size: int = ev.EVAL_BATCH_SIZE,
     python: str | None = None,
 ) -> list[tuple[str, list[str]]]:
-    """The ordered (step name, argv) list of the `final_all` session, each argv a fresh
-    interpreter. Same shape and order as the notebook's eval_plan: hf-verify (the notebook's skip
-    check: it parses HF_RUN_COMPLETE and skips the rest when true), hf-check (token + private repo
-    + write probe, BEFORE any GPU work), bench, the 35 tunings (an MBR candidate after its
-    model-set's beam candidate, which the pre-registered order already guarantees), select,
-    decode (+test), validate-test, and the PRIVATE upload last."""
+    """The ordered (step name, argv) list of the staged `final_all` session, each argv a fresh
+    interpreter: hf-verify (the notebook's skip check: it parses HF_RUN_COMPLETE and skips the rest
+    when true), hf-check (token + private repo + write probe, BEFORE any GPU work), bench, the 7
+    stage-1 tunes, stage1-select (writes stage1.json: the top 2 model sets), the 8 stage-2 tunes
+    (`tune-stage2 --pool P --rank 1|2`, which read the top 2 from stage1.json at run time), select
+    (10 candidates), report (bootstrap + latency), decode (+test) for the winner, validate-test,
+    and the PRIVATE upload last. The plan is static: only the model sets of the stage-2 steps
+    depend on stage 1, and they are resolved when those steps run."""
     py = python or sys.executable
     root = Path(eval_root)
     base = [py, "-m", "nmt.eval_l4"]
     fa = [py, "-m", "nmt.final_all"]
     mdl = _model_args(models)
     batch = ["--batch-size", str(batch_size)]
+    tdir = ["--tuning-dir", str(root / "tuning")]
+    s1 = ["--stage1", str(root / "stage1.json")]
     plan: list[tuple[str, list[str]]] = [
         ("hf-verify", [*base, "hf-verify", "--repo", hf_repo, "--run", ev.FINAL_ALL_RUN]),
         ("hf-check", [*base, "hf-check", "--repo", hf_repo]),
@@ -494,25 +901,23 @@ def plan_final_all(
             ],
         ),
     ]
-    for name in FINAL_ALL_CANDIDATES:
-        plan.append(
-            (
-                f"tune:{name}",
-                [*fa, "tune", "--name", name, *mdl, "--tuning-dir", str(root / "tuning"), *batch],
+    for name in STAGE1_CANDIDATES:
+        plan.append((f"tune:{name}", [*fa, "tune", "--name", name, *mdl, *tdir, *batch]))
+    plan.append(
+        ("stage1-select", [*fa, "stage1-select", *tdir, "--out", str(root / "stage1.json")])
+    )
+    for rank in range(1, STAGE1_TOP_N + 1):
+        for pool in POOL_LABELS:
+            plan.append(
+                (
+                    f"tune-stage2:rank{rank}:{pool}",
+                    [*fa, "tune-stage2", "--pool", pool, "--rank", str(rank), *mdl, *tdir, *s1]
+                    + batch,
+                )
             )
-        )
     plan += [
-        (
-            "select",
-            [
-                *fa,
-                "select",
-                "--tuning-dir",
-                str(root / "tuning"),
-                "--out",
-                str(root / "selection.json"),
-            ],
-        ),
+        ("select", [*fa, "select", *tdir, *s1, "--out", str(root / "selection.json")]),
+        ("report", [*fa, "report", "--eval-dir", str(root), *mdl, *batch]),
         ("decode", [*fa, "decode", "--eval-dir", str(root), *mdl, *batch, "--test"]),
         (
             "validate-test",
@@ -547,107 +952,140 @@ def plan_final_all(
 # cost ESTIMATE
 # ---------------------------------------------------------------------------------------------
 
-# ASSUMED output-token decode rates of ONE model on the L4, used when no bench.json exists (the
-# same assumption as the notebook's EVAL_ASSUMED_RATES; no GPU decode rate has been measured).
-ASSUMED_RATES = {"greedy": 2500.0, "beam": 1000.0}
+# MEASURED on the L4 for the main final model (bench.json, 200 first E2 sentences, batch 32, fp32,
+# alpha 0.6): runs/main/bench.json at HF eval revision c3d8598252853fcd7df1ef4a00e8b0382b8f4351
+# (pulled read-only; its numbers equal the ones in the PREREG 2026-10-03 amendment).
+MEASURED_L4_RATES = {"greedy": 2305.93, "beam": 1198.86}  # output tokens / s, one model
+MEASURED_L4_SENTENCES_PER_SECOND = {"greedy": 41.097, "beam5": 21.345}
 # MEASURED on the dev laptop CPU (not Colab, which may be slower): mean seconds of one mbr_select
 # over a pool of N distinct strings of ~160 characters (the mean E1/E2 reference length), 300 pools
 # each; the command and output are in the PR description.
 MEASURED_MBR_CPU_SECONDS_PER_POOL = {8: 0.0120, 16: 0.0354}
-ASSUMED_FIXED_SECONDS = 900.0  # same assumption as the notebook (clone, install, loads, upload)
+ASSUMED_FIXED_SECONDS = 900.0  # ASSUMED, same as the notebook (clone, install, loads, upload)
 CU_PER_HOUR = 1.54  # reported by GG for the L4 pilot
+PRE_STAGED_ESTIMATE_HOURS = 20.6  # the exhaustive 35-candidate set under ASSUMED rates 2500/1000
 
 
 def estimate_final_all(
     workload: Mapping[str, Any],
     rates: Mapping[str, float] | None = None,
-    basis: str = "ASSUMED rates (no bench yet)",
+    basis: str = "MEASURED L4 beam-5 rate (main final, bench.json at HF revision c3d85982), "
+    "everything else ASSUMED as listed",
     mbr_cpu_seconds: Mapping[int, float] | None = None,
 ) -> dict[str, Any]:
-    """ESTIMATE (not a measurement) of the wall time of the exhaustive 35-candidate session.
+    """ESTIMATE (not a measurement) of the wall time of the STAGED session (PREREG 2026-10-03).
 
-    Token counts come from colab/eval_workload.json (reference SentencePiece tokens as the proxy of
-    output length). `rates` are single-model output tokens/s for greedy and beam 5 (bench.json, or
-    ASSUMED). Cost model, each line an assumption:
-      * an M-member ensemble costs M x a single model per decoded token (every step runs all
-        members; the encoder cost is ignored);
-      * time per output token is linear in beam width / sample count: beam k costs k/5 x the beam-5
-        rate (the beam loop has per-row Python work, so this is plausibly close; an upper-bound
-        flavour for GPU-parallel width), N samples cost like a beam of width N, beams 4 and 5 are
-        both costed at the beam-5 rate (as the notebook's estimate does);
-      * beam candidate: greedy once on E1+E2, 5 alphas x {4, 5} beams on E1+E2, T step = 5 E2
-        decodes (rule 1, same procedure as the notebook estimate);
-      * MBR candidate: E1+E2 once + 5 E2 decodes at the pool's cost, plus the chrF selection on CPU
-        for each of those sentences (`mbr_cpu_seconds`, MEASURED once on a laptop CPU);
-      * the winner is decoded on every split twice plus test; costed as the dearest candidate
-        (3-member ensemble, N=16 sampling), an upper bound for this part.
-    """
-    rates = dict(rates or ASSUMED_RATES)
+    Token counts: colab/eval_workload.json (reference SentencePiece tokens as the proxy of output
+    length). `rates`: single-model output tokens/s (default: the MEASURED L4 numbers). Assumptions:
+      * beam 4 costs the same per token as beam 5 (ASSUMED);
+      * an M-member ensemble costs M x a single model per token (ASSUMED; encoder cost ignored);
+      * an MBR pool of N costs like a beam of width N: N/5 x the beam-5 time per token (ASSUMED,
+        linear; sampling pools are costed the same);
+      * the chrF utility time per pool is MEASURED once on a laptop CPU.
+    Stage 1 is exact (all 7 model sets are known). Stage 2 depends on WHICH 2 sets win stage 1, so
+    it is given for the cheapest (two single models) and the dearest (the 3- and 2-member
+    ensembles) outcome, with the report/final decode costed on the dearest pool (N=16, the
+    stage-2 set with most members)."""
+    rates = dict(rates or MEASURED_L4_RATES)
     cpu = dict(mbr_cpu_seconds or MEASURED_MBR_CPU_SECONDS_PER_POOL)
     sp = workload["splits"]
     e12 = sp["e1"]["out_tokens"] + sp["e2"]["out_tokens"]
     e2 = sp["e2"]["out_tokens"]
-    n_sent_tuned = sp["e1"]["n"] + sp["e2"]["n"] + 5 * sp["e2"]["n"]
     beam_rate = rates["beam"]
-    per_set: dict[str, dict[str, float]] = {}
-    total_gpu = 0.0
-    total_cpu = 0.0
-    for members in MODEL_SETS:
-        m = len(members)
-        key = "+".join(members)
-        beam_s = m * (
-            e12 / rates["greedy"] + len(FINAL_ALL_ALPHAS) * 2 * e12 / beam_rate + 5 * e2 / beam_rate
-        )
-        parts = {"beam": beam_s}
-        gpu = beam_s
-        cpu_s = 0.0
-        for kind, n in POOL_SPECS:
-            pool_s = m * (e12 + 5 * e2) / (beam_rate * 5.0 / n)
-            parts[pool_label(kind, n)] = pool_s
-            gpu += pool_s
-            pool_cpu = n_sent_tuned * cpu[n]
-            parts[pool_label(kind, n) + "_chrf_cpu"] = pool_cpu
-            cpu_s += pool_cpu
-        per_set[key] = parts
-        total_gpu += gpu
-        total_cpu += cpu_s
+    sizes = [len(m) for m in MODEL_SETS]
+    n_grid = len(FINAL_ALL_ALPHAS) * len(FINAL_ALL_BEAMS)
+    stage1_tokens_per_model = n_grid * e12 + 5 * e2  # grid on E1+E2, T step = 5 E2 decodes
+    stage1 = {
+        "per_model_tokens": stage1_tokens_per_model,
+        "sum_members": sum(sizes),
+        "seconds": sum(sizes) * stage1_tokens_per_model / beam_rate,
+    }
+    n_sent = sp["e1"]["n"] + sp["e2"]["n"] + 5 * sp["e2"]["n"]
+    pool_ns = [n for _, n in POOL_SPECS]
+    pool_tokens = e12 + 5 * e2  # E1+E2 once + 5 E2 decodes (T step), per pool and model
+    # time of one model over the 4 pools: sum_N tokens * (N / 5) / beam_rate
+    per_model_pools = sum(pool_tokens * n / 5.0 / beam_rate for n in pool_ns)
+    cpu_per_set = sum(n_sent * cpu[n] for n in pool_ns)
+
+    def stage2(members: Sequence[int]) -> dict[str, float]:
+        gpu = sum(members) * per_model_pools
+        return {
+            "sum_members": float(sum(members)),
+            "gpu_seconds": gpu,
+            "chrf_cpu_seconds": len(members) * cpu_per_set,
+        }
+
+    scenarios = {"cheapest": stage2([1, 1]), "dearest": stage2([3, 2])}
     split_tokens = sum(sp[s]["out_tokens"] for s in ev.DECODE_SPLITS)
     final_tokens = 2 * split_tokens + sp["test"]["out_tokens"]  # two variants per split, test once
-    worst = len(MODEL_NAMES) * final_tokens / (beam_rate * 5.0 / 16)
     final_sentences = 2 * sum(sp[s]["n"] for s in ev.DECODE_SPLITS) + sp["test"]["n"]
-    worst_cpu = final_sentences * cpu[16]
-    bench = workload["bench_e2_first200_out_tokens"] * (1 / rates["greedy"] + 1 / beam_rate)
-    seconds = total_gpu + total_cpu + worst + worst_cpu + bench + ASSUMED_FIXED_SECONDS
-    return {
+    # report: E1+E2 for the winner, runner-up and production (3 configs, costed at the dearest
+    # pool) + 2 latency runs of the first 200 E2 sentences
+    report_tokens = 3 * e12 + 2 * workload["bench_e2_first200_out_tokens"]
+    out: dict[str, Any] = {
         "basis": basis,
         "rates": rates,
-        "n_candidates": len(FINAL_ALL_CANDIDATES),
-        "per_model_set_seconds": per_set,
-        "parts_seconds": {
-            "tuning_gpu": total_gpu,
-            "tuning_chrf_cpu": total_cpu,
-            "final_decode_gpu_upper_bound": worst,
-            "final_decode_chrf_cpu_upper_bound": worst_cpu,
-            "bench": bench,
-            "fixed_overhead": ASSUMED_FIXED_SECONDS,
-        },
-        "seconds": seconds,
-        "hours": seconds / 3600,
-        "cu": seconds / 3600 * CU_PER_HOUR,
+        "stage1": stage1,
+        "stage2": scenarios,
+        "scenarios": {},
     }
+    for label, s2 in scenarios.items():
+        m_max = 3 if label == "dearest" else 1
+        final_gpu = m_max * final_tokens * 16 / 5.0 / beam_rate  # worst pool: N=16 x m_max members
+        report_gpu = m_max * report_tokens * 16 / 5.0 / beam_rate
+        final_cpu = final_sentences * cpu[16]
+        parts = {
+            "stage1_gpu": stage1["seconds"],
+            "stage2_gpu": s2["gpu_seconds"],
+            "stage2_chrf_cpu": s2["chrf_cpu_seconds"],
+            "report_upper_bound": report_gpu,
+            "final_decode_upper_bound": final_gpu,
+            "final_decode_chrf_cpu_upper_bound": final_cpu,
+            "bench": workload["bench_e2_first200_out_tokens"]
+            * (1 / rates["greedy"] + 1 / beam_rate),
+            "fixed_overhead": ASSUMED_FIXED_SECONDS,
+        }
+        seconds = sum(parts.values())
+        out["scenarios"][label] = {
+            "parts_seconds": parts,
+            "seconds": seconds,
+            "hours": seconds / 3600,
+            "cu": seconds / 3600 * CU_PER_HOUR,
+        }
+    out["pre_staged_hours"] = PRE_STAGED_ESTIMATE_HOURS
+    return out
 
 
 def format_final_estimate(est: Mapping[str, Any]) -> list[str]:
-    """Printable ESTIMATE lines (labelled as such, with the basis)."""
-    parts = est["parts_seconds"]
-    return [
+    """Printable ESTIMATE lines: the arithmetic per stage, then hours / CU per scenario."""
+    s1 = est["stage1"]
+    r = est["rates"]
+    lines = [
         f"ESTIMATE ({est['basis']}) -- not a measurement of this run:",
-        f"  single-model rates: greedy {est['rates']['greedy']:.0f} out-tok/s, "
-        f"beam {est['rates']['beam']:.0f} out-tok/s; {est['n_candidates']} candidates",
-        "  parts (min): " + ", ".join(f"{k} {v / 60:.1f}" for k, v in parts.items()),
-        f"  total ~ {est['seconds'] / 60:.0f} min = {est['hours']:.1f} h "
-        f"~ {est['cu']:.1f} CU at {CU_PER_HOUR} CU/h",
+        f"  rates (one model, out-tok/s): beam5 {r['beam']} (beam 4 ASSUMED equal), "
+        f"greedy {r['greedy']}",
+        f"  stage 1: sum over the 7 sets of members x {s1['per_model_tokens']:,} tokens "
+        f"(10 grid decodes of E1+E2 + 5 E2 for T) / {r['beam']} tok/s = "
+        f"{s1['sum_members']} x {s1['per_model_tokens'] / r['beam']:.0f} s = "
+        f"{s1['seconds'] / 60:.1f} min",
     ]
+    for label, s2 in est["stage2"].items():
+        lines.append(
+            f"  stage 2 ({label}: member counts summing to {s2['sum_members']:.0f}): "
+            f"GPU {s2['gpu_seconds'] / 60:.1f} min + chrF CPU {s2['chrf_cpu_seconds'] / 60:.1f} min"
+        )
+    for label, sc in est["scenarios"].items():
+        lines.append(
+            f"  total ({label}): "
+            + ", ".join(f"{k} {v / 60:.1f}" for k, v in sc["parts_seconds"].items())
+            + f" (min) = {sc['seconds'] / 60:.0f} min = {sc['hours']:.1f} h ~ {sc['cu']:.1f} CU "
+            f"at {CU_PER_HOUR} CU/h"
+        )
+    lines.append(
+        f"  before staging: {est['pre_staged_hours']} h (exhaustive 35 candidates, ASSUMED rates "
+        "2500/1000)"
+    )
+    return lines
 
 
 # ---------------------------------------------------------------------------------------------
@@ -659,15 +1097,33 @@ def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__ or "final_all steps")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("tune", help="tune one of the 35 candidates (full E1+E2)")
-    s.add_argument("--name", required=True, choices=FINAL_ALL_CANDIDATES)
+    s = sub.add_parser("tune", help="stage 1: tune one model set with beam (full E1+E2)")
+    s.add_argument("--name", required=True, choices=STAGE1_CANDIDATES)
     s.add_argument("--model", action="append", required=True, help="main|A|B=DIR (export dir)")
     s.add_argument("--tuning-dir", required=True, type=Path)
     s.add_argument("--batch-size", type=int, default=ev.EVAL_BATCH_SIZE)
 
-    s = sub.add_parser("select", help="selection.json over the 35 tuned candidates")
+    s = sub.add_parser("stage1-select", help="write stage1.json: the top 2 model sets")
     s.add_argument("--tuning-dir", required=True, type=Path)
     s.add_argument("--out", required=True, type=Path)
+
+    s = sub.add_parser("tune-stage2", help="stage 2: one MBR pool on the model set at --rank")
+    s.add_argument("--pool", required=True, choices=POOL_LABELS)
+    s.add_argument("--rank", required=True, type=int, choices=range(1, STAGE1_TOP_N + 1))
+    s.add_argument("--model", action="append", required=True)
+    s.add_argument("--tuning-dir", required=True, type=Path)
+    s.add_argument("--stage1", required=True, type=Path)
+    s.add_argument("--batch-size", type=int, default=ev.EVAL_BATCH_SIZE)
+
+    s = sub.add_parser("select", help="selection.json over the 10 final candidates")
+    s.add_argument("--tuning-dir", required=True, type=Path)
+    s.add_argument("--stage1", required=True, type=Path)
+    s.add_argument("--out", required=True, type=Path)
+
+    s = sub.add_parser("report", help="paired bootstrap + latency of winner / runner-up / prod")
+    s.add_argument("--eval-dir", required=True, type=Path)
+    s.add_argument("--model", action="append", required=True)
+    s.add_argument("--batch-size", type=int, default=ev.EVAL_BATCH_SIZE)
 
     s = sub.add_parser("decode", help="decode every split (+test) for the winner")
     s.add_argument("--eval-dir", required=True, type=Path)
@@ -680,7 +1136,7 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--repo", required=True)
     s.add_argument("--model", action="append", required=True)
 
-    s = sub.add_parser("estimate", help="print the cost ESTIMATE of the exhaustive set")
+    s = sub.add_parser("estimate", help="print the cost ESTIMATE of the staged flow")
     s.add_argument("--workload", type=Path, default=ev.REPO_ROOT / "colab" / "eval_workload.json")
     s.add_argument("--bench", type=Path, default=None, help="bench.json: use its measured rates")
     return p
@@ -698,11 +1154,28 @@ def main(argv: list[str] | None = None) -> int:
 def _dispatch(args: argparse.Namespace) -> int:
     if args.cmd == "tune":
         tune_candidate(args.name, parse_model_args(args.model), args.tuning_dir, args.batch_size)
+    elif args.cmd == "stage1-select":
+        if stage1_is_valid(args.out, args.tuning_dir):
+            print(f"stage1-select: SKIP (valid {args.out})")
+        else:
+            run_stage1_select(args.tuning_dir, args.out)
+    elif args.cmd == "tune-stage2":
+        name, _ = tune_stage2(
+            args.pool,
+            args.rank,
+            parse_model_args(args.model),
+            args.tuning_dir,
+            args.stage1,
+            args.batch_size,
+        )
+        print(f"tune-stage2: rank {args.rank} pool {args.pool} -> {name}")
     elif args.cmd == "select":
-        if final_selection_is_valid(args.out, args.tuning_dir):
+        if final_selection_is_valid(args.out, args.tuning_dir, args.stage1):
             print(f"select: SKIP (valid {args.out})")
         else:
-            run_final_select(args.tuning_dir, args.out)
+            run_final_select(args.tuning_dir, args.stage1, args.out)
+    elif args.cmd == "report":
+        run_report(args.eval_dir, parse_model_args(args.model), args.batch_size)
     elif args.cmd == "decode":
         decode_winner(
             args.eval_dir, parse_model_args(args.model), args.batch_size, include_test=args.test
@@ -715,7 +1188,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             print(f"{name}: {' '.join(argv)}")
     elif args.cmd == "estimate":
         workload = json.loads(args.workload.read_text(encoding="utf-8"))
-        rates, basis = None, "ASSUMED rates (no bench yet)"
+        rates, basis = None, None
         bench = ev._read_json(args.bench) if args.bench else None
         if bench:
             m = bench["modes"]
@@ -723,8 +1196,9 @@ def _dispatch(args: argparse.Namespace) -> int:
                 "greedy": float(m["greedy"]["output_tokens_per_second"]),
                 "beam": float(m["beam5"]["output_tokens_per_second"]),
             }
-            basis = f"MEASURED rates from {args.bench}"
-        print("\n".join(format_final_estimate(estimate_final_all(workload, rates, basis))))
+            basis = f"MEASURED rates from {args.bench}, everything else ASSUMED as listed"
+        est = estimate_final_all(workload, rates, basis) if basis else estimate_final_all(workload)
+        print("\n".join(format_final_estimate(est)))
     return 0
 
 
