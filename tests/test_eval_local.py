@@ -5,6 +5,7 @@ from __future__ import annotations
 # eval sets' references so the real scorers, bootstrap, nmt.compare and nmt.analysis all run on
 # real ids. COMET is mocked (the 2.3 GB model is verified manually, like tests/test_comet_*.py).
 # The pipeline must never decode or select: Translator/tune are booby-trapped in the e2e tests.
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 import pytest
 
 import scripts.eval_local as el
+from nmt.eval_l4 import MANIFEST_NAME, expected_candidates, required_rels
 from nmt.evaluate import load_split
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -108,18 +110,43 @@ def _run_files(run: str, drop_every: int, tuned_drop_every: int | None = None) -
         sample = json.loads((REPO_ROOT / "data" / "test" / "sample_submission.json").read_text())
         put("test_predictions.json", {i: "x" for i in sample})
         put("validation.json", {"valid": True})
-    files[f"runs/{run}/model/model.safetensors"] = b"weights"
-    return files
+    put("run_meta.json", {"run": run})
+    for cand in expected_candidates(run):
+        put(f"tuning/{cand}.json", {"candidate": cand})
+    for name in ("model.safetensors", "config.json", "spm.model"):
+        files[f"runs/{run}/model/{name}"] = b"weights-" + name.encode()
+    return with_manifest(run, files)
+
+
+def with_manifest(run: str, files: dict[str, bytes]) -> dict[str, bytes]:
+    """Add runs/<run>/manifest.json in the schema nmt.eval_l4.build_manifest writes."""
+    prefix = f"runs/{run}/"
+    manifest = {
+        "schema": 1,
+        "run": run,
+        "candidate_order": list(expected_candidates(run)),
+        "winner": "final",
+        "files": {
+            f.removeprefix(prefix): {"sha256": hashlib.sha256(b).hexdigest(), "bytes": len(b)}
+            for f, b in files.items()
+            if f.startswith(prefix)
+        },
+    }
+    return {**files, prefix + MANIFEST_NAME: json.dumps(manifest).encode("utf-8")}
 
 
 class FakeHub:
     """In-memory HF repo: records every (filename, revision) download and writes real files."""
 
     def __init__(self, repos: dict[str, dict[str, bytes]] | None = None) -> None:
+        self.private: bool | None = True
         self.files: dict[str, bytes] = {}
         for tree in (repos or {}).values():
             self.files.update(tree)
         self.downloads: list[tuple[str, str, str]] = []
+
+    def is_private(self, repo_id: str) -> bool | None:
+        return self.private
 
     def list_files(self, repo_id: str, revision: str) -> list[str]:
         return sorted(self.files)
@@ -195,6 +222,205 @@ def test_pull_ignores_other_runs_in_the_same_repo(tmp_path: Path) -> None:
     hub = _hub(("main", 0), ("s1_sin_l4", 3))
     el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "s1")
     assert all(f.startswith("runs/s1_sin_l4/") for _, f, _ in hub.downloads)
+
+
+# --- manifest + hash verification of the pull -------------------------------------------------
+
+
+def _manifest(hub: FakeHub, run: str) -> dict[str, Any]:
+    return json.loads(hub.files[f"runs/{run}/{MANIFEST_NAME}"])
+
+
+def _put_manifest(hub: FakeHub, run: str, manifest: dict[str, Any]) -> None:
+    hub.files[f"runs/{run}/{MANIFEST_NAME}"] = json.dumps(manifest).encode("utf-8")
+
+
+def test_pull_verifies_every_file_and_records_the_result(tmp_path: Path) -> None:
+    hub = _hub(("main", 0))
+    el.pull_run(hub, REPO, "main", REV, tmp_path / "main")
+    rec = json.loads((tmp_path / "main" / el.PULL_RECORD_NAME).read_text(encoding="utf-8"))
+    manifest = _manifest(hub, "main")
+    assert rec["verified"] is True and rec["private"] is True
+    assert rec["hf_repo"] == REPO and rec["hf_revision"] == REV
+    manifest_bytes = hub.files[f"runs/main/{MANIFEST_NAME}"]
+    assert rec["manifest_sha256"] == hashlib.sha256(manifest_bytes).hexdigest()
+    # every manifest file except the (skipped) model weights is individually ok
+    assert set(rec["files"]) == {r for r in manifest["files"] if not r.startswith("model/")}
+    assert all(v["ok"] for v in rec["files"].values()) and "test_predictions.json" in rec["files"]
+    assert rec["model_files_checked"] is False
+    withm = el.pull_run(hub, REPO, "main", REV, tmp_path / "m2", with_model=True)
+    rec2 = json.loads((tmp_path / "m2" / el.PULL_RECORD_NAME).read_text(encoding="utf-8"))
+    assert "model/spm.model" in rec2["files"] and "runs/main/model/spm.model" in withm
+
+
+def test_manifest_covers_everything_required_per_run() -> None:
+    for run in ("main", "s1_sin_l4"):
+        listed = set(_manifest(_hub((run, 0)), run)["files"])
+        assert set(required_rels(run, expected_candidates(run))) <= listed
+    assert "test_predictions.json" in required_rels("main", expected_candidates("main"))
+    assert "test_predictions.json" not in required_rels("s1_sin_l4", ("final",))
+
+
+def test_a_tampered_byte_is_a_loud_error_naming_file_hashes_repo_and_revision(
+    tmp_path: Path,
+) -> None:
+    hub = _hub(("main", 0))
+    name = "runs/main/predictions/seg_off/dev_predictions.json"
+    good = hub.files[name]
+    hub.files[name] = good[:-3] + bytes([good[-3] ^ 1]) + good[-2:]  # same size, one bit flipped
+    with pytest.raises(el.ManifestVerificationError) as err:
+        el.pull_run(hub, REPO, "main", REV, tmp_path / "main")
+    e = err.value
+    assert e.file == name and e.repo == REPO and e.revision == REV
+    assert e.expected == hashlib.sha256(good).hexdigest()
+    assert e.actual == hashlib.sha256(hub.files[name]).hexdigest()
+    assert "sha256 differs" in str(e) and name in str(e) and REV in str(e)
+    assert not (tmp_path / "main" / el.PULL_RECORD_NAME).exists()
+
+
+def test_a_size_mismatch_is_reported_with_both_sizes(tmp_path: Path) -> None:
+    hub = _hub(("s1_sin_l4", 0))
+    manifest = _manifest(hub, "s1_sin_l4")
+    manifest["files"]["bench.json"]["bytes"] += 7
+    _put_manifest(hub, "s1_sin_l4", manifest)
+    with pytest.raises(el.ManifestVerificationError, match="size differs") as err:
+        el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "r")
+    assert err.value.file == "runs/s1_sin_l4/bench.json"
+    assert err.value.expected == err.value.actual + 7
+
+
+def test_a_missing_file_fails_whether_required_or_only_listed(tmp_path: Path) -> None:
+    hub = _hub(("s1_sin_l4", 0))
+    del hub.files["runs/s1_sin_l4/tuning/final.json"]  # listed in the manifest, gone from the hub
+    with pytest.raises(el.ManifestVerificationError, match="absent from the hub") as err:
+        el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "r")
+    assert err.value.file == "runs/s1_sin_l4/tuning/final.json"
+    hub2 = _hub(("s1_sin_l4", 0))
+    manifest = _manifest(hub2, "s1_sin_l4")
+    del manifest["files"]["run_meta.json"]  # the manifest itself omits a pipeline-required file
+    _put_manifest(hub2, "s1_sin_l4", manifest)
+    with pytest.raises(el.ManifestVerificationError, match="lacks required"):
+        el.pull_run(hub2, REPO, "s1_sin_l4", REV, tmp_path / "r2")
+
+
+def test_an_extra_file_on_the_hub_or_on_disk_is_refused(tmp_path: Path) -> None:
+    hub = _hub(("s1_sin_l4", 0))
+    hub.files["runs/s1_sin_l4/extra.json"] = b"{}"
+    with pytest.raises(el.ManifestVerificationError, match="not in the manifest") as err:
+        el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "r")
+    assert err.value.file == "runs/s1_sin_l4/extra.json"
+    clean = _hub(("s1_sin_l4", 0))
+    stray = tmp_path / "r2" / "source" / "runs" / "s1_sin_l4" / "stray.json"
+    stray.parent.mkdir(parents=True)
+    stray.write_text("{}", encoding="utf-8")
+    with pytest.raises(el.ManifestVerificationError, match="local file is not in"):
+        el.pull_run(clean, REPO, "s1_sin_l4", REV, tmp_path / "r2")
+
+
+def test_a_missing_manifest_is_refused_before_any_download(tmp_path: Path) -> None:
+    hub = _hub(("main", 0))
+    del hub.files[f"runs/main/{MANIFEST_NAME}"]
+    with pytest.raises(el.ManifestVerificationError, match="manifest.json is missing") as err:
+        el.pull_run(hub, REPO, "main", REV, tmp_path / "main")
+    assert err.value.file == f"runs/main/{MANIFEST_NAME}" and hub.downloads == []
+
+
+def test_an_unreadable_manifest_is_refused(tmp_path: Path) -> None:
+    hub = _hub(("main", 0))
+    hub.files[f"runs/main/{MANIFEST_NAME}"] = b"{not json"
+    with pytest.raises(el.ManifestVerificationError, match="unreadable"):
+        el.pull_run(hub, REPO, "main", REV, tmp_path / "main")
+
+
+def test_a_manifest_for_another_run_is_refused(tmp_path: Path) -> None:
+    hub = _hub(("main", 0), ("s1_sin_l4", 0))
+    hub.files[f"runs/main/{MANIFEST_NAME}"] = hub.files[f"runs/s1_sin_l4/{MANIFEST_NAME}"]
+    with pytest.raises(el.ManifestVerificationError, match="different run") as err:
+        el.pull_run(hub, REPO, "main", REV, tmp_path / "main")
+    assert err.value.expected == "main" and err.value.actual == "s1_sin_l4"
+
+
+def test_main_requires_test_predictions_and_validation_in_the_manifest(tmp_path: Path) -> None:
+    for rel in ("test_predictions.json", "validation.json"):
+        hub = _hub(("main", 0))
+        manifest = _manifest(hub, "main")
+        del manifest["files"][rel]
+        _put_manifest(hub, "main", manifest)
+        with pytest.raises(el.ManifestVerificationError, match="lacks required") as err:
+            el.pull_run(hub, REPO, "main", REV, tmp_path / rel)
+        assert rel in err.value.expected
+    # an ablation run needs neither
+    hub = _hub(("s1_sin_l4", 0))
+    el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "s1")
+
+
+@pytest.mark.parametrize("private", [False, None])
+def test_a_non_private_or_unknown_visibility_repo_is_refused_before_listing(
+    tmp_path: Path, private: bool | None
+) -> None:
+    hub = _hub(("main", 0))
+    hub.private = private
+    with pytest.raises(el.ManifestVerificationError, match="not private"):
+        el.pull_run(hub, REPO, "main", REV, tmp_path / "main")
+    assert hub.downloads == []
+
+
+def test_an_unreadable_repo_visibility_fails_closed(tmp_path: Path) -> None:
+    hub = _hub(("main", 0))
+
+    def boom(repo_id: str) -> bool:
+        raise OSError("401 unauthorized")
+
+    hub.is_private = boom  # type: ignore[method-assign]
+    with pytest.raises(el.ManifestVerificationError, match="cannot read the repo's visibility"):
+        el.pull_run(hub, REPO, "main", REV, tmp_path / "main")
+    assert hub.downloads == []
+
+
+def test_a_non_sha_revision_is_refused_by_pull_run_itself(tmp_path: Path) -> None:
+    hub = _hub(("main", 0))
+    with pytest.raises(el.ManifestVerificationError, match="40-hex"):
+        el.pull_run(hub, REPO, "main", "main", tmp_path / "main")
+    assert hub.downloads == []
+
+
+def test_a_rerun_re_verifies_the_cache_instead_of_trusting_it(tmp_path: Path) -> None:
+    hub = _hub(("s1_sin_l4", 0))
+    run_dir = tmp_path / "s1"
+    el.pull_run(hub, REPO, "s1_sin_l4", REV, run_dir)
+    n_first = len(hub.downloads)
+    cached = run_dir / "source" / "runs" / "s1_sin_l4" / "bench.json"
+    cached.write_bytes(b'{"n_sentences": 1}')  # tamper with the cached copy on disk
+    el.pull_run(hub, REPO, "s1_sin_l4", REV, run_dir)  # re-downloads, the tamper is overwritten
+    assert len(hub.downloads) == 2 * n_first
+    assert json.loads(cached.read_bytes())["n_sentences"] == 200
+
+    class StaleHub(FakeHub):
+        """A hub client that trusts the local cache (returns without writing, like a hit)."""
+
+        def download(self, repo_id: str, filename: str, revision: str, local_dir: Path) -> Path:
+            self.downloads.append((repo_id, filename, revision))
+            return Path(local_dir) / filename
+
+    stale = StaleHub()
+    stale.files = hub.files
+    cached.write_bytes(b'{"n_sentences": 1}')
+    with pytest.raises(el.ManifestVerificationError, match="size differs|sha256 differs"):
+        el.pull_run(stale, REPO, "s1_sin_l4", REV, run_dir)
+
+
+def test_cli_exits_non_zero_on_a_mismatch_before_any_scoring(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hub = _hub(("s1_sin_l4", 0))
+    name = "runs/s1_sin_l4/predictions/seg_off/e1_predictions.json"
+    hub.files[name] = hub.files[name] + b" "
+    monkeypatch.setattr(el, "score_variant", lambda *a, **k: pytest.fail("scored"))
+    argv = ["--hf-repo", REPO, "--revision", REV, "--run", "s1_sin_l4", "--out-root", str(tmp_path)]
+    code = el.main(argv, hub=hub)
+    err = capsys.readouterr().err
+    assert code == 1 and name in err and "size differs" in err and REV in err
+    assert not (tmp_path / "s1_sin_l4" / "seg_off").exists()
 
 
 # --- predictions validation -----------------------------------------------------------------------
@@ -330,7 +556,8 @@ def test_source_of_the_pipeline_names_no_decoding_or_selection_machinery() -> No
     ):
         assert forbidden not in code, forbidden
     imports = re.findall(r"^(?:from|import) (nmt[\w.]*)", source, re.MULTILINE)
-    assert set(imports) <= {"nmt.analysis", "nmt.compare", "nmt.evaluate"}
+    # nmt.eval_l4 is imported only for the manifest schema constants/helpers
+    assert set(imports) <= {"nmt.analysis", "nmt.compare", "nmt.eval_l4", "nmt.evaluate"}
 
 
 def test_an_official_cli_disagreement_is_a_loud_failure(

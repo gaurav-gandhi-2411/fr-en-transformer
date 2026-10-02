@@ -41,6 +41,7 @@ from typing import Any, Protocol
 
 from nmt.analysis import run_analysis
 from nmt.compare import compare_eval_dirs
+from nmt.eval_l4 import MANIFEST_NAME, expected_candidates, required_rels
 from nmt.evaluate import (
     OFFICIAL_SCORE_PY,
     length_bucket_view,
@@ -71,8 +72,34 @@ class ScoreError(RuntimeError):
     """The artifacts are not what the pipeline needs (missing/invalid/unpinned): fail loudly."""
 
 
+class ManifestVerificationError(ScoreError):
+    """The pulled run is not what the uploaded manifest says (or the repo/revision is not the
+    trusted one). Names the repo, revision, file and expected vs actual so it is actionable."""
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        repo: str,
+        revision: str,
+        file: str | None = None,
+        expected: Any = None,
+        actual: Any = None,
+    ) -> None:
+        parts = [f"{repo}@{revision}: {reason}"]
+        if file is not None:
+            parts.append(f"file={file}")
+        if expected is not None or actual is not None:
+            parts.append(f"expected={expected!r} actual={actual!r}")
+        super().__init__("; ".join(parts))
+        self.repo, self.revision, self.file = repo, revision, file
+        self.expected, self.actual = expected, actual
+
+
 class Hub(Protocol):
-    """The two HF operations used here; `HubClient` is the real one, tests pass a fake."""
+    """The HF operations used here; `HubClient` is the real one, tests pass a fake."""
+
+    def is_private(self, repo_id: str) -> bool | None: ...
 
     def list_files(self, repo_id: str, revision: str) -> list[str]: ...
 
@@ -87,6 +114,9 @@ class HubClient:
 
         self._api = HfApi()  # HF_TOKEN / the cached login is used for the private repo
 
+    def is_private(self, repo_id: str) -> bool | None:
+        return getattr(self._api.repo_info(repo_id, repo_type="model"), "private", None)
+
     def list_files(self, repo_id: str, revision: str) -> list[str]:
         return list(self._api.list_repo_files(repo_id, revision=revision, repo_type="model"))
 
@@ -99,6 +129,7 @@ class HubClient:
             revision=revision,
             repo_type="model",
             local_dir=str(local_dir),
+            force_download=True,  # a cached copy is never trusted; bytes are re-verified anyway
         )
         return Path(path)
 
@@ -150,24 +181,173 @@ def required_files(run: str) -> list[str]:
     return rels
 
 
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+PULL_RECORD_NAME = "pull_record.json"
+
+
+def _load_manifest(path: Path, run: str, repo_id: str, revision: str) -> dict[str, Any]:
+    """Parse and structurally validate runs/<run>/manifest.json (schema of nmt.eval_l4)."""
+
+    def bad(reason: str, **kw: Any) -> ManifestVerificationError:
+        return ManifestVerificationError(
+            reason, repo=repo_id, revision=revision, file=f"runs/{run}/{MANIFEST_NAME}", **kw
+        )
+
+    try:
+        manifest = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise bad(f"manifest is unreadable ({type(exc).__name__}: {exc})") from exc
+    if not isinstance(manifest, dict):
+        raise bad("manifest is not a JSON object")
+    if manifest.get("run") != run:
+        raise bad("manifest names a different run", expected=run, actual=manifest.get("run"))
+    expected_order = list(expected_candidates(run))
+    if manifest.get("candidate_order") != expected_order:
+        raise bad(
+            "manifest candidate_order is not the pre-registered one",
+            expected=expected_order,
+            actual=manifest.get("candidate_order"),
+        )
+    listed = manifest.get("files")
+    if not isinstance(listed, dict) or not listed:
+        raise bad("manifest has no file list")
+    for rel, entry in listed.items():
+        ok = (
+            isinstance(entry, dict)
+            and isinstance(entry.get("bytes"), int)
+            and not isinstance(entry.get("bytes"), bool)
+            and isinstance(entry.get("sha256"), str)
+            and _SHA256_RE.match(entry["sha256"])
+        )
+        if not ok:
+            raise bad(f"manifest entry for {rel!r} lacks a valid sha256/bytes")
+    absent = [r for r in required_rels(run, expected_order) if r not in listed]
+    if absent:
+        raise bad("manifest lacks required file(s)", expected=sorted(absent), actual="absent")
+    return manifest
+
+
+def verify_pulled_run(
+    repo_id: str,
+    run: str,
+    revision: str,
+    source: Path,
+    remote_files: list[str],
+    with_model: bool = False,
+) -> dict[str, Any]:
+    """Check the bytes now on disk under <source>/runs/<run>/ against the HF manifest: every
+    manifest file (except the model weights unless `with_model`) is present with the manifest's
+    size and sha256 (computed here from the local bytes), and no local or remote file is absent
+    from the manifest. Raises ManifestVerificationError; returns the verification record."""
+    prefix = f"runs/{run}/"
+    run_root = source / "runs" / run
+    manifest_path = run_root / MANIFEST_NAME
+    manifest = _load_manifest(manifest_path, run, repo_id, revision)
+    listed: dict[str, dict[str, Any]] = manifest["files"]
+
+    def fail(reason: str, **kw: Any) -> ManifestVerificationError:
+        return ManifestVerificationError(reason, repo=repo_id, revision=revision, **kw)
+
+    remote = {f.removeprefix(prefix) for f in remote_files if f.startswith(prefix)}
+    remote.discard(MANIFEST_NAME)
+    for rel in sorted(remote - set(listed)):
+        raise fail("file on the hub is not in the manifest", file=prefix + rel)
+    for rel in sorted(set(listed) - remote):
+        raise fail("manifest lists a file absent from the hub", file=prefix + rel)
+
+    def wanted(rel: str) -> bool:
+        return with_model or not rel.startswith("model/")
+
+    local = {p.relative_to(run_root).as_posix() for p in run_root.rglob("*") if p.is_file()}
+    for rel in sorted(r for r in local - set(listed) - {MANIFEST_NAME} if wanted(r)):
+        raise fail("local file is not in the manifest", file=prefix + rel)
+    files: dict[str, dict[str, Any]] = {}
+    for rel in sorted(listed):
+        if not wanted(rel):
+            continue
+        want, path = listed[rel], run_root / rel
+        if not path.is_file():
+            raise fail("manifest file is missing locally", file=prefix + rel, expected="present")
+        size = path.stat().st_size
+        if size != want["bytes"]:
+            raise fail(
+                "size differs from the manifest",
+                file=prefix + rel,
+                expected=want["bytes"],
+                actual=size,
+            )
+        digest = _sha256(path)
+        if digest != want["sha256"]:
+            raise fail(
+                "sha256 differs from the manifest",
+                file=prefix + rel,
+                expected=want["sha256"],
+                actual=digest,
+            )
+        files[rel] = {"ok": True, "sha256": digest, "bytes": size}
+    return {
+        "verified": True,
+        "hf_repo": repo_id,
+        "hf_revision": revision,
+        "private": True,
+        "manifest_sha256": _sha256(manifest_path),
+        "model_files_checked": with_model,
+        "files": files,
+    }
+
+
 def pull_run(
     hub: Hub, repo_id: str, run: str, revision: str, run_dir: Path, with_model: bool = False
 ) -> dict[str, str]:
-    """Download runs/<run>/** at `revision` into <run_dir>/source/, refusing if anything required
-    is missing. The model weights are skipped unless `with_model`. Returns {repo path: sha256}."""
+    """Download runs/<run>/** at `revision` into <run_dir>/source/ and VERIFY it against the
+    uploaded manifest.json (`verify_pulled_run`); any mismatch raises ManifestVerificationError
+    before anything is scored. The repo must be private and the revision a 40-hex sha. The
+    model weights are skipped unless `with_model`. Every call re-downloads and re-hashes: a
+    cached pull is never trusted. Writes <run_dir>/pull_record.json. Returns {repo path: sha256}."""
+    if not _REVISION_RE.match(revision or ""):
+        raise ManifestVerificationError(
+            "revision is not a 40-hex commit sha", repo=repo_id, revision=str(revision)
+        )
+    try:
+        private = hub.is_private(repo_id)
+    except Exception as exc:  # fail closed: an unreadable repo is not a trusted repo
+        raise ManifestVerificationError(
+            f"cannot read the repo's visibility ({type(exc).__name__}: {exc})",
+            repo=repo_id,
+            revision=revision,
+        ) from exc
+    if private is not True:
+        raise ManifestVerificationError(
+            "the HF results repo is not private",
+            repo=repo_id,
+            revision=revision,
+            expected=True,
+            actual=private,
+        )
     prefix = f"runs/{run}/"
     files = [f for f in hub.list_files(repo_id, revision) if f.startswith(prefix)]
     present = {f.removeprefix(prefix) for f in files}
     missing = [r for r in required_files(run) if r not in present]
     if missing:
         raise ScoreError(f"{repo_id}@{revision}: runs/{run}/ is missing {missing}")
+    if MANIFEST_NAME not in present:
+        raise ManifestVerificationError(
+            "manifest.json is missing from the run",
+            repo=repo_id,
+            revision=revision,
+            file=prefix + MANIFEST_NAME,
+        )
     source = run_dir / "source"
+    hub.download(repo_id, prefix + MANIFEST_NAME, revision, source)
+    _load_manifest(source / prefix / MANIFEST_NAME, run, repo_id, revision)  # fail before bulk
     digests: dict[str, str] = {}
     for f in sorted(files):
         if f.startswith(prefix + "model/") and not with_model:
             continue
         local = hub.download(repo_id, f, revision, source)
         digests[f] = _sha256(Path(local))
+    record = verify_pulled_run(repo_id, run, revision, source, files, with_model)
+    _write_json(run_dir / PULL_RECORD_NAME, record)
     return digests
 
 
