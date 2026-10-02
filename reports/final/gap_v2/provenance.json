@@ -1,0 +1,70 @@
+{
+  "label": "EXPLORATORY / POST-HOC (not pre-registered)",
+  "code_commit_sha": "9724f9e51a6e8cdfe6f13de7bc0415d699e79dd5",
+  "code_tree_dirty": false,
+  "command": "uv run python -m scripts.gap_v2 --pulls <dest of scripts.gap_v2_pull>",
+  "eval_repo": {
+    "hf_repo": "OWNER/fr-en-transformer-eval",
+    "hf_revision": "c3d8598252853fcd7df1ef4a00e8b0382b8f4351",
+    "private": true,
+    "manifest_sha256": "613ea8c0d2e22958e6ef5fc55fe63c8d8f6c218c63958ed5edeb5b33b5ca37d1"
+  },
+  "eval_model_files_verified": true,
+  "eval_model_sha256": {
+    "model/config.json": "9040b121d52bde81d787cb34e9c648613bf419c6996e5c21957216b775500a1e",
+    "model/model.safetensors": "96ef3bb589b47c5c45ad6cf60a7b1c96ffca43ce3ea0377a28440648bf97757f",
+    "model/spm.model": "1fc208b5b0885b8a1164ea2b6b44303d7acbddd709fab1f6b2dda53231779a37"
+  },
+  "data_repo": {
+    "hf_repo": "OWNER/fr-en-transformer-data",
+    "hf_revision": "c40e393740f41dd3aac3e615952ac7b86d4e58e0",
+    "private": true
+  },
+  "data_repo_files_sha256": {
+    ".gitattributes": "9e75dd981de037ec3769f24f790e126bc5a160b6871f510214e68dc70649aeeb",
+    "data/data_manifest.json": "3821d2f7d54347294fb4a70d1ac120f5dd0230f7810c09029660d025e964616d",
+    "data/eval/e1/inputs.jsonl": "f66cf448b09bacee41a45bb77cd12a61fa5f4d9f821f005cd9da8e35da41c6be",
+    "data/eval/e1/labels.jsonl": "6187337411098dcb663378867e2b17182f1e0d118aacdc09cbba5f3df1fd0fc9",
+    "data/eval/e2/inputs.jsonl": "a0ecfe96974c9c01eba2043fb9e3ceb046cfc1da523b10890ec3f46003e1bf27",
+    "data/eval/e2/labels.jsonl": "d5d122bd57ba9f49e9d65a7a9092a7053a949893091553c49001e78a3133cdb3",
+    "data/eval/e3/inputs.jsonl": "e06bf6dccd915495dc5a3fed06305dada145d6d6828f7a836ad9e8a9178f6f67",
+    "data/eval/e3/labels.jsonl": "e3123a14e66aa73136b67f3745454f6e1b4f254bd98cf5b25d3f3591aae8075a",
+    "data/shards/dev/shard_00000.npz": "8e3974164d8535806255206918643b9b12fb2cfa482ae0a2cf642980b73f5b96",
+    "data/shards/e1/shard_00000.npz": "79b9c869b4cdc4fdb8792d1baa0ab815e3d6173e0bdcb508f742dd1a3d0e8c04",
+    "data/shards/e2/shard_00000.npz": "a552738c3322d8c5e8228f31138d179df4549df1eb88c9297d53148b100b869b",
+    "data/shards/e3/shard_00000.npz": "30fc4b9e6d4c484fe4959b2a4c47e9a2be58d7c8a4f148c23aad446ce809b330",
+    "data/shards/manifest.json": "0ef19bd9fee2b730a0d0d81469987a7912fdcfdefb9ddd23a9895c2a2fb14ff6",
+    "data/shards/test/shard_00000.npz": "b0668c12058a75f5bb53b9525f14cec8ef97117dbcfdf401aa275ee0644129c1",
+    "data/shards/train/shard_00000.npz": "90f3ccece466e93a1544a05378c04c6e89cffe8fdecae7d0e34842532121d355",
+    "data/shards/train/shard_00001.npz": "dfac5bc7cb2a8a929fdbb0d8db419751c114d8ba5c979e4631c8393f1e776871",
+    "data/shards/train/shard_00002.npz": "9606aa010234ee68339a88b146243182ac3d749f4d2c041ff58f1bc96a4559f2",
+    "data/shards/train/shard_00003.npz": "71ed2fbd53fe0e34e572f7c182c65a4ad11a572402639ed8c3ff8d8dbed8483c",
+    "tokenizer/freq_src.npy": "6aaea5b66f82d7c110a49200ca7fa51816cdd4a95ecdbdd89ac0487529bef967",
+    "tokenizer/freq_tgt.npy": "e5703e051ca13c7564c40f46d6938b09330c7518dc257f68a1c05bb216cb4fed",
+    "tokenizer/spm.model": "1fc208b5b0885b8a1164ea2b6b44303d7acbddd709fab1f6b2dda53231779a37",
+    "tokenizer/spm.vocab": "a04a04fbc101099e834871a0e64ed64594301274cad93875e54ed96fb0bf3e12"
+  },
+  "input_files_sha256": {
+    "data/eval/e1/inputs.jsonl": "f66cf448b09bacee41a45bb77cd12a61fa5f4d9f821f005cd9da8e35da41c6be",
+    "data/eval/e1/labels.jsonl": "6187337411098dcb663378867e2b17182f1e0d118aacdc09cbba5f3df1fd0fc9",
+    "data/eval/e3/inputs.jsonl": "e06bf6dccd915495dc5a3fed06305dada145d6d6828f7a836ad9e8a9178f6f67",
+    "data/eval/e3/labels.jsonl": "e3123a14e66aa73136b67f3745454f6e1b4f254bd98cf5b25d3f3591aae8075a",
+    "reports/final/main/seg_tuned/e1_predictions.json": "116b483cd76820b8278abc5dbdedaf2b66b8bb61acb427cdd07780b992b6be82",
+    "reports/final/main/seg_tuned/e3_predictions.json": "8e0c476789f8a28c10aef816f0034ce65b7b5b0baf7b6801346eb913a5a116a5",
+    "spm.model": "1fc208b5b0885b8a1164ea2b6b44303d7acbddd709fab1f6b2dda53231779a37"
+  },
+  "word_list_sha256": "ce42d239b492e7830b20dde1fd8c0d712dffeb9526abc9b81a66bc702c58fa5d",
+  "runtime_seconds": {
+    "verify": 0.34,
+    "data_chrf": 8.52,
+    "train_counts": 23.08,
+    "features": 1.31,
+    "nll": 60.57,
+    "nll_breakdown": 1.75,
+    "decomposition": 283.99,
+    "total": 378.3
+  },
+  "python": "3.13.5",
+  "seed": 1234,
+  "n_boot": 1000
+}

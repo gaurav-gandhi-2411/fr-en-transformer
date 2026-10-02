@@ -1,0 +1,518 @@
+{
+  "label": "EXPLORATORY / POST-HOC (not pre-registered)",
+  "features": {
+    "tok_share_top1k": {
+      "e1": {
+        "mean": 0.6967794822401727,
+        "sd": 0.14218744233243388,
+        "median": 0.6956521739130435
+      },
+      "e3": {
+        "mean": 0.6899616990922687,
+        "sd": 0.13803296302218654,
+        "median": 0.7096774193548387
+      },
+      "mean_diff_e1_minus_e3": 0.006817783147904044
+    },
+    "tok_share_rare": {
+      "e1": {
+        "mean": 0.0004316569239710707,
+        "sd": 0.006538788766630099,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.010301756397444468,
+        "sd": 0.03625032637724611,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": -0.009870099473473398
+    },
+    "tok_share_unseen": {
+      "e1": {
+        "mean": 6.447539725283814e-05,
+        "sd": 0.0016617635049274745,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.0018485027081168836,
+        "sd": 0.010127789210983002,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": -0.0017840273108640455
+    },
+    "word_share_unseen": {
+      "e1": {
+        "mean": 0.03411743325730788,
+        "sd": 0.12535321346688624,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.03305727713564868,
+        "sd": 0.07250598531964161,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": 0.0010601561216591962
+    },
+    "word_share_rare": {
+      "e1": {
+        "mean": 0.026046017369786192,
+        "sd": 0.07568291027728156,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.05486803422698739,
+        "sd": 0.08801379955872937,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": -0.028822016857201198
+    },
+    "func_word_share": {
+      "e1": {
+        "mean": 0.46639356430446466,
+        "sd": 0.19793033409467334,
+        "median": 0.5
+      },
+      "e3": {
+        "mean": 0.524867449035614,
+        "sd": 0.19938797981529904,
+        "median": 0.5625
+      },
+      "mean_diff_e1_minus_e3": -0.05847388473114934
+    },
+    "punct_token_share": {
+      "e1": {
+        "mean": 0.14127750298271413,
+        "sd": 0.09554349563995858,
+        "median": 0.11904761904761904
+      },
+      "e3": {
+        "mean": 0.15330339888044012,
+        "sd": 0.09485377791721251,
+        "median": 0.125
+      },
+      "mean_diff_e1_minus_e3": -0.012025895897725986
+    },
+    "abs_log_word_ratio": {
+      "e1": {
+        "mean": 0.23553026006093608,
+        "sd": 0.2518249739132597,
+        "median": 0.1823215567939546
+      },
+      "e3": {
+        "mean": 0.18422094331741654,
+        "sd": 0.20887715770326007,
+        "median": 0.1301199969432052
+      },
+      "mean_diff_e1_minus_e3": 0.051309316743519545
+    },
+    "ratio_moderate_flag": {
+      "e1": {
+        "mean": 0.04020618556701031,
+        "sd": 0.1964931297503261,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.024,
+        "sd": 0.1531255937047999,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": 0.01620618556701031
+    },
+    "ratio_severe_flag": {
+      "e1": {
+        "mean": 0.012371134020618556,
+        "sd": 0.11056396472528324,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.006,
+        "sd": 0.07726558075864033,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": 0.006371134020618556
+    },
+    "src_dialogue_start": {
+      "e1": {
+        "mean": 0.05360824742268041,
+        "sd": 0.2253010618537554,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.233,
+        "sd": 0.4229537680289536,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": -0.1793917525773196
+    },
+    "src_quote_density": {
+      "e1": {
+        "mean": 0.0010173583003225042,
+        "sd": 0.006874365934717191,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.002725605306875453,
+        "sd": 0.009724816025331099,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": -0.0017082470065529487
+    },
+    "ref_quote_density": {
+      "e1": {
+        "mean": 0.0012838289503967284,
+        "sd": 0.008091966362202168,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.01431017199274745,
+        "sd": 0.037539801749465244,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": -0.013026343042350721
+    },
+    "ref_pronoun_rate": {
+      "e1": {
+        "mean": 0.07592334031148812,
+        "sd": 0.10720261249817196,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.11106831463346296,
+        "sd": 0.1070890820817821,
+        "median": 0.0967741935483871
+      },
+      "mean_diff_e1_minus_e3": -0.035144974321974845
+    },
+    "ref_first_person_rate": {
+      "e1": {
+        "mean": 0.024078788405071213,
+        "sd": 0.0591058039358054,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.030859153749885886,
+        "sd": 0.06084736997322112,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": -0.006780365344814673
+    },
+    "src_first_person_rate": {
+      "e1": {
+        "mean": 0.019903236151577776,
+        "sd": 0.05477584383881791,
+        "median": 0.0
+      },
+      "e3": {
+        "mean": 0.028219986037515615,
+        "sd": 0.05879051852364609,
+        "median": 0.0
+      },
+      "mean_diff_e1_minus_e3": -0.008316749885937839
+    },
+    "ref_fertility": {
+      "e1": {
+        "mean": 1.6965968673615814,
+        "sd": 1.439895643413052,
+        "median": 1.45
+      },
+      "e3": {
+        "mean": 1.6603554124055353,
+        "sd": 0.45072240991237134,
+        "median": 1.5714285714285714
+      },
+      "mean_diff_e1_minus_e3": 0.03624145495604614
+    },
+    "src_fertility": {
+      "e1": {
+        "mean": 1.7461577988410204,
+        "sd": 1.3344671930044019,
+        "median": 1.5384615384615385
+      },
+      "e3": {
+        "mean": 1.7985991332536373,
+        "sd": 0.4673091320491347,
+        "median": 1.7142857142857142
+      },
+      "mean_diff_e1_minus_e3": -0.05244133441261689
+    },
+    "log_src_words": {
+      "e1": {
+        "mean": 2.567710422387908,
+        "sd": 0.937644176698517,
+        "median": 2.5649493574615367
+      },
+      "e3": {
+        "mean": 2.7004165822701944,
+        "sd": 0.8264351885638007,
+        "median": 2.772588722239781
+      },
+      "mean_diff_e1_minus_e3": -0.1327061598822863
+    }
+  },
+  "alignment_noise": {
+    "thresholds": {
+      "moderate": [
+        0.5,
+        2.0
+      ],
+      "severe": [
+        0.33,
+        3.0
+      ],
+      "ratio": "src/ref ws"
+    },
+    "by_domain": {
+      "e1": {
+        "n": 1940,
+        "moderate_rate": 0.04020618556701031,
+        "severe_rate": 0.012371134020618556,
+        "ratio_median": 1.0659420289855073,
+        "mean_chrf_moderate": 26.171200901804486,
+        "mean_chrf_non_extreme": 56.188801418918786
+      },
+      "e3": {
+        "n": 1000,
+        "moderate_rate": 0.024,
+        "severe_rate": 0.006,
+        "ratio_median": 1.0,
+        "mean_chrf_moderate": 24.153084876850343,
+        "mean_chrf_non_extreme": 42.75841793308749
+      }
+    },
+    "reference_normalisation_artifact": {
+      "source": "reports/final/<run>/<variant>/analysis.json",
+      "key": "metric_artifact_share.{e3,dev_unseen_domain}.delta_chrf",
+      "values": {
+        "main/seg_off": {
+          "e3_delta_chrf": 0.21852116359017515,
+          "dev_unseen_delta_chrf": 0.25185930916061494
+        },
+        "main/seg_tuned": {
+          "e3_delta_chrf": 0.21852116359017515,
+          "dev_unseen_delta_chrf": 0.25185930916061494
+        },
+        "s1_sin_l4/seg_off": {
+          "e3_delta_chrf": 0.23346504351330566,
+          "dev_unseen_delta_chrf": 0.25136099250088506
+        },
+        "s1_sin_l4/seg_tuned": {
+          "e3_delta_chrf": 0.23387468389320532,
+          "dev_unseen_delta_chrf": 0.25136099250088506
+        },
+        "s2_rope_l4/seg_off": {
+          "e3_delta_chrf": 0.22767480806616902,
+          "dev_unseen_delta_chrf": 0.24078769353216245
+        },
+        "s2_rope_l4/seg_tuned": {
+          "e3_delta_chrf": 0.22761587104314884,
+          "dev_unseen_delta_chrf": 0.24078769353216245
+        },
+        "s3_rope_concat_l4/seg_off": {
+          "e3_delta_chrf": 0.2515703732231316,
+          "dev_unseen_delta_chrf": 0.2711806176363112
+        },
+        "s3_rope_concat_l4/seg_tuned": {
+          "e3_delta_chrf": 0.2518001233576328,
+          "dev_unseen_delta_chrf": 0.2711806176363112
+        }
+      }
+    }
+  },
+  "target_novelty_and_bands": {
+    "bands": [
+      "unseen",
+      "rare",
+      "top1k",
+      "mid_1k_10k",
+      "tail_ge10"
+    ],
+    "thresholds": {
+      "top_k": 1000,
+      "mid_k": 10000,
+      "rare_max_count": 9
+    },
+    "by_domain": {
+      "e1": {
+        "subword_token_share_by_band": {
+          "unseen": 7.902171121515636e-05,
+          "rare": 0.0006321736897212509,
+          "top1k": 0.6801991347122622,
+          "mid_1k_10k": 0.31776605622394755,
+          "tail_ge10": 0.0013236136628538692
+        },
+        "word_token_share_by_band": {
+          "unseen": 0.018088006801325086,
+          "rare": 0.022983788220808536,
+          "top1k": 0.68502828999443,
+          "mid_1k_10k": 0.2301310427721263,
+          "tail_ge10": 0.043768872211310136
+        },
+        "word_type_share_by_band": {
+          "unseen": 0.0773686920700309,
+          "rare": 0.09449021627188466,
+          "top1k": 0.128475798146241,
+          "mid_1k_10k": 0.5229145211122554,
+          "tail_ge10": 0.17675077239958806
+        },
+        "n_word_tokens": 34111,
+        "n_word_types": 7768
+      },
+      "e3": {
+        "subword_token_share_by_band": {
+          "unseen": 0.002529510961214165,
+          "rare": 0.012928611579539067,
+          "top1k": 0.6859346699144339,
+          "mid_1k_10k": 0.2881768783961027,
+          "tail_ge10": 0.010430329148710261
+        },
+        "word_token_share_by_band": {
+          "unseen": 0.03427712595752933,
+          "rare": 0.05599728498012218,
+          "top1k": 0.6222243769999031,
+          "mid_1k_10k": 0.20697178318626977,
+          "tail_ge10": 0.0805294288761757
+        },
+        "word_type_share_by_band": {
+          "unseen": 0.1288272674754477,
+          "rare": 0.17215482380127095,
+          "top1k": 0.11900635470826113,
+          "mid_1k_10k": 0.3689582129790102,
+          "tail_ge10": 0.21105334103601
+        },
+        "n_word_tokens": 20626,
+        "n_word_types": 5193
+      }
+    },
+    "train": {
+      "n_train_pairs": 921670,
+      "tgt_tokens": 20795021,
+      "tgt_words_ws": 14164525,
+      "src_tokens": 23817054,
+      "src_words_ws": 15425672,
+      "tgt_word_types_core": 326016,
+      "tgt_tok_counts_equal_committed_freq_tgt_npy": true,
+      "band_sizes_subword_types": {
+        "unseen": 1810,
+        "rare": 3144,
+        "top1k": 1000,
+        "mid_1k_10k": 9000,
+        "tail_ge10": 1046
+      },
+      "band_sizes_word_types": {
+        "unseen": 0,
+        "rare": 292657,
+        "top1k": 1000,
+        "mid_1k_10k": 9000,
+        "tail_ge10": 23359
+      }
+    }
+  },
+  "fertility_subword_tokens_per_whitespace_word": {
+    "e1_ref_pooled": 1.469901559369283,
+    "e3_ref_pooled": 1.5460602549246814,
+    "train_tgt_pooled": 1.4681057783441378,
+    "e1_src_pooled": 1.551333596110892,
+    "e3_src_pooled": 1.705171388943927,
+    "train_src_pooled": 1.5439880998377251,
+    "per_sentence_mean_ref": {
+      "e1": 1.6965968673615814,
+      "e3": 1.6603554124055353
+    },
+    "prior_claim_in_task_brief": "E3 1.71 vs train 1.54 (source file not found in repo)"
+  },
+  "word_lists": {
+    "function_words": "data/lexicons/english_stop_words_sklearn_1.7.2.txt (sha256 ce42d239b492e7830b20dde1fd8c0d712dffeb9526abc9b81a66bc702c58fa5d)",
+    "clitic_pieces": [
+      "ain",
+      "aren",
+      "couldn",
+      "d",
+      "didn",
+      "doesn",
+      "don",
+      "hadn",
+      "hasn",
+      "haven",
+      "isn",
+      "ll",
+      "m",
+      "mustn",
+      "needn",
+      "re",
+      "s",
+      "shouldn",
+      "t",
+      "ve",
+      "wasn",
+      "weren",
+      "won",
+      "wouldn"
+    ],
+    "en_pronouns": [
+      "he",
+      "her",
+      "hers",
+      "herself",
+      "him",
+      "himself",
+      "his",
+      "i",
+      "it",
+      "its",
+      "itself",
+      "me",
+      "mine",
+      "my",
+      "myself",
+      "our",
+      "ours",
+      "ourselves",
+      "she",
+      "thee",
+      "their",
+      "theirs",
+      "them",
+      "themselves",
+      "they",
+      "thine",
+      "thou",
+      "thy",
+      "us",
+      "we",
+      "you",
+      "your",
+      "yours",
+      "yourself"
+    ],
+    "en_first_person": [
+      "i",
+      "me",
+      "my",
+      "we"
+    ],
+    "fr_first_person": [
+      "j",
+      "je",
+      "ma",
+      "mes",
+      "mon",
+      "nous"
+    ],
+    "dialogue_start_regex": "^\\s*(?:--|[-–—―]|\\\")"
+  },
+  "official_scorer_check": {
+    "e1": {
+      "official_chrf": 54.98190820225131,
+      "n": 1940
+    },
+    "e3": {
+      "official_chrf": 42.3118899397378,
+      "n": 1000
+    }
+  },
+  "nll_model_checks": {
+    "n_params": 50229248,
+    "max_abs_diff_padded_vs_single_nll": 6.198883056640625e-06,
+    "torch": "2.14.0+cpu"
+  }
+}

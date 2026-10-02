@@ -1,0 +1,53 @@
+{
+  "label": "EXPLORATORY / POST-HOC (not pre-registered)",
+  "vif": {
+    "rarity.tok_share_top1k": 1.8149078253316449,
+    "rarity.tok_share_rare": 1.5996195735654186,
+    "rarity.tok_share_unseen": 1.2979359606106426,
+    "rarity.word_share_unseen": 1.9455201359248775,
+    "rarity.word_share_rare": 1.295498681895894,
+    "function_content.func_word_share": 2.334468063020813,
+    "function_content.punct_token_share": 1.7008115301032114,
+    "alignment.abs_log_word_ratio": 2.274014426132301,
+    "alignment.ratio_moderate_flag": 2.0709460746364274,
+    "alignment.ratio_severe_flag": 1.580446312495402,
+    "register.src_dialogue_start": 1.5112100150378514,
+    "register.src_quote_density": 1.18058603991039,
+    "register.ref_quote_density": 1.612245721302487,
+    "register.ref_pronoun_rate": 1.976415252051047,
+    "register.ref_first_person_rate": 2.7708317303128864,
+    "register.src_first_person_rate": 2.391631720093012,
+    "fertility.ref_fertility": 4.500953701034348,
+    "fertility.src_fertility": 3.5466974101784148,
+    "domain_e3": 1.3317603627264618
+  },
+  "condition_number_standardised_design": 4.958204562321156,
+  "r2_of_domain_on_feature": {
+    "rarity.tok_share_top1k": 0.0005264117186382089,
+    "rarity.tok_share_rare": 0.04403083200654545,
+    "rarity.tok_share_unseen": 0.01910575080705479,
+    "rarity.word_share_unseen": 2.0762095137683012e-05,
+    "rarity.word_share_rare": 0.028265244248025012,
+    "function_content.func_word_share": 0.019130893796921566,
+    "function_content.punct_token_share": 0.003562990429963997,
+    "alignment.abs_log_word_ratio": 0.01032280195987334,
+    "alignment.ratio_moderate_flag": 0.0017601544660930113,
+    "alignment.ratio_severe_flag": 0.0009020299713040636,
+    "register.src_dialogue_start": 0.07117092436364669,
+    "register.src_quote_density": 0.010240447969707911,
+    "register.ref_quote_density": 0.06799366684392472,
+    "register.ref_pronoun_rate": 0.023586570483980496,
+    "register.ref_first_person_rate": 0.0028883533647269255,
+    "register.src_first_person_rate": 0.004899135982440073,
+    "fertility.ref_fertility": 0.00020518599445185082,
+    "fertility.src_fertility": 0.0004940680686205123
+  },
+  "r2_of_domain_on_group": {
+    "rarity": 0.061384138387497234,
+    "function_content": 0.02315960714408405,
+    "alignment": 0.012354672164120895,
+    "register": 0.11004302787616094,
+    "fertility": 0.004059822340845232
+  },
+  "group_ctrl_condition": 5.0657454900912695
+}
