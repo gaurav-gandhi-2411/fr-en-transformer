@@ -232,6 +232,7 @@ def _cell(p50: float, key: str = "p50") -> dict:
         },
         "peak_rss_mb_per_run": [500.0, 510.0, 505.0],
         "rss_after_run_mb_per_run": [400.0, 410.0, 405.0],
+        "peak_rss_source": "psutil.peak_wset",
     }
 
 
@@ -313,7 +314,7 @@ def test_render_readme_from_synthetic_results() -> None:
     }
     text = pb.render_readme(res, {"results.json": "0" * 64})
     assert "\r" not in text
-    assert "int8 is 1.30x SLOWER" in text  # 130 / 100 from the synthetic cells
+    assert "int8 SLOWER, ranges do not overlap (ratio of medians 1.30)" in text
     assert "Test CPU" in text and "`" + "0" * 64 + "`" in text
     json.dumps(res)  # synthetic results are JSON-serialisable like the real ones
 
@@ -336,3 +337,18 @@ def test_load_meter_reports_own_and_other_share() -> None:
     if out["system_cpu_pct_during"] is not None:  # psutil present
         assert out["own_cpu_pct_of_machine"] > 0.0
         assert 0.0 <= out["other_cpu_pct_during"] <= 100.0
+
+
+def test_verdict_never_calls_overlapping_ranges_faster_or_slower() -> None:
+    assert "no clear difference" in pb._verdict(0.9, "x", overlap=True)
+    assert "faster" in pb._verdict(0.9, "x", overlap=False)
+    assert "SLOWER" in pb._verdict(1.2, "x", overlap=False)
+    assert "not measured" in pb._verdict(None, "x")
+    cells = {
+        "a": {"across_runs": {"p50": {"min": 1.0, "max": 3.0}}},
+        "b": {"across_runs": {"p50": {"min": 2.0, "max": 4.0}}},
+        "c": {"across_runs": {"p50": {"min": 3.5, "max": 4.0}}},
+    }
+    assert pb._ranges_overlap(cells, "a", "b", "p50") and not pb._ranges_overlap(
+        cells, "a", "c", "p50"
+    )

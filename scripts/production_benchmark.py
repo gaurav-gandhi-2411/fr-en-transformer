@@ -803,6 +803,7 @@ def aggregate_latency(jobs: list[dict[str, Any]]) -> tuple[dict, dict]:
                 "rss_after_load_mb_per_run": [j["result"]["rss_after_load_mb"] for j in runs],
                 "rss_after_run_mb_per_run": [j["result"]["rss_after_run_mb"] for j in runs],
                 "torch_num_threads_used": runs[0]["result"]["torch_num_threads_used"],
+                "peak_rss_source": runs[0]["result"]["peak_rss_source"],
             }
             raw[key] = [j["result"]["latency"][mode]["ms"] for j in runs]
     return summary, raw
@@ -1033,14 +1034,23 @@ def _fmt_range(d: dict[str, float], nd: int = 1) -> str:
     return f"{d['median']:.{nd}f} ({d['min']:.{nd}f}-{d['max']:.{nd}f})"
 
 
-def _verdict(ratio: float | None, what: str) -> str:
+def _ranges_overlap(results: dict, key_a: str, key_b: str, stat: str) -> bool:
+    """Do the (min, max) ranges of the per-run `stat` of two cells intersect?"""
+    a, b = results[key_a]["across_runs"][stat], results[key_b]["across_runs"][stat]
+    return a["min"] <= b["max"] and b["min"] <= a["max"]
+
+
+def _verdict(ratio: float | None, what: str, overlap: bool = False) -> str:
+    """int8/fp32 ratio of medians in words. The between-run ranges decide whether a difference is
+    distinguishable from run-to-run noise: overlapping ranges are never called faster/slower."""
     if ratio is None:
         return f"{what}: not measured"
-    if ratio < 0.95:
-        return f"{what}: int8 is {1 / ratio:.2f}x faster (ratio {ratio:.2f})"
-    if ratio > 1.05:
-        return f"{what}: int8 is {ratio:.2f}x SLOWER (ratio {ratio:.2f})"
-    return f"{what}: int8 is within +-5% of fp32 (ratio {ratio:.2f})"
+    base = f"ratio of medians {ratio:.2f}"
+    if overlap:
+        return f"{what}: no clear difference, run-to-run ranges overlap ({base})"
+    if ratio < 1.0:
+        return f"{what}: int8 faster, ranges do not overlap ({base})"
+    return f"{what}: int8 SLOWER, ranges do not overlap ({base})"
 
 
 def _low_cell(cell: dict[str, Any], key: str, nd: int = 1) -> str:
@@ -1228,24 +1238,45 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
         )
     a("")
     a(
-        "Peak RSS = process peak working set in a fresh process per run (the API used is "
-        "`peak_rss_source` in each worker result). An int8 process first loads the fp32 weights "
-        "and quantizes in place, so its PEAK includes the transient fp32 copy; the working set "
-        "after load and after the run are in `results.json` (`rss_after_load_mb_per_run`)."
+        "Peak RSS = process peak working set in a fresh process per run "
+        f"(measured with `{next(iter(lat.values()))['peak_rss_source']}`). An int8 process first "
+        "loads the fp32 weights and quantizes in place, so its PEAK includes the transient fp32 "
+        "copy; the working set after load and after the run are in `results.json` "
+        "(`rss_after_load_mb_per_run`)."
     )
     a("")
     a("## Findings")
     a("")
+    fp_sz = size.get("fp32", {}).get("state_dict_torch_save_bytes")
+    i8_sz = size.get("int8", {}).get("state_dict_torch_save_bytes")
+    if fp_sz and i8_sz:
+        a(
+            f"- Plain summary: int8 dynamic quantization cuts the saved model state from "
+            f"{fp_sz / 1e6:.1f} MB to {i8_sz / 1e6:.1f} MB ({fp_sz / i8_sz:.2f}x smaller, "
+            "torch.save of the state_dict) and, on E1, changes no metric beyond bootstrap noise "
+            "(see quality lines below; hundreds of individual outputs do differ). On this "
+            "laptop CPU it does NOT make single requests reliably faster; see the per-setting "
+            "lines below for where it is slower or indistinguishable."
+        )
+        a(
+            "- Hypothesis for the missing speed-up, NOT tested here: single-sentence decoding is "
+            "dominated by many tiny (1 x 512) matmuls, the fp32 tied output projection and "
+            "Python-loop overhead, so int8 matmuls (plus per-call activation quantization) have "
+            "little to win."
+        )
     for th in THREAD_SETTINGS:
         for mode in ("greedy", "beam5"):
-            r = _ratio(lat, f"threads={th}|int8|{mode}", f"threads={th}|fp32|{mode}")
-            a("- " + _verdict(r, f"latency p50, threads={th}, {mode}"))
+            ki, kf = f"threads={th}|int8|{mode}", f"threads={th}|fp32|{mode}"
+            r = _ratio(lat, ki, kf)
+            ov = r is not None and _ranges_overlap(lat, ki, kf, "p50")
+            a("- " + _verdict(r, f"latency p50, threads={th}, {mode}", ov))
     for th in THREAD_SETTINGS:
         for mode in ("greedy", "beam5"):
             key_i, key_f = f"threads={th}|int8|{mode}", f"threads={th}|fp32|{mode}"
             r = _ratio(tp, key_i, key_f, "sentences_per_second")
             if r is not None:
-                a(f"- throughput, threads={th}, {mode}: int8 reaches {r:.2f}x of fp32 sentences/s.")
+                ov = _ranges_overlap(tp, key_i, key_f, "sentences_per_second")
+                a("- " + _verdict(r, f"throughput sent/s, threads={th}, {mode}", ov))
     for mode in QUALITY_MODES:
         c = q["paired_int8_vs_fp32"][mode]
         parts = []
