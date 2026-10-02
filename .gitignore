@@ -20,3 +20,6 @@ envs/cuda/.venv/
 
 # Export dirs copy tokenizer/spm.model (identical sha256); the committed tokenizer is the source of truth.
 reports/**/export/spm.model
+
+# huggingface_hub's per-download metadata inside the pulled eval_l4 artifacts
+reports/eval/**/.cache/

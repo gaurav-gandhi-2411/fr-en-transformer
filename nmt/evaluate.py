@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
 import random
 import subprocess
 import sys
@@ -57,24 +58,46 @@ def load_official_module() -> ModuleType:
     return _official_module_cache
 
 
-def run_official_scorer_cli(gold_path: Path, pred_path: Path, out_path: Path) -> dict[str, Any]:
-    """Run `official/score.py` exactly as shipped via `subprocess` (the primary metric, spec §8),
-    parsing the `--out` JSON report it writes."""
-    subprocess.run(
-        [
-            sys.executable,
-            str(OFFICIAL_SCORE_PY),
-            "--gold",
-            str(gold_path),
-            "--pred",
-            str(pred_path),
-            "--out",
-            str(out_path),
-        ],
+def official_scorer_env(parent: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment `official/score.py` must run under: the parent's, plus PYTHONUTF8=1 and
+    PYTHONIOENCODING=utf-8. The vendored scorer calls `open()` without an encoding, so on Windows
+    it decodes a UTF-8 file as cp1252 (measured: BLEU 97.5 for a reference-identical prediction
+    file); UTF-8 mode makes it read UTF-8 on every OS. The scorer itself is byte-pinned."""
+    env = dict(os.environ if parent is None else parent)
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+def run_official_scorer(
+    gold_path: Path, pred_path: Path, out_path: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    """The ONE way to run `official/score.py` locally: `python official/score.py` as shipped, with
+    `official_scorer_env()`. Returns the completed process (stdout carries the OVERALL line)."""
+    cmd = [
+        sys.executable,
+        str(OFFICIAL_SCORE_PY),
+        "--gold",
+        str(gold_path),
+        "--pred",
+        str(pred_path),
+    ]
+    if out_path is not None:
+        cmd += ["--out", str(out_path)]
+    return subprocess.run(
+        cmd,
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        env=official_scorer_env(),
     )
+
+
+def run_official_scorer_cli(gold_path: Path, pred_path: Path, out_path: Path) -> dict[str, Any]:
+    """Run `official/score.py` exactly as shipped via `run_official_scorer` (the primary metric,
+    spec §8), parsing the `--out` JSON report it writes."""
+    run_official_scorer(gold_path, pred_path, out_path)
     return json.loads(out_path.read_text(encoding="utf-8"))
 
 
@@ -587,29 +610,36 @@ COMET_SCRIPT = COMET_ENV_DIR / "score_comet.py"
 
 
 def run_comet(
-    triples: list[dict[str, str]], out_path: Path, timeout_seconds: float = 3600.0
+    triples: list[dict[str, str]],
+    out_path: Path,
+    timeout_seconds: float = 3600.0,
+    gpus: int | None = None,
 ) -> dict[str, Any]:
     """Score `triples` (each `{"src", "mt", "ref"}`) with COMET-22 (`Unbabel/wmt22-comet-da`) by
     shelling out to the isolated `envs/comet` uv project (`unbabel-comet` does not co-resolve
     with this repo's pinned torch/numpy -- see pyproject.toml). Eval-only: never used for
     checkpoint/decoding selection (spec §8, §15). Raises `RuntimeError` with the subprocess's
-    stderr on failure -- never silently fabricates a score.
+    stderr on failure -- never silently fabricates a score. `gpus` forces the device
+    (0 = CPU, 1 = one GPU).
     """
     in_path = out_path.with_suffix(".in.json")
     in_path.write_text(json.dumps(triples), encoding="utf-8")
+    cmd = [
+        "uv",
+        "run",
+        "--project",
+        str(COMET_ENV_DIR),
+        "python",
+        str(COMET_SCRIPT),
+        "--in",
+        str(in_path),
+        "--out",
+        str(out_path),
+    ]
+    if gpus is not None:  # None: score_comet.py's own default (1 GPU if CUDA is available)
+        cmd += ["--gpus", str(gpus)]
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "--project",
-            str(COMET_ENV_DIR),
-            "python",
-            str(COMET_SCRIPT),
-            "--in",
-            str(in_path),
-            "--out",
-            str(out_path),
-        ],
+        cmd,
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
@@ -661,6 +691,57 @@ def load_split(name: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     else:
         raise ValueError(f"unknown split: {name!r}")
     return _read_jsonl(base / "inputs.jsonl"), _read_jsonl(base / "labels.jsonl")
+
+
+def score_split_predictions(
+    split: str,
+    inputs: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+    pred: dict[str, str],
+    n_bootstrap: int = 1000,
+    seed: int = 1234,
+    fallback_counts: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Score one split's predictions (official metrics, bootstrap CIs per set and per slice,
+    sacreBLEU; the official OVERALL CI for dev). Shared by `run_evaluation` (which decodes) and
+    the local score-only pipeline (`scripts/eval_local.py`, which must never decode), so both
+    report identical entries for identical predictions."""
+    label_by_id = {r["id"]: r for r in labels}
+    ids = [r["id"] for r in inputs]
+    gold_rows = [
+        {
+            "id": r["id"],
+            "reference": label_by_id[r["id"]]["reference"],
+            "slice": label_by_id[r["id"]].get("slice", split),
+        }
+        for r in inputs
+    ]
+    official = compute_official_metrics(pred, gold_rows)
+    hyps = [pred[i] for i in ids]
+    refs = [label_by_id[i]["reference"] for i in ids]
+    slices = [r["slice"] for r in gold_rows]
+
+    entry: dict[str, Any] = {
+        "n": len(ids),
+        "official": official,
+        "official_bleu_ci": bootstrap_ci_official(hyps, refs, "bleu", n_bootstrap, seed),
+        "official_chrf_ci": bootstrap_ci_official(hyps, refs, "chrf", n_bootstrap, seed),
+        # Per-slice CIs (spec §8: "per slice and metric") -- every official dev slice
+        # (seen/long/unseen_domain), and, for e1/e2/e3, the (single) E-set slice itself.
+        "official_ci_by_slice": {
+            "bleu": bootstrap_ci_by_group(hyps, refs, slices, "bleu", n_bootstrap, seed),
+            "chrf": bootstrap_ci_by_group(hyps, refs, slices, "chrf", n_bootstrap, seed),
+        },
+        "sacrebleu": sacrebleu_metrics(hyps, refs),
+    }
+    if fallback_counts is not None:
+        entry["fallback_counts"] = fallback_counts
+    if split in SYNTHETIC_SPLIT_LABELS:
+        entry["synthetic"] = True
+        entry["label"] = SYNTHETIC_SPLIT_LABELS[split]
+    if split == "dev":
+        entry["overall_ci"] = bootstrap_official_overall(pred, gold_rows, n_bootstrap, seed)
+    return entry
 
 
 def run_evaluation(
@@ -721,52 +802,19 @@ def run_evaluation(
         pred_path = out_dir / f"{split}_predictions.json"
         pred_path.write_text(json.dumps(pred, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        gold_rows = [
-            {
-                "id": r["id"],
-                "reference": label_by_id[r["id"]]["reference"],
-                "slice": label_by_id[r["id"]].get("slice", split),
-            }
-            for r in inputs
-        ]
-        official = compute_official_metrics(pred, gold_rows)
-        hyps = [pred[i] for i in ids]
-        refs = [label_by_id[i]["reference"] for i in ids]
-        slices = [r["slice"] for r in gold_rows]
-
-        entry: dict[str, Any] = {
-            "n": len(ids),
-            "official": official,
-            "official_bleu_ci": bootstrap_ci_official(
-                hyps, refs, "bleu", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-            ),
-            "official_chrf_ci": bootstrap_ci_official(
-                hyps, refs, "chrf", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-            ),
-            # Per-slice CIs (spec §8: "per slice and metric") -- every official dev slice
-            # (seen/long/unseen_domain), and, for e1/e2/e3, the (single) E-set slice itself.
-            "official_ci_by_slice": {
-                "bleu": bootstrap_ci_by_group(
-                    hyps, refs, slices, "bleu", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-                ),
-                "chrf": bootstrap_ci_by_group(
-                    hyps, refs, slices, "chrf", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-                ),
-            },
-            "sacrebleu": sacrebleu_metrics(hyps, refs),
-            "fallback_counts": {
+        entry = score_split_predictions(
+            split,
+            inputs,
+            labels,
+            pred,
+            decode_cfg.n_bootstrap,
+            decode_cfg.bootstrap_seed,
+            fallback_counts={
                 "beam": stats_after[0] - stats_before[0],
                 "greedy": stats_after[1] - stats_before[1],
                 "copy": stats_after[2] - stats_before[2],
             },
-        }
-        if split in SYNTHETIC_SPLIT_LABELS:
-            entry["synthetic"] = True
-            entry["label"] = SYNTHETIC_SPLIT_LABELS[split]
-        if split == "dev":
-            entry["overall_ci"] = bootstrap_official_overall(
-                pred, gold_rows, decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-            )
+        )
         result["sets"][split] = entry
         all_pred.update(pred)
         rows_by_split[split] = [

@@ -9,9 +9,9 @@ from __future__ import annotations
 # once nmt/evaluate.py exists, and is intentionally not written here.
 import hashlib
 import json
-import subprocess
-import sys
 from pathlib import Path
+
+from nmt.evaluate import run_official_scorer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCORE_PY = REPO_ROOT / "official" / "score.py"
@@ -57,11 +57,5 @@ def test_scorer_cli_runs_and_prints_overall(tmp_path: Path) -> None:
     pred_path = tmp_path / "dev_predictions.json"
     pred_path.write_text(json.dumps(gold), encoding="utf-8")
 
-    result = subprocess.run(
-        [sys.executable, str(SCORE_PY), "--gold", str(DEV_LABELS), "--pred", str(pred_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
+    result = run_official_scorer(DEV_LABELS, pred_path)  # check=True: a non-zero exit raises
     assert "OVERALL" in result.stdout
