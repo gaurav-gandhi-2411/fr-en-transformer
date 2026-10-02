@@ -540,29 +540,36 @@ COMET_SCRIPT = COMET_ENV_DIR / "score_comet.py"
 
 
 def run_comet(
-    triples: list[dict[str, str]], out_path: Path, timeout_seconds: float = 3600.0
+    triples: list[dict[str, str]],
+    out_path: Path,
+    timeout_seconds: float = 3600.0,
+    gpus: int | None = None,
 ) -> dict[str, Any]:
     """Score `triples` (each `{"src", "mt", "ref"}`) with COMET-22 (`Unbabel/wmt22-comet-da`) by
     shelling out to the isolated `envs/comet` uv project (`unbabel-comet` does not co-resolve
     with this repo's pinned torch/numpy -- see pyproject.toml). Eval-only: never used for
     checkpoint/decoding selection (spec §8, §15). Raises `RuntimeError` with the subprocess's
-    stderr on failure -- never silently fabricates a score.
+    stderr on failure -- never silently fabricates a score. `gpus` forces the device
+    (0 = CPU, 1 = one GPU).
     """
     in_path = out_path.with_suffix(".in.json")
     in_path.write_text(json.dumps(triples), encoding="utf-8")
+    cmd = [
+        "uv",
+        "run",
+        "--project",
+        str(COMET_ENV_DIR),
+        "python",
+        str(COMET_SCRIPT),
+        "--in",
+        str(in_path),
+        "--out",
+        str(out_path),
+    ]
+    if gpus is not None:  # None: score_comet.py's own default (1 GPU if CUDA is available)
+        cmd += ["--gpus", str(gpus)]
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "--project",
-            str(COMET_ENV_DIR),
-            "python",
-            str(COMET_SCRIPT),
-            "--in",
-            str(in_path),
-            "--out",
-            str(out_path),
-        ],
+        cmd,
         capture_output=True,
         text=True,
         timeout=timeout_seconds,
@@ -614,6 +621,57 @@ def load_split(name: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     else:
         raise ValueError(f"unknown split: {name!r}")
     return _read_jsonl(base / "inputs.jsonl"), _read_jsonl(base / "labels.jsonl")
+
+
+def score_split_predictions(
+    split: str,
+    inputs: list[dict[str, Any]],
+    labels: list[dict[str, Any]],
+    pred: dict[str, str],
+    n_bootstrap: int = 1000,
+    seed: int = 1234,
+    fallback_counts: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Score one split's predictions (official metrics, bootstrap CIs per set and per slice,
+    sacreBLEU; the official OVERALL CI for dev). Shared by `run_evaluation` (which decodes) and
+    the local score-only pipeline (`scripts/eval_local.py`, which must never decode), so both
+    report identical entries for identical predictions."""
+    label_by_id = {r["id"]: r for r in labels}
+    ids = [r["id"] for r in inputs]
+    gold_rows = [
+        {
+            "id": r["id"],
+            "reference": label_by_id[r["id"]]["reference"],
+            "slice": label_by_id[r["id"]].get("slice", split),
+        }
+        for r in inputs
+    ]
+    official = compute_official_metrics(pred, gold_rows)
+    hyps = [pred[i] for i in ids]
+    refs = [label_by_id[i]["reference"] for i in ids]
+    slices = [r["slice"] for r in gold_rows]
+
+    entry: dict[str, Any] = {
+        "n": len(ids),
+        "official": official,
+        "official_bleu_ci": bootstrap_ci_official(hyps, refs, "bleu", n_bootstrap, seed),
+        "official_chrf_ci": bootstrap_ci_official(hyps, refs, "chrf", n_bootstrap, seed),
+        # Per-slice CIs (spec §8: "per slice and metric") -- every official dev slice
+        # (seen/long/unseen_domain), and, for e1/e2/e3, the (single) E-set slice itself.
+        "official_ci_by_slice": {
+            "bleu": bootstrap_ci_by_group(hyps, refs, slices, "bleu", n_bootstrap, seed),
+            "chrf": bootstrap_ci_by_group(hyps, refs, slices, "chrf", n_bootstrap, seed),
+        },
+        "sacrebleu": sacrebleu_metrics(hyps, refs),
+    }
+    if fallback_counts is not None:
+        entry["fallback_counts"] = fallback_counts
+    if split in SYNTHETIC_SPLIT_LABELS:
+        entry["synthetic"] = True
+        entry["label"] = SYNTHETIC_SPLIT_LABELS[split]
+    if split == "dev":
+        entry["overall_ci"] = bootstrap_official_overall(pred, gold_rows, n_bootstrap, seed)
+    return entry
 
 
 def run_evaluation(
@@ -674,52 +732,19 @@ def run_evaluation(
         pred_path = out_dir / f"{split}_predictions.json"
         pred_path.write_text(json.dumps(pred, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        gold_rows = [
-            {
-                "id": r["id"],
-                "reference": label_by_id[r["id"]]["reference"],
-                "slice": label_by_id[r["id"]].get("slice", split),
-            }
-            for r in inputs
-        ]
-        official = compute_official_metrics(pred, gold_rows)
-        hyps = [pred[i] for i in ids]
-        refs = [label_by_id[i]["reference"] for i in ids]
-        slices = [r["slice"] for r in gold_rows]
-
-        entry: dict[str, Any] = {
-            "n": len(ids),
-            "official": official,
-            "official_bleu_ci": bootstrap_ci_official(
-                hyps, refs, "bleu", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-            ),
-            "official_chrf_ci": bootstrap_ci_official(
-                hyps, refs, "chrf", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-            ),
-            # Per-slice CIs (spec §8: "per slice and metric") -- every official dev slice
-            # (seen/long/unseen_domain), and, for e1/e2/e3, the (single) E-set slice itself.
-            "official_ci_by_slice": {
-                "bleu": bootstrap_ci_by_group(
-                    hyps, refs, slices, "bleu", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-                ),
-                "chrf": bootstrap_ci_by_group(
-                    hyps, refs, slices, "chrf", decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-                ),
-            },
-            "sacrebleu": sacrebleu_metrics(hyps, refs),
-            "fallback_counts": {
+        entry = score_split_predictions(
+            split,
+            inputs,
+            labels,
+            pred,
+            decode_cfg.n_bootstrap,
+            decode_cfg.bootstrap_seed,
+            fallback_counts={
                 "beam": stats_after[0] - stats_before[0],
                 "greedy": stats_after[1] - stats_before[1],
                 "copy": stats_after[2] - stats_before[2],
             },
-        }
-        if split in SYNTHETIC_SPLIT_LABELS:
-            entry["synthetic"] = True
-            entry["label"] = SYNTHETIC_SPLIT_LABELS[split]
-        if split == "dev":
-            entry["overall_ci"] = bootstrap_official_overall(
-                pred, gold_rows, decode_cfg.n_bootstrap, decode_cfg.bootstrap_seed
-            )
+        )
         result["sets"][split] = entry
         all_pred.update(pred)
         rows_by_split[split] = [
