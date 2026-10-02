@@ -169,9 +169,13 @@ def _tuning(objective: float, **over: Any) -> dict[str, Any]:
 def _write_all_tunings(d: Path, objectives: dict[str, float] | None = None) -> None:
     d.mkdir(parents=True, exist_ok=True)
     for c in fa.final_all_candidates():
-        t = _tuning((objectives or {}).get(c.name, 40.0), candidate=c.name)
+        t = _tuning(
+            (objectives or {}).get(c.name, 40.0),
+            candidate=c.name,
+            member_sha256={m: f"h_{m}" for m in c.members},
+        )
         if c.pool is not None:
-            t["alpha_beam"] = {"note": "fixed"}
+            t["alpha_beam"] = {"note": "fixed", "alpha": 1.6}
             t["winner"] = {**t["winner"], "mbr": c.mbr}
         (d / f"{c.name}.json").write_text(json.dumps(t), encoding="utf-8")
 
@@ -326,7 +330,7 @@ def test_tune_pool_candidate_needs_its_beam_tuning_and_fixes_alpha(
     with pytest.raises(ev.EvalStepError, match="needs a valid full rule-1 tuning"):
         fa.tune_candidate("A__mbr_beam8", models, tdir)
     tdir.mkdir()
-    base = _tuning(41.0, candidate="A__beam")
+    base = _tuning(41.0, candidate="A__beam", member_sha256=fa._member_sha256(models, ["A"]))
     base["winner"]["alpha"] = 1.8
     (tdir / "A__beam.json").write_text(json.dumps(base), encoding="utf-8")
     # the real data sets and scorer, a stub translator, no model
@@ -530,3 +534,102 @@ def test_estimate_scales_with_members_and_is_labelled_an_estimate() -> None:
     )
     lines = fa.format_final_estimate(est)
     assert lines[0].startswith("ESTIMATE (ASSUMED rates") and "not a measurement" in lines[0]
+
+
+# --- stale tunings on resume ---------------------------------------------------------------------
+
+
+def _fake_beam_tune(monkeypatch: pytest.MonkeyPatch, models: dict[str, Path]) -> list[str]:
+    """Patch nmt.tune.run_tune to record calls and write a fresh, correct beam tuning."""
+    import nmt.tune
+
+    ran: list[str] = []
+
+    def fake(model_dir: Path, out_path: Path, **kw: Any) -> dict[str, Any]:
+        ran.append(Path(out_path).stem)
+        t = _tuning(42.0, **kw["extra"])
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_path).write_text(json.dumps(t), encoding="utf-8")
+        return t
+
+    monkeypatch.setattr(nmt.tune, "run_tune", fake)
+    monkeypatch.setattr(fa, "build_translator", lambda *a, **k: _Stub())
+    return ran
+
+
+def test_beam_tuning_made_by_other_weights_is_redone_not_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    models = _fake_dirs(tmp_path)
+    ran = _fake_beam_tune(monkeypatch, models)
+    tdir = tmp_path / "tuning"
+    assert fa.tune_candidate("A__beam", models, tdir) is True
+    assert fa.tune_candidate("A__beam", models, tdir) is False  # same weights: skipped
+    (models["A"] / "model.safetensors").write_bytes(b"a retrained model")
+    assert fa.tune_candidate("A__beam", models, tdir) is True  # stale: redone
+    assert ran == ["A__beam", "A__beam"]
+    # a tuning file that records no hashes at all cannot be shown current
+    t = json.loads((tdir / "A__beam.json").read_text("utf-8"))
+    del t["member_sha256"]
+    (tdir / "A__beam.json").write_text(json.dumps(t), encoding="utf-8")
+    assert fa.tune_candidate("A__beam", models, tdir) is True
+
+
+def test_ensemble_tuning_is_stale_when_any_member_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    models = _fake_dirs(tmp_path)
+    ran = _fake_beam_tune(monkeypatch, models)
+    tdir = tmp_path / "tuning"
+    fa.tune_candidate("main+B__beam", models, tdir)
+    (models["B"] / "model.safetensors").write_bytes(b"other B")
+    assert fa.tune_candidate("main+B__beam", models, tdir) is True and len(ran) == 2
+    (models["A"] / "model.safetensors").write_bytes(b"other A")  # not a member: still current
+    assert fa.tune_candidate("main+B__beam", models, tdir) is False
+
+
+def test_pool_tuning_is_stale_when_the_beam_winner_alpha_or_weights_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    models = _fake_dirs(tmp_path)
+    stub = _Stub()
+    monkeypatch.setattr(fa, "build_translator", lambda *a, **k: stub)
+    monkeypatch.setattr(ev, "_full_selection_sizes", lambda: (1940, 1000))
+    tdir = tmp_path / "tuning"
+    tdir.mkdir()
+    hashes = fa._member_sha256(models, ["A"])
+
+    def write_base(alpha: float, sha: dict[str, str]) -> None:
+        base = _tuning(41.0, candidate="A__beam", member_sha256=sha)
+        base["winner"]["alpha"] = alpha
+        (tdir / "A__beam.json").write_text(json.dumps(base), encoding="utf-8")
+
+    write_base(1.6, hashes)
+    assert fa.tune_candidate("A__mbr_beam8", models, tdir, batch_size=64) is True
+    assert fa.tune_candidate("A__mbr_beam8", models, tdir, batch_size=64) is False
+    write_base(1.2, hashes)  # the beam winner's alpha moved: the pool file used 1.6
+    assert fa.tune_candidate("A__mbr_beam8", models, tdir, batch_size=64) is True
+    out = json.loads((tdir / "A__mbr_beam8.json").read_text("utf-8"))
+    assert out["alpha_beam"]["alpha"] == 1.2 and out["member_sha256"] == hashes
+    write_base(1.2, {"A": "stale"})  # the beam file was made by other weights
+    with pytest.raises(ev.EvalStepError, match="current model weights"):
+        fa.tune_candidate("A__mbr_beam8", models, tdir, batch_size=64)
+
+
+def test_select_refuses_a_mix_of_stale_and_fresh_tunings(tmp_path: Path) -> None:
+    d = tmp_path / "t"
+    _write_all_tunings(d)
+    f = d / "main+A__beam.json"
+    t = json.loads(f.read_text("utf-8"))
+    t["member_sha256"]["A"] = "h_other"  # A's weights differ from what A__beam recorded
+    f.write_text(json.dumps(t), encoding="utf-8")
+    with pytest.raises(ev.EvalStepError, match="different weights"):
+        fa.run_final_select(d, tmp_path / "s.json")
+    _write_all_tunings(d)
+    g = d / "B__mbr_beam16.json"
+    t = json.loads(g.read_text("utf-8"))
+    t["alpha_beam"]["alpha"] = 1.2  # base winner alpha is 1.6
+    g.write_text(json.dumps(t), encoding="utf-8")
+    with pytest.raises(ev.EvalStepError, match="different alpha"):
+        fa.run_final_select(d, tmp_path / "s.json")
+    assert not (tmp_path / "s.json").exists()

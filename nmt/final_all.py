@@ -197,10 +197,26 @@ def grid_matches(tuning: Any) -> bool:
     return {(g.get("alpha"), g.get("beam")) for g in grid} == want
 
 
-def _tuning_ok(tuning: Any, cand: FinalAllCandidate) -> bool:
+def _tuning_ok(
+    tuning: Any,
+    cand: FinalAllCandidate,
+    member_sha256: Mapping[str, str] | None = None,
+    base_alpha: float | None = None,
+) -> bool:
+    """A finished full tuning of `cand` on the right grid. When `member_sha256` (the CURRENT
+    weights' hashes) is given, the file must have been made by exactly those weights, and when
+    `base_alpha` (the CURRENT beam winner's alpha) is given, an MBR file must have used that alpha;
+    otherwise it is stale (a model or an upstream tuning changed) and is not accepted. A file that
+    records no hash / alpha cannot be shown current, so it fails too."""
     if not ev.tuning_is_full(tuning):
         return False
-    return grid_matches(tuning) if cand.pool is None else tuning.get("candidate") == cand.name
+    if member_sha256 is not None and tuning.get("member_sha256") != dict(member_sha256):
+        return False
+    if cand.pool is not None:
+        if base_alpha is not None and (tuning.get("alpha_beam") or {}).get("alpha") != base_alpha:
+            return False
+        return tuning.get("candidate") == cand.name
+    return grid_matches(tuning)
 
 
 def _member_sha256(models: Mapping[str, Path], members: Sequence[str]) -> dict[str, str]:
@@ -249,6 +265,7 @@ def run_pool_tune(
             "note": "MBR candidate: alpha is the rule-1 winner of the beam candidate "
             f"{cand.beam_name}; no alpha x beam grid is searched",
             "alpha_source": cand.beam_name,
+            "alpha": alpha,
             "e1_decode_seconds": round(e1_seconds, 3),
         },
         "segmentation": seg,
@@ -282,21 +299,27 @@ def tune_candidate(
     model-set's beam tuning first (its alpha)."""
     cand = candidate_by_name(name)
     out = Path(tuning_dir) / f"{name}.json"
-    if _tuning_ok(ev._read_json(out), cand):
-        print(f"tune {name}: SKIP (valid full tuning at {out})")
-        return False
+    check_model_dirs(models, cand.members)
+    hashes = _member_sha256(models, cand.members)
     base = None
     if cand.pool is not None:
         base = ev._read_json(Path(tuning_dir) / f"{cand.beam_name}.json")
-        if not _tuning_ok(base, candidate_by_name(cand.beam_name)):
+        if not _tuning_ok(base, candidate_by_name(cand.beam_name), hashes):
             raise ev.EvalStepError(
-                f"tune {name}: needs a valid full rule-1 tuning of {cand.beam_name} first"
+                f"tune {name}: needs a valid full rule-1 tuning of {cand.beam_name} made by the "
+                "current model weights first"
             )
-    check_model_dirs(models, cand.members)
+    base_alpha = base["winner"]["alpha"] if base else None
+    existing = ev._read_json(out)
+    if _tuning_ok(existing, cand, hashes, base_alpha):
+        print(f"tune {name}: SKIP (valid full tuning at {out})")
+        return False
+    if existing is not None:
+        print(f"tune {name}: existing {out} is stale or invalid for the current models; redoing")
     extra = {
         "candidate": name,
         "members": list(cand.members),
-        "member_sha256": _member_sha256(models, cand.members),
+        "member_sha256": hashes,
         "mbr": cand.mbr,
     }
     translator = build_translator(models, cand.members, mbr=cand.mbr, device=device)
@@ -328,6 +351,28 @@ def tune_candidate(
 # ---------------------------------------------------------------------------------------------
 
 
+def _check_consistent(tunings: Mapping[str, dict[str, Any]]) -> None:
+    """Refuse a mix of stale and fresh tuning files (no model dirs are needed here): every
+    candidate must record the same hash for the same member, and an MBR candidate's alpha must be
+    its beam candidate's current winner alpha."""
+    seen: dict[str, str] = {}
+    for name, t in tunings.items():
+        for member, sha in (t.get("member_sha256") or {}).items():
+            if seen.setdefault(member, sha) != sha:
+                raise ev.EvalStepError(
+                    f"select: {name} was tuned with different weights for member {member!r} than "
+                    "another candidate (a model changed between tuning steps); redo the tunes"
+                )
+    for c in final_all_candidates():
+        if c.pool is not None:
+            want = tunings[c.beam_name]["winner"]["alpha"]
+            if (tunings[c.name].get("alpha_beam") or {}).get("alpha") != want:
+                raise ev.EvalStepError(
+                    f"select: {c.name} used a different alpha than the current winner of "
+                    f"{c.beam_name} ({want}); redo its tune"
+                )
+
+
 def run_final_select(tuning_dir: Path, out_path: Path) -> dict[str, Any]:
     """selection.json over the 35 candidates (nmt.selection objective on E1 + E2): every
     candidate's objective and config, the winner (with its member list and MBR pool), the tie
@@ -341,6 +386,7 @@ def run_final_select(tuning_dir: Path, out_path: Path) -> dict[str, Any]:
                 "not on the pre-registered grid"
             )
         tunings[cand.name] = data
+    _check_consistent(tunings)
     result = ev.select_winner(tunings)
     result["tie_rule"] = FINAL_ALL_TIE_RULE
     result["objective_formula"] += "; final_all: PREREG post-selection amendment rule 5"
