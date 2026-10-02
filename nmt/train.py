@@ -512,6 +512,23 @@ def collect_run_provenance(
 # ---------------------------------------------------------------------------------------------
 
 
+def wsd_decay_window(
+    warmup_steps: int,
+    planned_steps: int,
+    cooldown_frac: float,
+    decay_start_step: int | None = None,
+) -> tuple[int, int]:
+    """(decay start step, decay length) of the WSD schedule. `decay_start_step` (set by
+    `--cooldown-now`) overrides the default start, `planned_steps - round(planned_steps *
+    cooldown_frac)`. Shared by `wsd_lr_scale` and the checkpoint pruner so the two can never
+    disagree about where the decay phase begins.
+    """
+    decay_len = max(1, round(planned_steps * cooldown_frac))
+    if decay_start_step is None:
+        decay_start_step = max(warmup_steps, planned_steps - decay_len)
+    return decay_start_step, decay_len
+
+
 def wsd_lr_scale(
     step: int,
     warmup_steps: int,
@@ -529,9 +546,9 @@ def wsd_lr_scale(
     """
     if warmup_steps > 0 and step < warmup_steps:
         return step / warmup_steps
-    decay_len = max(1, round(planned_steps * cooldown_frac))
-    if decay_start_step is None:
-        decay_start_step = max(warmup_steps, planned_steps - decay_len)
+    decay_start_step, decay_len = wsd_decay_window(
+        warmup_steps, planned_steps, cooldown_frac, decay_start_step
+    )
     if step < decay_start_step:
         return 1.0
     if step >= decay_start_step + decay_len:
@@ -679,6 +696,8 @@ def prune_checkpoints(
     """Delete old checkpoints beyond `keep_last`, but never delete ones at/after
     `decay_start_step` when `keep_decay_phase` is set — checkpoint averaging (spec §6, §9) needs
     the decay-phase checkpoints to still be on disk regardless of how many steps have passed.
+    Callers pass the WSD decay start whether or not `--cooldown-now` was used (see `train`);
+    `None` disables the protection.
     """
     files = sorted(Path(ckpt_dir).glob("step_*.pt"), key=lambda p: int(p.stem.split("_")[1]))
     if len(files) <= keep_last:
@@ -1062,6 +1081,12 @@ def train(
             grad_skip_count = resumed_ckpt.get("grad_skip_count", 0)
     if cooldown_now and decay_start_step is None:
         decay_start_step = step
+    # Where the decay phase begins, for checkpoint retention only (the LR schedule keeps using
+    # `decay_start_step`, which stays None unless --cooldown-now). Before this was derived from
+    # the schedule, `keep_decay_phase` protected nothing in a normal run (main run, 2026-10-02).
+    retention_decay_start, _ = wsd_decay_window(
+        cfg.optim.warmup_steps, cfg.optim.planned_steps, cfg.optim.cooldown_frac, decay_start_step
+    )
 
     # fork_rng: the probe's random inputs and dropout would otherwise advance the CUDA RNG that
     # training (and the RNG fingerprint) depends on.
@@ -1310,7 +1335,7 @@ def train(
                 )
                 print(f"CKPT_SAVED step={step} rng_fingerprint={fp} path={ckpt_path}", flush=True)
                 prune_checkpoints(
-                    ckpt_dir, cfg.ckpt.keep_last, decay_start_step, cfg.ckpt.keep_decay_phase
+                    ckpt_dir, cfg.ckpt.keep_last, retention_decay_start, cfg.ckpt.keep_decay_phase
                 )
                 last_ckpt_time = time.monotonic()
                 last_ckpt_step = step
