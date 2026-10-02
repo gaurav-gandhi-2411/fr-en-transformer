@@ -33,9 +33,9 @@ Sources for the later results are proposals: the gap v2, production benchmark, `
 | {{FINAL_E3_CHRF}} | report, model card | same | `sets.e3.official_chrf_ci` |
 | {{FINAL_COMET_SUMMARY}} | report, model card | COMET-22 system score and CI per set, or "not measured" | COMET column of the final report; `eval.json` `comet` once scored on GPU (confirm key). v1 has none: `reports/final/SUMMARY.md` says NOT MEASURED |
 | {{FINAL_COLAB_HOURS}} | report | Colab hours of the `final_all` session | `final_all` run summary or the Colab Summary cell (confirm); CU only if Colab's panel shows it |
-| RESOLVED ABL_WALL_S1 | report | Train wall seconds of `s1_sin_l4` | W&B run `a150f75a` summary `train_wall_seconds` (read with `scripts/audit_wandb_run.py`). The brief quoted 1,785.1 s; I found it in no repo file, so UNVERIFIED |  RESOLVED 2026-10-03: 1,785.1 s from reports/final/wandb_run_summaries.json (W&B API, read by the orchestrator); no longer a placeholder.
-| RESOLVED ABL_WALL_S2 | report | same for `s2_rope_l4` | W&B run `ba29d416`; the brief quoted 1,976.2 s, UNVERIFIED |  RESOLVED 2026-10-03: 1,976.2 s from reports/final/wandb_run_summaries.json (W&B API, read by the orchestrator); no longer a placeholder.
-| RESOLVED ABL_WALL_S3 | report | same for `s3_rope_concat_l4` | W&B run `f8200e87`; the brief quoted 1,928.2 s, UNVERIFIED |  RESOLVED 2026-10-03: 1,928.2 s from reports/final/wandb_run_summaries.json (W&B API, read by the orchestrator); no longer a placeholder.
+| RESOLVED ABL_WALL_S1 | report | Train wall seconds of `s1_sin_l4` | RESOLVED 2026-10-03: 1,785.1 s, `train_wall_seconds` in `reports/final/wandb_run_summaries.json` (W&B API, independently re-read by the PR #31 verifier). No longer a placeholder. |
+| RESOLVED ABL_WALL_S2 | report | Train wall seconds of `s2_rope_l4` | RESOLVED 2026-10-03: 1,976.2 s, `train_wall_seconds` in `reports/final/wandb_run_summaries.json` (W&B API, independently re-read by the PR #31 verifier). No longer a placeholder. |
+| RESOLVED ABL_WALL_S3 | report | Train wall seconds of `s3_rope_concat_l4` | RESOLVED 2026-10-03: 1,928.2 s, `train_wall_seconds` in `reports/final/wandb_run_summaries.json` (W&B API, independently re-read by the PR #31 verifier). No longer a placeholder. |
 | {{EXT_TRAIN_WALL_S}} | report | Total measured train wall seconds of the three extension runs | sum of `train_wall_seconds_summary` for `ext_stable_l4`, `ext_branch_a_l4`, `ext_branch_b_l4` (W&B group `extend_l4`) |
 | {{EXT_SUMMARY}} | report | Two sentences: did the longer runs help, any overfit flag | extension Summary cell output (per-run overfit-watch lines) and the stage-1 objectives of A and B against `main` in the `final_all` stage-1 file (confirm) |
 | {{GAPV2_SUMMARY}} | report, walkthrough | What the exploratory v2 analysis did, one sentence | `reports/final/gap_v2/` summary file (confirm name) |
@@ -75,16 +75,16 @@ Not listed on purpose:
 
 1. **Licence of the weights and of any released data.** The OPUS-100 card at revision `805090dc28bf78897da9641cdf08b61287580df9` has `license: unknown` in its metadata and "[More Information Needed]" under Licensing Information. The model card says: "not stated on the card; OPUS corpora carry mixed per-source licences; verify before any redistribution". Which licence do you want on the weights, and do you intend to release any data subset? Until you decide, `{{MODEL_LICENSE}}` stays open.
 2. **Effort hours.** `{{GG_EFFORT_HOURS}}` needs your own number.
-3. **Ablation wall times.** The brief gave 1,785.1, 1,976.2 and 1,928.2 s for S1, S2, S3. They are not in `reports/main_l4/run_audit.json`, `PLAN.md` or any other file on main, so I left them as placeholders. Do you want them filled from the three W&B runs, or confirmed from where the brief took them?
+3. **Ablation wall times.** RESOLVED: filled from the W&B run summaries (`reports/final/wandb_run_summaries.json`); the numbers match the ones you quoted.
 4. **A floor number.** There is no naive baseline (for example copy-the-source) in any report. It is cheap with the official scorer and gives the tables a floor. Do you want it added?
-5. **Stacked PR wording.** The brief says the PRs were "caught and re-opened as #27". From `gh pr view` PRs #25 and #26 merged into their stack bases at 18:33 UTC on 2026-10-02 and #27, a new PR with the same head, merged into main at 18:38 UTC. I wrote only those facts. How it was caught is not in the repo; add it if you want it in the report.
-6. **Report text.** The tooling I run under refused to write any file named like a report, so the report text is in my final message, not in `report/`, and `report/report.md` is absent from the PR. Please commit it from there. The placeholder checker skips a missing `report/report.md`; once it exists the checker covers it.
+5. **Stacked PR wording.** `gh pr view`: PRs #25 and #26 merged into their stack bases at 18:33:40 and 18:33:57 UTC on 2026-10-02 (16 and 33 s after #24 reached main) and #27, a new PR whose head is the branch containing #25 and #26, merged into main at 18:38:41 UTC. I wrote only those facts; how it was caught is not in the repo, so add it if you want it in the report.
+6. **Report text.** RESOLVED: `report/report.md` is now in the PR, and the placeholder checker covers it.
 
 ## 4. UNVERIFIED statements
 
 - U1. What each cited paper concludes (about 2x faster decoding from a deep encoder and shallow decoder; pre-LN stable with short warmup; RoPE extrapolation; WSD robustness to cutoffs; BPE size for low-resource data; concatenation helping low-resource translation) comes from `spec.md`. I verified metadata only.
 - U2. "OPUS corpora carry mixed per-source licences" is from the brief. The dataset card does not say it.
-- U3. The three ablation wall times in the brief (open question 3).
+- U3. RESOLVED (the three ablation wall times now come from `reports/final/wandb_run_summaries.json`).
 - U4. The CU figures: 1.54 CU/h is the rate you reported (`reports/pilot_l4/pilot_summary.json`, `colab_pro_compute_units_per_hour`); 5.5 CU for `main` is `reports/main_l4/run_audit.json` `wall.cu_used_ESTIMATE`, an estimate; the extension 5.12 h and 7.88 CU are estimates (`RUNBOOK.md` section 4.7).
 - U5. COMET CPU projections of 2.2 h and 4.5 h are quoted from `HANDOFF.md`; the projecting run's log is not in the repo.
 - U6. That `tests/test_train_resume_memory.py` fails on the old code is taken from commit `dc6e7e8`'s message; I did not check out the old code to confirm.

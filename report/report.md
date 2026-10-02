@@ -2,7 +2,7 @@
 
 DRAFT, private. Double-brace items are filled later from the files in `report/PLACEHOLDERS.md`. "v1" is the safety-net submission (`main`, checkpoint `final`, tuned decoding).
 
-I trained a 50.2M-parameter encoder-decoder on 921,670 OPUS-100 en-fr pairs, with no pretrained model of any kind. Each number comes from a file in `reports/`.
+I trained a 50.2M-parameter encoder-decoder on 921,670 OPUS-100 en-fr pairs, with no pretrained model of any kind. Each number comes from a file in the repository (mostly `reports/`; a few from PREREG.md, PLAN.md, README.md and HANDOFF.md, named where used).
 
 ## 1. Architecture decisions
 
@@ -40,13 +40,13 @@ I trained a 50.2M-parameter encoder-decoder on 921,670 OPUS-100 en-fr pairs, wit
 
 **Scorer encoding.** `official/score.py` opens files in the platform encoding, cp1252 on Windows, so a prediction file identical to the references scored BLEU 97.5, not 100 (README). The scorer is byte-pinned, so I wrapped it: `nmt.evaluate.run_official_scorer` sets `PYTHONUTF8=1`.
 
-**GPU contention.** The 3070 was shared with another of my jobs. S1 waited 5.7 h, was stopped at step 3, then hit the error above. Ablations must share hardware, so I retired the 3070 and ran S1, S2 and S3 in one Colab L4 session (PLAN.md, 2026-10-02). I also corrected my own commit message `9e36831`, which blamed the wrong cause.
+**GPU contention.** The 3070 was shared with another of my jobs. S1 waited 5.7 h, was stopped at step 3, then hit the error above. Ablations must share hardware, so I retired the 3070 and ran S1, S2 and S3 in one Colab L4 session (PLAN.md, 2026-10-02). I also corrected the record of my own commit `9e36831`, whose message blamed the wrong cause (PLAN.md; the history was not rewritten).
 
-**Stacked PR merge.** PRs #25 and #26 merged into their stack bases, not main, minutes after #24 reached main, so main held only #24. PR #27 carried the same head onto main and merged at 18:38 UTC. No code changed. I now retarget every PR of a stack to main before merging any.
+**Stacked PR merge.** PRs #25 and #26 merged into their stack bases, not main, within 33 seconds of #24 reaching main, so main held only #24. PR #27 carried the already-reviewed branch (which contains #25 and #26) onto main and merged at 18:38 UTC. No code changed. I now retarget every PR of a stack to main before merging any.
 
 **COMET cost.** COMET-22 over 17,294 distinct triples was projected at 2.2 h on CPU, 4.5 h for all triples (estimates, `HANDOFF.md`). I stopped after 5 of 7 chunks and kept the output marked incomplete (`reports/final/comet_partial_cpu_INCOMPLETE/`). COMET: {{FINAL_COMET_SUMMARY}}.
 
-**Compute and effort.** `main`: 11,791.8 s of training on an L4 (`reports/main_l4/run_audit.json`), about 5.5 CU at the 1.54 CU/h rate I reported (estimate). Ablations S1, S2, S3: 1,785.1, 1,976.2 and 1,928.2 s of training each (`reports/final/wandb_run_summaries.json`, `train_wall_seconds`). Extension run: planned 38,500 steps at 0.4785 s, about 5.12 h (estimate), measured {{EXT_TRAIN_WALL_S}} s. Final selection on Colab: {{FINAL_COLAB_HOURS}} h. My own time: {{GG_EFFORT_HOURS}} h.
+**Compute and effort.** `main`: 11,791.8 s of training on an L4 (`reports/main_l4/run_audit.json`), about 5.0 CU of that at the 1.54 CU/h rate I reported (estimate: 11,791.8 s = 3.28 h; the run's wall-clock hours were higher, `run_audit.json` `wall.cu_used_ESTIMATE` 5.5). Ablations S1, S2, S3: 1,785.1, 1,976.2 and 1,928.2 s of training each (`reports/final/wandb_run_summaries.json`, `train_wall_seconds`). Extension run: planned 38,500 steps at 0.4785 s, about 5.12 h (estimate), measured {{EXT_TRAIN_WALL_S}} s. Final selection on Colab: {{FINAL_COLAB_HOURS}} h. My own time: {{GG_EFFORT_HOURS}} h.
 
 ## 4. Dev results by slice
 
