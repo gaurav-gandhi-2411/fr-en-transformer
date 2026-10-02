@@ -1040,17 +1040,28 @@ def _ranges_overlap(results: dict, key_a: str, key_b: str, stat: str) -> bool:
     return a["min"] <= b["max"] and b["min"] <= a["max"]
 
 
-def _verdict(ratio: float | None, what: str, overlap: bool = False) -> str:
-    """int8/fp32 ratio of medians in words. The between-run ranges decide whether a difference is
-    distinguishable from run-to-run noise: overlapping ranges are never called faster/slower."""
+def _classify(ratio: float, overlap: bool, higher_is_better: bool) -> str:
+    """'faster' | 'slower' | 'indistinguishable' for int8 vs fp32. `ratio` = int8/fp32 median of
+    the statistic (latency: lower is better; throughput: higher is better). Overlapping
+    between-run (min, max) ranges are never called faster or slower."""
+    if overlap:
+        return "indistinguishable"
+    return "faster" if (ratio > 1.0) == higher_is_better else "slower"
+
+
+def _verdict(
+    ratio: float | None, what: str, overlap: bool = False, higher_is_better: bool = False
+) -> str:
+    """int8/fp32 ratio of medians in words (see `_classify`)."""
     if ratio is None:
         return f"{what}: not measured"
     base = f"ratio of medians {ratio:.2f}"
-    if overlap:
+    kind = _classify(ratio, overlap, higher_is_better)
+    if kind == "indistinguishable":
         return f"{what}: no clear difference, run-to-run ranges overlap ({base})"
-    if ratio < 1.0:
-        return f"{what}: int8 faster, ranges do not overlap ({base})"
-    return f"{what}: int8 SLOWER, ranges do not overlap ({base})"
+    return (
+        f"{what}: int8 {kind.upper() if kind == 'slower' else kind}, ranges do not overlap ({base})"
+    )
 
 
 def _low_cell(cell: dict[str, Any], key: str, nd: int = 1) -> str:
@@ -1247,6 +1258,13 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
     a("")
     a("## Findings")
     a("")
+    kinds: list[str] = []
+    for th in THREAD_SETTINGS:
+        for mode in ("greedy", "beam5"):
+            ki, kf = f"threads={th}|int8|{mode}", f"threads={th}|fp32|{mode}"
+            r = _ratio(lat, ki, kf)
+            if r is not None:
+                kinds.append(_classify(r, _ranges_overlap(lat, ki, kf, "p50"), False))
     fp_sz = size.get("fp32", {}).get("state_dict_torch_save_bytes")
     i8_sz = size.get("int8", {}).get("state_dict_torch_save_bytes")
     if fp_sz and i8_sz:
@@ -1254,9 +1272,10 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
             f"- Plain summary: int8 dynamic quantization cuts the saved model state from "
             f"{fp_sz / 1e6:.1f} MB to {i8_sz / 1e6:.1f} MB ({fp_sz / i8_sz:.2f}x smaller, "
             "torch.save of the state_dict) and, on E1, changes no metric beyond bootstrap noise "
-            "(see quality lines below; hundreds of individual outputs do differ). On this "
-            "laptop CPU it does NOT make single requests reliably faster; see the per-setting "
-            "lines below for where it is slower or indistinguishable."
+            "(see quality lines below; hundreds of individual outputs do differ). Single-request "
+            f"p50 latency, int8 vs fp32 over the {len(kinds)} thread/mode settings: "
+            + ", ".join(f"{kinds.count(k)} {k}" for k in ("faster", "slower", "indistinguishable"))
+            + " (a difference is only called when the between-run ranges do not overlap)."
         )
         a(
             "- Hypothesis for the missing speed-up, NOT tested here: single-sentence decoding is "
@@ -1276,7 +1295,7 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
             r = _ratio(tp, key_i, key_f, "sentences_per_second")
             if r is not None:
                 ov = _ranges_overlap(tp, key_i, key_f, "sentences_per_second")
-                a("- " + _verdict(r, f"throughput sent/s, threads={th}, {mode}", ov))
+                a("- " + _verdict(r, f"throughput sent/s, threads={th}, {mode}", ov, True))
     for mode in QUALITY_MODES:
         c = q["paired_int8_vs_fp32"][mode]
         parts = []

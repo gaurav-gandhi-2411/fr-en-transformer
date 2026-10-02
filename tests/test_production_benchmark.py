@@ -352,3 +352,11 @@ def test_verdict_never_calls_overlapping_ranges_faster_or_slower() -> None:
     assert pb._ranges_overlap(cells, "a", "b", "p50") and not pb._ranges_overlap(
         cells, "a", "c", "p50"
     )
+
+
+def test_throughput_direction_higher_is_better() -> None:
+    assert pb._classify(1.17, overlap=False, higher_is_better=True) == "faster"
+    assert pb._classify(1.17, overlap=False, higher_is_better=False) == "slower"
+    assert pb._classify(0.8, overlap=False, higher_is_better=True) == "slower"
+    assert pb._classify(0.8, overlap=True, higher_is_better=True) == "indistinguishable"
+    assert "faster" in pb._verdict(1.17, "t", overlap=False, higher_is_better=True)
