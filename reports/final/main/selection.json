@@ -1,0 +1,64 @@
+{
+  "objective_formula": "0.4*BLEU(E1+E2) + 0.4*chrF(E1+E2) + 0.2*chrF(E1), official score.py",
+  "selection_sets": "E1 + E2 only (nmt.selection)",
+  "candidate_order": [
+    "final",
+    "avg_last5",
+    "avg_decay"
+  ],
+  "candidates": {
+    "final": {
+      "objective": 48.74554955135861,
+      "bleu_union": 37.07920417897554,
+      "chrf_union": 57.29434511677012,
+      "chrf_e1": 54.980649165301706,
+      "config": {
+        "alpha": 1.2,
+        "beam": 5,
+        "segment_threshold": 192
+      },
+      "model_sha256": "96ef3bb589b47c5c45ad6cf60a7b1c96ffca43ce3ea0377a28440648bf97757f",
+      "n_e1": 1940,
+      "n_e2": 1000
+    },
+    "avg_last5": {
+      "objective": 48.658355280660345,
+      "bleu_union": 36.929899518057006,
+      "chrf_union": 57.25176740576498,
+      "chrf_e1": 54.92844255565773,
+      "config": {
+        "alpha": 1.2,
+        "beam": 4,
+        "segment_threshold": 64
+      },
+      "model_sha256": "fd5c50ac523c72ab183e6e3bacaa4723f0515b635f3459ba8b4836394064f88b",
+      "n_e1": 1940,
+      "n_e2": 1000
+    },
+    "avg_decay": {
+      "objective": 48.68846372942244,
+      "bleu_union": 36.99570932026446,
+      "chrf_union": 57.26281115460829,
+      "chrf_e1": 54.925277697366674,
+      "config": {
+        "alpha": 1.2,
+        "beam": 4,
+        "segment_threshold": 64
+      },
+      "model_sha256": "cc3c24e03cdd0aa29110196fc77ef25d0fd3829f093d28aabfa91c3ae8d5e6de",
+      "n_e1": 1940,
+      "n_e2": 1000
+    }
+  },
+  "tie_rule": "candidates within 1e-09 of the best objective are tied; the tie goes to the earliest candidate in the pre-registered order (final, avg_last5, avg_decay)",
+  "tied_candidates": [
+    "final"
+  ],
+  "winner": {
+    "candidate": "final",
+    "objective": 48.74554955135861,
+    "alpha": 1.2,
+    "beam": 5,
+    "segment_threshold": 192
+  }
+}

@@ -1,0 +1,249 @@
+{
+  "a": "reports\\final\\s2_rope_l4\\seg_off",
+  "b": "reports\\final\\s1_sin_l4\\seg_off",
+  "n_bootstrap": 1000,
+  "seed": 1234,
+  "splits": {
+    "dev": {
+      "n": 150,
+      "overall": {
+        "bleu": {
+          "delta": 2.180113704947644,
+          "ci_low": 1.0313219294830525,
+          "ci_high": 3.729057980922793,
+          "p_value": 0.001,
+          "n_resamples": 1000
+        },
+        "chrf": {
+          "delta": 0.8858576832272433,
+          "ci_low": -0.3517052169748922,
+          "ci_high": 2.141655975634869,
+          "p_value": 0.066,
+          "n_resamples": 1000
+        }
+      },
+      "by_slice": {
+        "seen": {
+          "bleu": {
+            "delta": 2.990757054982126,
+            "ci_low": 0.06851890651718051,
+            "ci_high": 6.0452985080762645,
+            "p_value": 0.02,
+            "n_resamples": 1000
+          },
+          "chrf": {
+            "delta": 0.3962772593852435,
+            "ci_low": -1.448275408772922,
+            "ci_high": 2.2454776960433946,
+            "p_value": 0.341,
+            "n_resamples": 1000
+          }
+        },
+        "unseen_domain": {
+          "bleu": {
+            "delta": 1.7922456389110728,
+            "ci_low": -1.1760573730452144,
+            "ci_high": 4.977791332418981,
+            "p_value": 0.116,
+            "n_resamples": 1000
+          },
+          "chrf": {
+            "delta": 1.2565424487945336,
+            "ci_low": -0.939070644302376,
+            "ci_high": 3.4710695064542065,
+            "p_value": 0.127,
+            "n_resamples": 1000
+          }
+        },
+        "long": {
+          "bleu": {
+            "delta": 2.59488763259305,
+            "ci_low": 1.0537586965525954,
+            "ci_high": 4.254340925271812,
+            "p_value": 0.0,
+            "n_resamples": 1000
+          },
+          "chrf": {
+            "delta": 1.1236489997766839,
+            "ci_low": -0.09144724942343174,
+            "ci_high": 2.370515212841042,
+            "p_value": 0.044,
+            "n_resamples": 1000
+          }
+        }
+      }
+    },
+    "e1": {
+      "n": 1940,
+      "overall": {
+        "bleu": {
+          "delta": 1.539962963246019,
+          "ci_low": 1.0904119245887465,
+          "ci_high": 2.03434495881967,
+          "p_value": 0.0,
+          "n_resamples": 1000
+        },
+        "chrf": {
+          "delta": 0.9172284061136438,
+          "ci_low": 0.5839326628782331,
+          "ci_high": 1.2628733533730667,
+          "p_value": 0.0,
+          "n_resamples": 1000
+        }
+      }
+    },
+    "e2": {
+      "n": 1000,
+      "overall": {
+        "bleu": {
+          "delta": 1.153367077990815,
+          "ci_low": 0.7431918349374911,
+          "ci_high": 1.645895464070982,
+          "p_value": 0.0,
+          "n_resamples": 1000
+        },
+        "chrf": {
+          "delta": 0.8897139475608071,
+          "ci_low": 0.6640002061400594,
+          "ci_high": 1.1444489697529647,
+          "p_value": 0.0,
+          "n_resamples": 1000
+        }
+      }
+    },
+    "e3": {
+      "n": 1000,
+      "overall": {
+        "bleu": {
+          "delta": 1.1398917909374777,
+          "ci_low": 0.730988857377767,
+          "ci_high": 1.5372916619816461,
+          "p_value": 0.0,
+          "n_resamples": 1000
+        },
+        "chrf": {
+          "delta": 1.045607731225779,
+          "ci_low": 0.5959945959697066,
+          "ci_high": 1.5006212577179951,
+          "p_value": 0.0,
+          "n_resamples": 1000
+        }
+      }
+    },
+    "e2synth": {
+      "n": 300,
+      "overall": {
+        "bleu": {
+          "delta": 4.125742362709719,
+          "ci_low": 3.35400245525177,
+          "ci_high": 4.943757107341252,
+          "p_value": 0.0,
+          "n_resamples": 1000
+        },
+        "chrf": {
+          "delta": 3.107911052489108,
+          "ci_low": 2.3988578407309973,
+          "ci_high": 3.8483730427362133,
+          "p_value": 0.0,
+          "n_resamples": 1000
+        }
+      },
+      "by_slice": {
+        "e2synth_400_600": {
+          "bleu": {
+            "delta": 0.7094916050420004,
+            "ci_low": -0.5290973339391272,
+            "ci_high": 1.9383478840745525,
+            "p_value": 0.127,
+            "n_resamples": 1000
+          },
+          "chrf": {
+            "delta": 0.03187054822947033,
+            "ci_low": -1.3145601320620202,
+            "ci_high": 1.195112335346927,
+            "p_value": 0.483,
+            "n_resamples": 1000
+          }
+        },
+        "e2synth_800_900": {
+          "bleu": {
+            "delta": 6.490452751806821,
+            "ci_low": 5.21595751494387,
+            "ci_high": 7.673378949838622,
+            "p_value": 0.0,
+            "n_resamples": 1000
+          },
+          "chrf": {
+            "delta": 5.845533052749772,
+            "ci_low": 4.662408713716928,
+            "ci_high": 7.011703636660009,
+            "p_value": 0.0,
+            "n_resamples": 1000
+          }
+        },
+        "e2synth_600_800": {
+          "bleu": {
+            "delta": 3.877498003211336,
+            "ci_low": 2.248592854121174,
+            "ci_high": 5.096578480389418,
+            "p_value": 0.0,
+            "n_resamples": 1000
+          },
+          "chrf": {
+            "delta": 3.446329556488095,
+            "ci_low": 2.3292005607174673,
+            "ci_high": 4.5847308668630475,
+            "p_value": 0.0,
+            "n_resamples": 1000
+          }
+        }
+      },
+      "synthetic": true,
+      "label": "E2-synth (synthetic)"
+    }
+  },
+  "selection_objective": {
+    "a": {
+      "objective": 44.79693262754198,
+      "bleu_union": 32.46854000507085,
+      "chrf_union": 53.83723113180888,
+      "chrf_e1": 51.37312086395043
+    },
+    "b": {
+      "objective": 43.68069192700672,
+      "bleu_union": 31.04442220353147,
+      "chrf_union": 52.92936138506694,
+      "chrf_e1": 50.45589245783679
+    },
+    "delta": 1.1162407005352577,
+    "ci_low": 0.8673347258154323,
+    "ci_high": 1.3433394167412942,
+    "p_value": 0.0,
+    "n_resamples": 1000,
+    "n_e1": 1940,
+    "n_e2": 1000,
+    "formula": "0.4*BLEU(E1+E2) + 0.4*chrF(E1+E2) + 0.2*chrF(E1), official score.py",
+    "resampling": "stratified: |E1| drawn from E1 and |E2| from E2 per resample, same indices for A and B"
+  },
+  "hypothesis": "H1",
+  "delta": "s2_rope_l4 - s1_sin_l4",
+  "variant": "seg_off",
+  "role": "primary",
+  "source": {
+    "s2_rope_l4": {
+      "hf_repo": "OWNER/fr-en-transformer-eval",
+      "hf_revision": "bdd850a6d384e088dd1eb52d67ad767149dee3af"
+    },
+    "s1_sin_l4": {
+      "hf_repo": "OWNER/fr-en-transformer-eval",
+      "hf_revision": "041d49269f61d0cbd9c0380a4f0a0a31f7599547"
+    }
+  },
+  "prereg_readout": {
+    "criteria": {
+      "e2: delta chrF > 0 and p < 0.05": true,
+      "e2synth (pooled): delta chrF > 0 and p < 0.05": true
+    },
+    "supported": true
+  }
+}

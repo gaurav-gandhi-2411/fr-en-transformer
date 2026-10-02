@@ -1,0 +1,152 @@
+{
+ "run": "s1_sin_l4",
+ "variant": "seg_tuned",
+ "failure_modes": {
+  "dev": {
+   "n": 150,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.02,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.04666666666666667,
+   "length_ratio_mean": 1.0315251076567857,
+   "length_ratio_median": 1.0
+  },
+  "dev:long": {
+   "n": 30,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.06666666666666667,
+   "length_ratio_mean": 1.0992933064555355,
+   "length_ratio_median": 1.0560675883256527
+  },
+  "dev:seen": {
+   "n": 60,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.03333333333333333,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.06666666666666667,
+   "length_ratio_mean": 1.0484269446689523,
+   "length_ratio_median": 1.0
+  },
+  "dev:unseen_domain": {
+   "n": 60,
+   "repetition_rate": 0.0,
+   "truncation_rate": 0.016666666666666666,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.016666666666666666,
+   "length_ratio_mean": 0.9807391712452446,
+   "length_ratio_median": 1.0
+  },
+  "e1": {
+   "n": 1940,
+   "repetition_rate": 0.01443298969072165,
+   "truncation_rate": 0.02422680412371134,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.04536082474226804,
+   "length_ratio_mean": 1.0130216070883002,
+   "length_ratio_median": 1.0
+  },
+  "e2": {
+   "n": 1000,
+   "repetition_rate": 0.035,
+   "truncation_rate": 0.005,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.036,
+   "length_ratio_mean": 1.0444977407027125,
+   "length_ratio_median": 1.0
+  },
+  "e2synth": {
+   "n": 300,
+   "repetition_rate": 0.08,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0033333333333333335,
+   "length_ratio_mean": 1.0149032745347542,
+   "length_ratio_median": 1.009164713759625
+  },
+  "e2synth:e2synth_400_600": {
+   "n": 100,
+   "repetition_rate": 0.03,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0,
+   "length_ratio_mean": 1.0133037762319277,
+   "length_ratio_median": 1.0128226204175572
+  },
+  "e2synth:e2synth_600_800": {
+   "n": 100,
+   "repetition_rate": 0.09,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.01,
+   "length_ratio_mean": 1.0224639898246308,
+   "length_ratio_median": 1.0192378838327785
+  },
+  "e2synth:e2synth_800_900": {
+   "n": 100,
+   "repetition_rate": 0.12,
+   "truncation_rate": 0.0,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.0,
+   "length_ratio_mean": 1.0089420575477044,
+   "length_ratio_median": 0.9961240310077519
+  },
+  "e3": {
+   "n": 1000,
+   "repetition_rate": 0.002,
+   "truncation_rate": 0.023,
+   "untranslated_copy_rate": 0.0,
+   "overlong_rate": 0.029,
+   "length_ratio_mean": 0.9848964606326835,
+   "length_ratio_median": 0.9666666666666667
+  }
+ },
+ "failure_mode_definitions": {
+  "repetition_rate": "share of sentences with any repeated word 3-gram in the hypothesis",
+  "truncation_rate": "share with hyp/ref word-count ratio < 0.5",
+  "untranslated_copy_rate": "share with > 10% of hypothesis subwords copied from the source and never seen on the train target side",
+  "overlong_rate": "share with hyp/ref word-count ratio > 1.5"
+ },
+ "rarity_buckets_e1_e2_e3": {
+  "definition": "quintiles of the source's mean subword train frequency, edges from the pooled E1+E2+E3 sources (model independent); bucket 1 = most common sources",
+  "edges_mean_src_freq": [
+   101184.10392156863,
+   132543.20263322882,
+   159915.9523809524,
+   192201.39931623932
+  ],
+  "buckets": [
+   {
+    "bucket": 1,
+    "n": 788,
+    "mean_src_freq": 224412.34714320008,
+    "chrf": 50.48387217314054
+   },
+   {
+    "bucket": 2,
+    "n": 788,
+    "mean_src_freq": 174899.28290329344,
+    "chrf": 51.91863882115449
+   },
+   {
+    "bucket": 3,
+    "n": 788,
+    "mean_src_freq": 146157.1655766129,
+    "chrf": 49.16929285955004
+   },
+   {
+    "bucket": 4,
+    "n": 788,
+    "mean_src_freq": 117879.32565223864,
+    "chrf": 47.854247498074486
+   },
+   {
+    "bucket": 5,
+    "n": 788,
+    "mean_src_freq": 62855.13371151275,
+    "chrf": 45.31659662888261
+   }
+  ]
+ }
+}

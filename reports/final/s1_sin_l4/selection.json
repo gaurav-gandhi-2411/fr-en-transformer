@@ -1,0 +1,34 @@
+{
+  "objective_formula": "0.4*BLEU(E1+E2) + 0.4*chrF(E1+E2) + 0.2*chrF(E1), official score.py",
+  "selection_sets": "E1 + E2 only (nmt.selection)",
+  "candidate_order": [
+    "final"
+  ],
+  "candidates": {
+    "final": {
+      "objective": 43.77805740848511,
+      "bleu_union": 31.236256861276164,
+      "chrf_union": 52.98094043101821,
+      "chrf_e1": 50.45589245783679,
+      "config": {
+        "alpha": 1.2,
+        "beam": 4,
+        "segment_threshold": 64
+      },
+      "model_sha256": "7aad05c514e671668e9d7b928d515209b3cf306258904d4dd0c50dc0044a33a1",
+      "n_e1": 1940,
+      "n_e2": 1000
+    }
+  },
+  "tie_rule": "candidates within 1e-09 of the best objective are tied; the tie goes to the earliest candidate in the pre-registered order (final, avg_last5, avg_decay)",
+  "tied_candidates": [
+    "final"
+  ],
+  "winner": {
+    "candidate": "final",
+    "objective": 43.77805740848511,
+    "alpha": 1.2,
+    "beam": 4,
+    "segment_threshold": 64
+  }
+}

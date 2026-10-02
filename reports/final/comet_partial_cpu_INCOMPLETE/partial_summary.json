@@ -1,0 +1,201 @@
+{
+ "STATUS": "INCOMPLETE - COMET-22 on CPU stopped by instruction after 5 of 7 chunks; NOT used in SUMMARY.md",
+ "model": "Unbabel/wmt22-comet-da",
+ "model_class": "RegressionMetric",
+ "class_identifier": "regression_metric",
+ "device": "cpu",
+ "n_distinct_triples_total": 17294,
+ "n_distinct_triples_scored": 12500,
+ "coverage_per_run_variant_split": {
+  "main/seg_off/dev": {
+   "n": 150,
+   "scored": 150
+  },
+  "main/seg_tuned/dev": {
+   "n": 150,
+   "scored": 150
+  },
+  "s1_sin_l4/seg_off/dev": {
+   "n": 150,
+   "scored": 150
+  },
+  "s1_sin_l4/seg_tuned/dev": {
+   "n": 150,
+   "scored": 150
+  },
+  "s2_rope_l4/seg_off/dev": {
+   "n": 150,
+   "scored": 150
+  },
+  "s2_rope_l4/seg_tuned/dev": {
+   "n": 150,
+   "scored": 150
+  },
+  "s3_rope_concat_l4/seg_off/dev": {
+   "n": 150,
+   "scored": 150
+  },
+  "s3_rope_concat_l4/seg_tuned/dev": {
+   "n": 150,
+   "scored": 150
+  },
+  "main/seg_off/e1": {
+   "n": 1940,
+   "scored": 1940
+  },
+  "main/seg_tuned/e1": {
+   "n": 1940,
+   "scored": 1940
+  },
+  "s1_sin_l4/seg_off/e1": {
+   "n": 1940,
+   "scored": 1940
+  },
+  "s1_sin_l4/seg_tuned/e1": {
+   "n": 1940,
+   "scored": 1940
+  },
+  "s2_rope_l4/seg_off/e1": {
+   "n": 1940,
+   "scored": 1940
+  },
+  "s2_rope_l4/seg_tuned/e1": {
+   "n": 1940,
+   "scored": 1940
+  },
+  "s3_rope_concat_l4/seg_off/e1": {
+   "n": 1940,
+   "scored": 1940
+  },
+  "s3_rope_concat_l4/seg_tuned/e1": {
+   "n": 1940,
+   "scored": 1940
+  },
+  "main/seg_off/e2": {
+   "n": 1000,
+   "scored": 1000
+  },
+  "main/seg_tuned/e2": {
+   "n": 1000,
+   "scored": 1000
+  },
+  "s1_sin_l4/seg_off/e2": {
+   "n": 1000,
+   "scored": 1000
+  },
+  "s1_sin_l4/seg_tuned/e2": {
+   "n": 1000,
+   "scored": 1000
+  },
+  "s2_rope_l4/seg_off/e2": {
+   "n": 1000,
+   "scored": 1000
+  },
+  "s2_rope_l4/seg_tuned/e2": {
+   "n": 1000,
+   "scored": 1000
+  },
+  "s3_rope_concat_l4/seg_off/e2": {
+   "n": 1000,
+   "scored": 1000
+  },
+  "s3_rope_concat_l4/seg_tuned/e2": {
+   "n": 1000,
+   "scored": 1000
+  },
+  "main/seg_off/e2synth": {
+   "n": 300,
+   "scored": 300
+  },
+  "main/seg_tuned/e2synth": {
+   "n": 300,
+   "scored": 300
+  },
+  "s1_sin_l4/seg_off/e2synth": {
+   "n": 300,
+   "scored": 300
+  },
+  "s1_sin_l4/seg_tuned/e2synth": {
+   "n": 300,
+   "scored": 300
+  },
+  "s2_rope_l4/seg_off/e2synth": {
+   "n": 300,
+   "scored": 150
+  },
+  "s2_rope_l4/seg_tuned/e2synth": {
+   "n": 300,
+   "scored": 4
+  },
+  "s3_rope_concat_l4/seg_off/e2synth": {
+   "n": 300,
+   "scored": 0
+  },
+  "s3_rope_concat_l4/seg_tuned/e2synth": {
+   "n": 300,
+   "scored": 0
+  },
+  "main/seg_off/e3": {
+   "n": 1000,
+   "scored": 0
+  },
+  "main/seg_tuned/e3": {
+   "n": 1000,
+   "scored": 0
+  },
+  "s1_sin_l4/seg_off/e3": {
+   "n": 1000,
+   "scored": 0
+  },
+  "s1_sin_l4/seg_tuned/e3": {
+   "n": 1000,
+   "scored": 0
+  },
+  "s2_rope_l4/seg_off/e3": {
+   "n": 1000,
+   "scored": 0
+  },
+  "s2_rope_l4/seg_tuned/e3": {
+   "n": 1000,
+   "scored": 0
+  },
+  "s3_rope_concat_l4/seg_off/e3": {
+   "n": 1000,
+   "scored": 0
+  },
+  "s3_rope_concat_l4/seg_tuned/e3": {
+   "n": 1000,
+   "scored": 0
+  }
+ },
+ "system_mean_for_fully_covered_only": {
+  "main/seg_off/dev": 0.7553895499308904,
+  "main/seg_tuned/dev": 0.7553895499308904,
+  "s1_sin_l4/seg_off/dev": 0.6935675398508707,
+  "s1_sin_l4/seg_tuned/dev": 0.6938478144009909,
+  "s2_rope_l4/seg_off/dev": 0.7114438541730245,
+  "s2_rope_l4/seg_tuned/dev": 0.7114569099744161,
+  "s3_rope_concat_l4/seg_off/dev": 0.7053198053439458,
+  "s3_rope_concat_l4/seg_tuned/dev": 0.7052948977549871,
+  "main/seg_off/e1": 0.7946041102953179,
+  "main/seg_tuned/e1": 0.7946942731661281,
+  "s1_sin_l4/seg_off/e1": 0.7448664848183848,
+  "s1_sin_l4/seg_tuned/e1": 0.7452566468531323,
+  "s2_rope_l4/seg_off/e1": 0.7568657613445803,
+  "s2_rope_l4/seg_tuned/e1": 0.7571567326323273,
+  "s3_rope_concat_l4/seg_off/e1": 0.7569806407407387,
+  "s3_rope_concat_l4/seg_tuned/e1": 0.7571862274531237,
+  "main/seg_off/e2": 0.8004387677609921,
+  "main/seg_tuned/e2": 0.8004749061763287,
+  "s1_sin_l4/seg_off/e2": 0.7471091412901878,
+  "s1_sin_l4/seg_tuned/e2": 0.7484257178306579,
+  "s2_rope_l4/seg_off/e2": 0.7579655883312225,
+  "s2_rope_l4/seg_tuned/e2": 0.7582599007487297,
+  "s3_rope_concat_l4/seg_off/e2": 0.7598361787796021,
+  "s3_rope_concat_l4/seg_tuned/e2": 0.759984047293663,
+  "main/seg_off/e2synth": 0.7682085810105006,
+  "main/seg_tuned/e2synth": 0.7684632440408071,
+  "s1_sin_l4/seg_off/e2synth": 0.6832165413101514,
+  "s1_sin_l4/seg_tuned/e2synth": 0.7133955802520117
+ }
+}
