@@ -793,6 +793,11 @@ def score_quality(work_dir: Path, out_dir: Path) -> dict[str, Any]:
             rep = off_out / f"official_e1_{precision}_{mode}.json"
             run_official_scorer(gold, pred_out / name, rep)
             report = json.loads(rep.read_text(encoding="utf-8"))
+            # official/score.py writes --out in text mode (CRLF on Windows); re-serialise the same
+            # parsed report with LF so committed bytes are identical on every OS (content unchanged)
+            rep.write_bytes(
+                (json.dumps(report, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+            )
             scores[f"{precision}|{mode}"] = {
                 "bleu": report["all"]["bleu"],
                 "chrf": report["all"]["chrf"],
