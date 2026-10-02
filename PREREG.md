@@ -124,3 +124,53 @@ run without GG's approval**.
     8.86 epochs (micro-batch 4096, concat 0.15, seed 1234; `reports/epoch_accounting.json`).
   - The main config is therefore unchanged: dropout 0.1, label smoothing 0.1, existing
     retention and selection.
+- **2026-10-02 — ablation hardware, main-run selection candidates, dev disclosure.**
+  Committed after the main run finished and before any selection or evaluation decode of it, and
+  before any ablation training.
+  - **(a) §3 hardware: ablations run on Colab L4. The RTX 3070 is retired.**
+    - **Runs:** `configs/s1_sin_l4.yaml`, `s2_rope_l4.yaml`, `s3_rope_concat_l4.yaml`, W&B group
+      `ablation_l4`, sequentially in one Colab session (notebook `CONFIG = "ablations_l4"`, tag
+      v0.2.3-colab). All three share seed 1234, `planned_steps` 4107, micro-batch 4096,
+      tokens/step 25,000, warmup 500 and bf16.
+    - **Why retired:** the 3070 is shared with another of GG's workloads (intent-router). The first
+      S1 attempt waited 5.7 h for the GPU, was stopped by contention at step 3, then hit a
+      resume-memory bug (fixed in v0.2.2-colab). §3 forbids splitting S1/S2/S3 across hardware,
+      so all three move.
+    - **Consequences for §4 and §5:**
+      - §4 (`main_ext_3070`) lapses: there is no 3070 run, so the main-run candidate is `main`
+        only.
+      - §5's "known validity limit" no longer applies: main and the ablations both trained in
+        bf16 on an NVIDIA L4.
+    - Everything else in §3 is unchanged: hypotheses, decision rules, primary segmentation-off
+      decoding, and final-checkpoint comparison.
+  - **(b) Main-run selection candidates** (checkpoints saved on Drive:
+    step_00019000, 00020757, 00022500, 00024269, 00024645):
+    1. `final`: step 24,645 alone.
+    2. `avg_last5`: the mean of all five. This includes step 19,000, which is before decay.
+    3. `avg_decay`: the mean of the decay-phase checkpoints 20,757, 22,500, 24,269 and 24,645.
+
+    - **Decay start:** step 19,716 per the WSD config. `nmt/train.py:532-534` (`wsd_lr_scale`) sets
+      `decay_len = round(planned_steps × cooldown_frac) = round(24,645 × 0.2) = 4,929` and
+      `decay_start_step = planned_steps − decay_len = 19,716`; `cooldown_frac: 0.2` is in
+      `configs/main.yaml`.
+    - **Where 24,645 comes from:** it is not in `configs/main.yaml`, which keeps a 50,000
+      placeholder. It reached the trainer through `--planned-steps 24645`: the notebook's
+      `PLANNED_STEPS`, overriding the config at `nmt/train.py:1456-1457`. That value is the L4
+      pilot's `plan.json`.
+    - **Retention disclosure:** only five checkpoints exist because `prune_checkpoints`
+      (`nmt/train.py:676-697`) protects decay-phase files only when `decay_start_step` is set,
+      which happens only under `--cooldown-now`. The main run therefore kept its last
+      `keep_last: 5` checkpoints, and `keep_decay_phase: true` had no effect. The decay-phase set
+      above is the four decay-phase checkpoints that survived, not every one written.
+    - **Selection:** the selection objective (§2) is unchanged and uses E1 + E2 only. Each
+      candidate gets its own §1 decoding tuning. The candidate and decoding config with the
+      highest objective are selected.
+  - **(c) Disclosure: dev metrics logged during training.**
+    - The main run's periodic in-training eval hook (every 500 steps) decoded the official dev set
+      (all 150, per slice) together with fixed seeded subsets of E1 (500), E2 (300) and E3 (300).
+      It decoded greedily (max length 1.5 × source + 10, 3-gram repeat block) and logged BLEU/chrF
+      to W&B as training curves (`nmt/evaluate.py` `build_train_eval_fn` / `TrainEvalConfig`).
+    - These curves were not used for any decision: no checkpoint, hyperparameter, decoding or
+      stopping choice. The same holds for E3.
+    - Official dev and E3 enter only the single final report of the selected model (§5). All
+      selection uses E1 + E2.
