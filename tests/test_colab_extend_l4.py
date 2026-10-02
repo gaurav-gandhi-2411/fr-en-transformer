@@ -269,6 +269,35 @@ def test_ci_and_executor_cover_extend_l4_dry_run() -> None:
     assert '"extend_l4"' in executor.split("DRY_RUN_CONFIGS = ")[1].splitlines()[0]
 
 
+def test_expected_input_sha256_defaults_to_none_and_pins_when_set(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    assert _params()["EXPECTED_INPUT_SHA256"] is None  # never invented: GG pins it later
+    sha = _put_main_input(tmp_path)
+    path = _dirs(tmp_path)[2] / "step_00019000.pt"
+    ns = _ns(tmp_path, FakeRunStep())
+    report = ns["extend_input_report"]
+    report("ext_stable_l4", path, dry_run=False, produced_by_sequence=False, expected_sha256=sha)
+    assert "matches EXPECTED_INPUT_SHA256" in capsys.readouterr().out
+    bad = "0" * 64
+    with pytest.raises(RuntimeError, match="EXPECTED_INPUT_SHA256"):
+        report(
+            "ext_stable_l4", path, dry_run=False, produced_by_sequence=False, expected_sha256=bad
+        )
+    report("ext_stable_l4", path, dry_run=True, produced_by_sequence=False, expected_sha256=bad)
+    assert "MISMATCH" in capsys.readouterr().out
+
+
+def test_sequence_refuses_a_pin_mismatch_before_any_training(tmp_path: Path) -> None:
+    _put_main_input(tmp_path)
+    fake = FakeRunStep()
+    ns = _ns(tmp_path, fake)
+    ns["EXPECTED_INPUT_SHA256"] = "0" * 64
+    with pytest.raises(RuntimeError, match="EXPECTED_INPUT_SHA256"):
+        _sequence(ns, tmp_path)
+    assert fake.calls == []
+
+
 def test_helper_cell_checks_the_input_and_prints_the_estimate_before_training(
     tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
