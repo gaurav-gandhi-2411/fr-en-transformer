@@ -108,3 +108,19 @@ run without GG's approval**.
   - Resumes are recorded (`resume_count`, wait time, redone steps). Pure training wall time is
     reported separately from wait time.
   - None of this changes §1–§5.
+- **2026-10-02 — concatenation augmentation fixed before any S3 or main training.**
+  - **Bug:** concat augmentation was applied after bucketing and padded whole batches to the
+    concatenated length. At micro-batch 4096 / concat 0.15, 80.6% of padded tokens were padding
+    and micro-batches reached 131,584 tokens, against a budget of 8,192 padded src+tgt tokens.
+    Evidence: the `reports/epoch_accounting.json` replay before the fix.
+  - **Fix:** the per-epoch concat plan is now drawn before bucketing, so every micro-batch
+    respects its budget (29.6% padding, max 8,192). With concat off, batches are unchanged, so
+    S1/S2 data order is identical.
+  - **Effect on the hypotheses:** H2 (S3 vs S2) is evaluated on the fixed implementation. No S3
+    or main step has run on the old one.
+- **2026-10-02 — data-limited regularization amendment NOT triggered.**
+  - The trigger was "main > 10 epochs". On the trainer's own token basis (padded src+tgt; see
+    `nmt/data/loader.py` `batch_token_count`), main = 24,645 steps / 2,782 steps per epoch =
+    8.86 epochs (micro-batch 4096, concat 0.15, seed 1234; `reports/epoch_accounting.json`).
+  - The main config is therefore unchanged: dropout 0.1, label smoothing 0.1, existing
+    retention and selection.

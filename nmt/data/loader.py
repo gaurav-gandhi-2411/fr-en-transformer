@@ -18,6 +18,9 @@ import numpy as np
 import torch
 from torch import Tensor
 
+MAX_CONCAT_PAIRS = 4  # spec §6: 2-4 pairs joined
+CONCAT_STREAM = 1  # third seed word: keeps the concat RNG stream apart from the batch-order RNG
+
 
 class ShardDataset:
     """In-memory view over every `shard_*.npz` file for one split, matching the PLAN.md shard
@@ -116,12 +119,20 @@ class BucketedSampler:
       batches) is a **pure function of (seed, epoch)**: it is rebuilt deterministically by
       `_build_epoch_batches`, never itself persisted. Only `epoch` and `batch_cursor` need to be
       saved to reconstruct "which batch comes next" exactly.
-    - Concatenation augmentation draws (which examples get joined, with how many partners) are
-      genuinely sequential/stateful — they must not restart from a fixed seed on resume, or a
-      resumed run would repeat the pre-checkpoint augmentation choices instead of continuing them.
-      A dedicated `numpy.random.Generator` (`_aug_rng`) is advanced once per example materialized,
-      and its `bit_generator.state` is exactly what `state_dict()`/`load_state_dict()` persist as
-      "rng state" — restoring it reproduces the identical remaining draws bit-for-bit.
+    - Concatenation augmentation is part of the epoch PLAN, decided before bucketing. A
+      dedicated RNG keyed on (seed, epoch, CONCAT_STREAM) draws, per example, whether it is
+      joined (prob `concat_prob`), how many pairs k in {2,3,4} and the k-1 random partner indices.
+      Bucketing then uses the joined length (each side truncated to `concat_max_len`, then the same
+      max(src+1, tgt+1) scalar as without concat), so every padded batch obeys the same
+      `max_tokens` rule as the no-concat case. (Previously pairs were joined at materialization,
+      after bucketing on the unjoined lengths, and `_pad_batch` padded the whole batch to its
+      longest joined row: padded micro-batches reached 131k-170k tokens against a 4k-8k budget.)
+      With `concat_prob == 0` nothing is drawn and the batches are identical to the pre-plan
+      implementation for the same seed.
+    - The plan is therefore a pure function of (seed, epoch) like the batch order, so resume needs
+      only `epoch` and `batch_cursor`. Old states carrying `aug_rng_state` still load (the key is
+      ignored); a pre-plan checkpoint resumed with concat_prob > 0 continues with the new plan
+      rather than bit-exactly (only smoke artifacts exist).
     """
 
     def __init__(
@@ -149,28 +160,60 @@ class BucketedSampler:
         self.shuffle = shuffle
         self.epoch = 0
         self.batch_cursor = 0
-        self._aug_rng = np.random.default_rng(seed)
+        n = len(dataset)
+        self._src_lens = np.array([dataset.src_len(i) for i in range(n)], dtype=np.int64)
+        self._tgt_lens = (
+            np.array([dataset.tgt_len(i) for i in range(n)], dtype=np.int64)
+            if dataset.has_tgt
+            else None
+        )
+        # Per-epoch concat plan (see class docstring): k[i] < 2 means "not joined"; otherwise
+        # example i is joined with `partners[i, : k[i] - 1]`.
+        self._concat_k = np.zeros(n, dtype=np.int64)
+        self._partners = np.zeros((n, MAX_CONCAT_PAIRS - 1), dtype=np.int64)
         self._batches: list[list[int]] = []
         self._build_epoch_batches()
 
-    def _example_len(self, i: int) -> int:
-        src_len = self.dataset.src_len(i) + 1  # + EOS
-        tgt_len = (self.dataset.tgt_len(i) + 1) if self.dataset.has_tgt else 0  # + BOS
-        return max(src_len, tgt_len)
+    def _plan_concat(self) -> np.ndarray:
+        """Decide this epoch's concatenation plan; return each example's bucketing length
+        (max over sides of the joined, truncated length, +1 for EOS/BOS)."""
+        n = len(self.dataset)
+        self._concat_k = np.zeros(n, dtype=np.int64)
+        src_total = self._src_lens.copy()
+        tgt_total = self._tgt_lens.copy() if self._tgt_lens is not None else None
+        if self.concat_prob > 0.0:
+            rng = np.random.default_rng((self.seed, self.epoch, CONCAT_STREAM))
+            joined = rng.random(n) < self.concat_prob
+            k = rng.integers(2, MAX_CONCAT_PAIRS + 1, size=n)  # 2..4 pairs joined (spec §6)
+            self._partners = rng.integers(0, n, size=(n, MAX_CONCAT_PAIRS - 1))
+            self._concat_k = np.where(joined, k, 0)
+            for col in range(MAX_CONCAT_PAIRS - 1):
+                active = self._concat_k > col + 1
+                partner = self._partners[:, col]
+                src_total += np.where(active, self._src_lens[partner], 0)
+                if tgt_total is not None and self._tgt_lens is not None:
+                    tgt_total += np.where(active, self._tgt_lens[partner], 0)
+            src_total = np.minimum(src_total, self.concat_max_len)
+            if tgt_total is not None:
+                tgt_total = np.minimum(tgt_total, self.concat_max_len)
+        src_len = src_total + 1  # + EOS
+        tgt_len = tgt_total + 1 if tgt_total is not None else np.zeros(n, dtype=np.int64)  # + BOS
+        return np.maximum(src_len, tgt_len)
 
     def _build_epoch_batches(self) -> None:
         order_rng = np.random.default_rng((self.seed, self.epoch))
         n = len(self.dataset)
         perm = order_rng.permutation(n) if self.shuffle else np.arange(n)
+        ex_len = self._plan_concat()
         batches: list[list[int]] = []
         for start in range(0, n, self.chunk_size):
             chunk = perm[start : start + self.chunk_size]
-            lens = np.array([self._example_len(int(i)) for i in chunk])
+            lens = ex_len[chunk]
             chunk_sorted = chunk[np.argsort(lens, kind="stable")]
             cur: list[int] = []
             cur_max = 0
             for i in chunk_sorted:
-                length = self._example_len(int(i))
+                length = int(ex_len[i])
                 new_max = max(cur_max, length)
                 if cur and (len(cur) + 1) * new_max > self.max_tokens:
                     batches.append(cur)
@@ -199,29 +242,12 @@ class BucketedSampler:
         return {
             "epoch": self.epoch,
             "batch_cursor": self.batch_cursor,
-            "aug_rng_state": self._aug_rng.bit_generator.state,
         }
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
         self.epoch = state["epoch"]
         self.batch_cursor = state["batch_cursor"]
-        self._build_epoch_batches()  # pure function of (seed, epoch); not persisted
-        self._aug_rng.bit_generator.state = state["aug_rng_state"]
-
-    def _maybe_concat(
-        self, src: np.ndarray, tgt: np.ndarray | None
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        if self.concat_prob <= 0.0 or self._aug_rng.random() >= self.concat_prob:
-            return src, tgt
-        k = int(self._aug_rng.integers(2, 5))  # 2..4 pairs joined, inclusive (spec §6)
-        n = len(self.dataset)
-        extra = self._aug_rng.integers(0, n, size=k - 1)
-        src_parts = [src] + [self.dataset.get(int(j))[0] for j in extra]
-        src = np.concatenate(src_parts)[: self.concat_max_len]
-        if tgt is not None:
-            tgt_parts = [tgt] + [self.dataset.get(int(j))[1] for j in extra]
-            tgt = np.concatenate(tgt_parts)[: self.concat_max_len]
-        return src, tgt
+        self._build_epoch_batches()  # batches and concat plan: pure function of (seed, epoch)
 
     def _materialize(self, indices: list[int]) -> Batch:
         srcs: list[np.ndarray] = []
@@ -229,7 +255,13 @@ class BucketedSampler:
         ids: list[str] = []
         for i in indices:
             src, tgt, ex_id = self.dataset.get(i)
-            src, tgt = self._maybe_concat(src, tgt)
+            k = int(self._concat_k[i])
+            if k >= 2:
+                extra = [int(j) for j in self._partners[i, : k - 1]]
+                parts = [self.dataset.get(j) for j in extra]
+                src = np.concatenate([src] + [p[0] for p in parts])[: self.concat_max_len]
+                if tgt is not None:
+                    tgt = np.concatenate([tgt] + [p[1] for p in parts])[: self.concat_max_len]
             srcs.append(src)
             if tgts is not None:
                 tgts.append(tgt)  # type: ignore[arg-type]

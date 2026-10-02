@@ -117,3 +117,27 @@ def test_resume_without_existing_checkpoint_starts_fresh(tmp_path: Path) -> None
     )
     losses = _read_step_losses(run_dir)
     assert set(losses) == {1, 2, 3}
+
+
+def test_resume_determinism_with_concat_augmentation(tmp_path: Path) -> None:
+    """Same 20 == 10+10 loss-trajectory check with concat augmentation on: the concat plan is a
+    pure function of (seed, epoch), so resume reproduces it with no saved augmentation RNG."""
+
+    def cfg(name: str, run: Path, ckpt: Path) -> TrainConfig:
+        c = _make_cfg(name, run, ckpt)
+        c.batch.concat_prob = 0.5
+        c.batch.concat_max_len = 24
+        return c
+
+    run_a, ckpt_a = tmp_path / "a", tmp_path / "a_ckpt"
+    train(cfg("a", run_a, ckpt_a), wandb_mode="disabled", synthetic=True, max_steps=20)
+    run_b, ckpt_b = tmp_path / "b", tmp_path / "b_ckpt"
+    train(cfg("b", run_b, ckpt_b), wandb_mode="disabled", synthetic=True, max_steps=10)
+    random.seed(999)
+    np.random.seed(999)
+    torch.manual_seed(999)
+    train(cfg("b", run_b, ckpt_b), wandb_mode="disabled", synthetic=True, resume=True, max_steps=20)
+    losses_a, losses_b = _read_step_losses(run_a), _read_step_losses(run_b)
+    assert set(losses_a) == set(losses_b) == set(range(1, 21))
+    for step in losses_a:
+        assert abs(losses_a[step] - losses_b[step]) < 1e-4, f"step {step}"

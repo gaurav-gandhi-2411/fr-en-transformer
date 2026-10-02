@@ -210,9 +210,9 @@ def test_notebook_is_output_free_tag_pinned_and_has_no_torch_install_logic() -> 
     code = [c for c in nb.cells if c.cell_type == "code"]
     assert all(not c.outputs and c.execution_count is None for c in code)
     params = next(c.source for c in code if c.source.startswith("# --- Parameters"))
-    assert 'GIT_REF = "v0.2.1-colab"' in params
-    assert "ALLOW_NON_T4 = False" in params
+    assert 'GIT_REF = "v0.2.2-colab"' in params
     joined = "\n".join(c.source for c in code)
+    assert "ALLOW_NON_T4" not in joined  # the GPU rule has no override (see test_colab_l4.py)
     assert "PINNED_TORCH_VERSION" not in joined
     assert "subprocess.run(" not in joined  # every subprocess goes through run_step
 

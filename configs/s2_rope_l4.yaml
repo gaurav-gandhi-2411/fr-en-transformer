@@ -1,0 +1,72 @@
+# Colab L4 (24 GB, bf16) FALLBACK variant of s2_rope_3070.yaml: used only if S1 has not
+# started on the 3070 when the Colab main run finishes (PLAN.md 2026-10-02: all three
+# ablations then run on the L4; never split S1/S2/S3 across hardware). Differs from the
+# *_3070 config ONLY in name/group/dirs, batch.max_tokens and optim.planned_steps (marked
+# below); same model, data, seed, tokens_per_step, schedule shape, `precision: bf16`.
+name: s2_rope_l4
+group: ablation_l4
+seed: 1234
+device: auto
+precision: bf16  # 3070 (Ampere) supports bf16; no GradScaler
+label_smoothing: 0.1
+
+# Main architecture at small scale (spec §9 S2: RoPE, no concat augmentation — isolates the
+# positional-encoding effect vs s1_sin, e.g. length extrapolation on E2 / the >80-word bucket).
+model:
+  vocab_size: 16000
+  d_model: 512
+  n_heads: 8
+  enc_layers: 8
+  dec_layers: 4
+  d_ff: 2048
+  dropout: 0.1
+  pos: rope
+  max_len: 512
+  rope_base: 10000
+
+data:
+  shard_dir: data/shards
+  train_split: train
+  eval_split: e1
+
+batch:
+  max_tokens: 4096  # micro-batch measured in the Colab L4 pilot (v0.2.1-colab, f8c87ac): 4096 tokens/micro-batch, 0.4966 s/step, 3.3 GB peak; probe max 32768 (18.5 GB). reports/pilot_l4/pilot_summary.json
+  tokens_per_step: 25000
+  concat_prob: 0.0
+  chunk_size: 512
+  num_workers: 0
+
+optim:
+  lr: 7.0e-4
+  betas: [0.9, 0.98]
+  eps: 1.0e-9
+  weight_decay: 0.01
+  grad_clip: 1.0
+  warmup_steps: 500  # see s1_sin.yaml: smaller than main's 4000 for a 40-min budget
+  # floor(40 min * 60 s * 0.85 margin / 0.4966 s/step) = floor(2040 / 0.4966) = floor(4107.9)
+  # = 4107; 0.4966 s/step is the Colab L4 pilot's measured step time (25,000 tokens/step,
+  # 4096-token micro-batch; reports/pilot_l4/pilot_summary.json). Identical across
+  # s1/s2/s3 so all three finish their WSD decay.
+  planned_steps: 4107
+  cooldown_frac: 0.2
+  # SAFETY cap only. The 40-min budget is enforced via planned_steps (derived from the
+  # pilot's tok/s at 40 min), so all three ablations reach identical planned steps and
+  # complete their WSD decay; this wall cap must never be what ends a run.
+  max_minutes: 60
+
+ckpt:
+  dir: runs/s2_rope_l4/ckpt
+  ckpt_minutes: 5  # bounds the redo after an OOM abort / contention stop to <= 5 min
+  ckpt_steps: null
+  keep_last: 1  # PREREG compares final checkpoints only; disk-limited laptop (see tests/test_configs_3070.py)
+  keep_decay_phase: false
+
+logging:
+  wandb_mode: offline
+  wandb_project: fr-en-transformer
+  wandb_entity: gauravgandhi429-gaurav-gandhi
+  log_every: 50
+  run_dir: runs/s2_rope_l4
+
+eval:
+  eval_every: 1000  # ~12 min at 0.706 s/step; 2 periodic evals per ablation

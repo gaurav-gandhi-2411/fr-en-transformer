@@ -1,0 +1,24 @@
+{
+  "provenance": "reported by GG from the Colab L4 pilot output on v0.2.1-colab (f8c87ac); plan.json/probe.json files not yet in the repo",
+  "git_tag": "v0.2.1-colab",
+  "git_sha": "f8c87ac",
+  "gpu": "NVIDIA L4",
+  "precision": "bf16",
+  "median_tok_per_sec": 68900.7,
+  "seconds_per_optimizer_step": 0.4966,
+  "tokens_per_step": 25000,
+  "micro_batch_tokens": 4096,
+  "peak_gpu_mem_gb": 3.3,
+  "probe_max_micro_batch_tokens": 32768,
+  "probe_max_micro_batch_gpu_mem_gb": 18.5,
+  "resume_test": {
+    "verdict": "PASS",
+    "resumed_step": 200,
+    "matches_saved": true,
+    "rng_fingerprint": "d922f8e919f0"
+  },
+  "plan_json_planned_steps": {
+    "main": 24645
+  },
+  "colab_pro_compute_units_per_hour": 1.54
+}
