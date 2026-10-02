@@ -8,6 +8,8 @@ data pipeline, and a statistically honest sliced evaluation with bootstrap CIs.
 
 **Status: work in progress (P0).**
 
+Safety-net test predictions (v1, run `main`, candidate `final`): see `submission/README.md`.
+
 ## Reproduce
 
 ```
