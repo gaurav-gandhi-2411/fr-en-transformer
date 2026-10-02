@@ -33,9 +33,9 @@ Sources for the later results are proposals: the gap v2, production benchmark, `
 | {{FINAL_E3_CHRF}} | report, model card | same | `sets.e3.official_chrf_ci` |
 | {{FINAL_COMET_SUMMARY}} | report, model card | COMET-22 system score and CI per set, or "not measured" | COMET column of the final report; `eval.json` `comet` once scored on GPU (confirm key). v1 has none: `reports/final/SUMMARY.md` says NOT MEASURED |
 | {{FINAL_COLAB_HOURS}} | report | Colab hours of the `final_all` session | `final_all` run summary or the Colab Summary cell (confirm); CU only if Colab's panel shows it |
-| {{ABL_WALL_S1}} | report | Train wall seconds of `s1_sin_l4` | W&B run `a150f75a` summary `train_wall_seconds` (read with `scripts/audit_wandb_run.py`). The brief quoted 1,785.1 s; I found it in no repo file, so UNVERIFIED |
-| {{ABL_WALL_S2}} | report | same for `s2_rope_l4` | W&B run `ba29d416`; the brief quoted 1,976.2 s, UNVERIFIED |
-| {{ABL_WALL_S3}} | report | same for `s3_rope_concat_l4` | W&B run `f8200e87`; the brief quoted 1,928.2 s, UNVERIFIED |
+| RESOLVED ABL_WALL_S1 | report | Train wall seconds of `s1_sin_l4` | W&B run `a150f75a` summary `train_wall_seconds` (read with `scripts/audit_wandb_run.py`). The brief quoted 1,785.1 s; I found it in no repo file, so UNVERIFIED |  RESOLVED 2026-10-03: 1,785.1 s from reports/final/wandb_run_summaries.json (W&B API, read by the orchestrator); no longer a placeholder.
+| RESOLVED ABL_WALL_S2 | report | same for `s2_rope_l4` | W&B run `ba29d416`; the brief quoted 1,976.2 s, UNVERIFIED |  RESOLVED 2026-10-03: 1,976.2 s from reports/final/wandb_run_summaries.json (W&B API, read by the orchestrator); no longer a placeholder.
+| RESOLVED ABL_WALL_S3 | report | same for `s3_rope_concat_l4` | W&B run `f8200e87`; the brief quoted 1,928.2 s, UNVERIFIED |  RESOLVED 2026-10-03: 1,928.2 s from reports/final/wandb_run_summaries.json (W&B API, read by the orchestrator); no longer a placeholder.
 | {{EXT_TRAIN_WALL_S}} | report | Total measured train wall seconds of the three extension runs | sum of `train_wall_seconds_summary` for `ext_stable_l4`, `ext_branch_a_l4`, `ext_branch_b_l4` (W&B group `extend_l4`) |
 | {{EXT_SUMMARY}} | report | Two sentences: did the longer runs help, any overfit flag | extension Summary cell output (per-run overfit-watch lines) and the stage-1 objectives of A and B against `main` in the `final_all` stage-1 file (confirm) |
 | {{GAPV2_SUMMARY}} | report, walkthrough | What the exploratory v2 analysis did, one sentence | `reports/final/gap_v2/` summary file (confirm name) |

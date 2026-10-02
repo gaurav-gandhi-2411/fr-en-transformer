@@ -46,7 +46,7 @@ I trained a 50.2M-parameter encoder-decoder on 921,670 OPUS-100 en-fr pairs, wit
 
 **COMET cost.** COMET-22 over 17,294 distinct triples was projected at 2.2 h on CPU, 4.5 h for all triples (estimates, `HANDOFF.md`). I stopped after 5 of 7 chunks and kept the output marked incomplete (`reports/final/comet_partial_cpu_INCOMPLETE/`). COMET: {{FINAL_COMET_SUMMARY}}.
 
-**Compute and effort.** `main`: 11,791.8 s of training on an L4 (`reports/main_l4/run_audit.json`), about 5.5 CU at the 1.54 CU/h rate I reported (estimate). Ablations S1, S2, S3: {{ABL_WALL_S1}}, {{ABL_WALL_S2}}, {{ABL_WALL_S3}} s. Extension run: planned 38,500 steps at 0.4785 s, about 5.12 h (estimate), measured {{EXT_TRAIN_WALL_S}} s. Final selection on Colab: {{FINAL_COLAB_HOURS}} h. My own time: {{GG_EFFORT_HOURS}} h.
+**Compute and effort.** `main`: 11,791.8 s of training on an L4 (`reports/main_l4/run_audit.json`), about 5.5 CU at the 1.54 CU/h rate I reported (estimate). Ablations S1, S2, S3: 1,785.1, 1,976.2 and 1,928.2 s of training each (`reports/final/wandb_run_summaries.json`, `train_wall_seconds`). Extension run: planned 38,500 steps at 0.4785 s, about 5.12 h (estimate), measured {{EXT_TRAIN_WALL_S}} s. Final selection on Colab: {{FINAL_COLAB_HOURS}} h. My own time: {{GG_EFFORT_HOURS}} h.
 
 ## 4. Dev results by slice
 
