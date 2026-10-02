@@ -3,7 +3,7 @@
 # LR to 40,000 steps, in a NEW run directory, W&B group extend_l4. Started with
 # `--init-from <Drive>/runs/main/ckpt/step_00019000.pt` (colab/train.ipynb CONFIG="extend_l4").
 # Everything except name/group/dirs/schedule/ckpt/eval-watch equals configs/main.yaml
-# (tests/test_extend_l4.py pins that): seed 1234, dropout 0.1, tokens/step 25,000, warmup 4,000,
+# (tests/test_train_extension.py pins that): seed 1234, dropout 0.1, tokens/step 25,000, warmup 4,000,
 # micro-batch 4096, concat 0.15, lr 7e-4; `precision: bf16` is what `auto` resolved to for main
 # on the L4 (an init checkpoint from a different precision is refused).
 name: ext_stable_l4

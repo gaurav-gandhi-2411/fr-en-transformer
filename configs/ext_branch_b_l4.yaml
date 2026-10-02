@@ -1,6 +1,6 @@
 # Extension step (iii) (PREREG 2026-10-02 post-selection amendment, rule 4), Branch B: linear decay
 # from the ext_stable_l4 step-40,000 stable checkpoint to 50,000 (10,000 steps, to LR 0 exactly like
-# main's WSD decay: tests/test_extend_l4.py compares it with wsd_lr_scale(planned=50000, 0.2)).
+# main's WSD decay: tests/test_train_extension.py compares it with wsd_lr_scale(planned=50000, 0.2)).
 # Started with `--init-from <Drive>/runs/ext_stable_l4/ckpt/step_00040000.pt`; a NEW run directory,
 # the stable run's checkpoints are only read. All other hyperparameters as ext_stable_l4.yaml.
 name: ext_branch_b_l4
