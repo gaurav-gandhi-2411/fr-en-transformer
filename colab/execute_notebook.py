@@ -9,15 +9,17 @@ from __future__ import annotations
 # smoke execution must say so explicitly: `--set NAME=<python literal>` rewrites that top-level
 # assignment in memory before executing (an unknown NAME is an error), and the run is refused
 # unless CONFIG ends up "smoke" (a CPU "main" run would never finish); --allow-non-smoke
-# overrides that guard knowingly. The other modes accepted are CONFIG="ablations_l4" and
-# CONFIG="eval_l4" together with DRY_RUN=True (each prints its plan and launches nothing, so
-# they are CPU-safe); a real run of either on CPU is refused even with --allow-non-smoke.
+# overrides that guard knowingly. The other modes accepted are CONFIG="ablations_l4",
+# CONFIG="eval_l4" and CONFIG="extend_l4" together with DRY_RUN=True (each prints its plan and
+# launches nothing, so they are CPU-safe); a real run of any on CPU is refused even with
+# --allow-non-smoke.
 #
 # Usage: python colab/execute_notebook.py [notebook-path] [timeout-seconds]
 #            [--set NAME=LITERAL ...] [--allow-non-smoke]
 #   e.g. --set CONFIG='"smoke"' --set PLANNED_STEPS=None --set RESUME_TEST=False
 #        --set CONFIG='"ablations_l4"' --set DRY_RUN=True
 #        --set CONFIG='"eval_l4"' --set DRY_RUN=True
+#        --set CONFIG='"extend_l4"' --set DRY_RUN=True
 import ast
 import re
 import sys
@@ -28,7 +30,7 @@ from nbclient import NotebookClient
 from nbclient.exceptions import CellExecutionError
 
 # Configs that only run here as a DRY_RUN preview (a real run needs a GPU and Drive).
-DRY_RUN_CONFIGS = ("ablations_l4", "eval_l4")
+DRY_RUN_CONFIGS = ("ablations_l4", "eval_l4", "extend_l4")
 
 
 def _params_cell(nb: nbformat.NotebookNode) -> nbformat.NotebookNode:
