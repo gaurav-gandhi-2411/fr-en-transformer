@@ -329,6 +329,24 @@ def test_files_outside_the_run_prefix_never_refuse_or_download(tmp_path: Path) -
     assert rec["verified"] is True
 
 
+def test_verify_pulled_run_filters_the_whole_hub_listing_to_the_run_prefix(
+    tmp_path: Path,
+) -> None:
+    # verify_pulled_run must scope itself (not rely on pull_run's pre-filter): hand it the
+    # repo-wide listing, including the write probe and other runs' files.
+    hub = _hub(("main", 0), ("s1_sin_l4", 0), ("s2_rope_l4", 2))
+    hub.files["_write_probe.txt"] = b"probe"
+    hub.files["README.md"] = b"# repo"
+    el.pull_run(hub, REPO, "s1_sin_l4", REV, tmp_path / "r")
+    record = el.verify_pulled_run(
+        REPO, "s1_sin_l4", REV, tmp_path / "r" / "source", sorted(hub.files)
+    )
+    assert record["verified"] is True
+    hub.files["runs/s1_sin_l4/extra.json"] = b"{}"
+    with pytest.raises(el.ManifestVerificationError, match="not in the manifest"):
+        el.verify_pulled_run(REPO, "s1_sin_l4", REV, tmp_path / "r" / "source", sorted(hub.files))
+
+
 def test_extra_or_tampered_file_under_the_target_run_is_refused_among_other_runs(
     tmp_path: Path,
 ) -> None:

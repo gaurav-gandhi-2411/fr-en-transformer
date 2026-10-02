@@ -187,13 +187,18 @@ PULL_RECORD_NAME = "pull_record.json"
 
 def _unsafe_rel(rel: Any) -> str | None:
     """Why `rel` is not a safe path relative to runs/<run>/ (build_manifest's key form), or None.
-    Refuses absolute (/x, C:x), backslash-containing, empty and '..'-containing keys so a
-    manifest can never steer a read/hash outside runs/<run>/."""
+    Refuses absolute (/x), colon-, NUL- and backslash-containing, empty and '..'-containing keys
+    so a manifest can never steer a read/hash outside runs/<run>/."""
     if not isinstance(rel, str) or not rel:
         return "is not a non-empty string"
     if "\\" in rel:
         return "contains a backslash"
-    if rel.startswith("/") or re.match(r"^[A-Za-z]:", rel):
+    if "\x00" in rel:
+        return "contains a NUL character"
+    if ":" in rel:
+        # also closes NTFS alternate-data-stream names (a/b:stream) and drive-letter forms
+        return "contains a colon"
+    if rel.startswith("/"):
         return "is absolute"
     if any(part in ("..", ".", "") for part in rel.split("/")):
         return "has an empty, '.' or '..' path component"
