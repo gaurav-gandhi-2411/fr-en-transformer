@@ -1309,21 +1309,29 @@ def render_readme(res: dict[str, Any], file_hashes: dict[str, str]) -> str:
             + "; ".join(parts)
             + f"; {c['n_outputs_differing']} of 1940 differ."
         )
-    cells = {**lat, **tp}
-    flagged = [k for k, c in cells.items() if c["background_cpu"]["any_above_flag"]]
+    # lat and tp share keys ("threads=..|prec|greedy"/"beam5"), so they must NOT be merged into one
+    # dict: that silently drops the 8 latency cells that collide (the old text said "7 of 12").
+    flagged_lat = [k for k, c in lat.items() if c["background_cpu"]["any_above_flag"]]
+    flagged_tp = [k for k, c in tp.items() if c["background_cpu"]["any_above_flag"]]
     spread = [k for k, c in lat.items() if c["across_runs"]["spread_large"]]
     a(
-        f"- background load: {len(flagged)} of {len(cells)} timing cells had at least one run with "
-        f"total CPU above {res['config']['background_flag_pct']:.0f}% in the 5 s before start; "
-        f"{len(spread)} of {len(lat)} latency cells have a relative p50 spread above "
-        f"{res['config']['spread_flag_fraction']:.0%}."
+        f"- background load: {len(flagged_lat) + len(flagged_tp)} of {len(lat) + len(tp)} timing "
+        f"cells ({len(flagged_lat)} of {len(lat)} latency, {len(flagged_tp)} of {len(tp)} "
+        f"throughput) had at least one run with total CPU above "
+        f"{res['config']['background_flag_pct']:.0f}% in the 5 s before start (pre-run sample, "
+        f"strictly above); {len(spread)} of {len(lat)} latency cells have a relative p50 spread "
+        f"above {res['config']['spread_flag_fraction']:.0%}."
     )
-    during = [
-        v
-        for c in cells.values()
-        for v in c["background_cpu"]["during_other_cpu_pct_per_run"]
+    # One during-run sample belongs to one job; the greedy and beam5 cells of a group come from the
+    # same jobs, so de-duplicate by (phase, threads|precision, run index) before counting.
+    during_by_job = {
+        (phase, k.rsplit("|", 1)[0], i): v  # k minus the mode = "threads=..|precision"
+        for phase, group in (("latency", lat), ("throughput", tp))
+        for k, c in group.items()
+        for i, v in enumerate(c["background_cpu"]["during_other_cpu_pct_per_run"])
         if v is not None
-    ]
+    }
+    during = list(during_by_job.values())
     if during:
         a(
             "- other-process CPU (machine-wide minus the worker's own share) DURING the "

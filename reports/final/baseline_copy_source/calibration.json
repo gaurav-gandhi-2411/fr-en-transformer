@@ -1,0 +1,325 @@
+{
+  "what": "word-copy heuristic: main/seg_tuned vs copy-source baseline (ceiling) vs reference level",
+  "min_word_len": 4,
+  "groups": {
+    "dev": {
+      "n": 150,
+      "model": {
+        "word_copy_sentences": 37,
+        "word_copy_sentence_rate": 0.24666666666666667,
+        "word_copy_words": 45,
+        "hyp_words_ge_min": 1377,
+        "word_copy_word_share": 0.032679738562091505,
+        "length_ratio_mean": 1.034884236404425,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 146,
+        "word_copy_sentence_rate": 0.9733333333333334,
+        "word_copy_words": 1298,
+        "hyp_words_ge_min": 1477,
+        "word_copy_word_share": 0.8788083953960731,
+        "length_ratio_mean": 1.1622028737946222,
+        "subword_untranslated_copy_rate": 0.31333333333333335
+      },
+      "reference_level": {
+        "n": 150,
+        "ref_words_ge_min": 1416,
+        "ref_words_equal_to_source_word": 177,
+        "ref_word_share": 0.125,
+        "ref_sentences_with_any": 64,
+        "ref_sentence_share": 0.4266666666666667
+      }
+    },
+    "dev:long": {
+      "n": 30,
+      "model": {
+        "word_copy_sentences": 15,
+        "word_copy_sentence_rate": 0.5,
+        "word_copy_words": 18,
+        "hyp_words_ge_min": 674,
+        "word_copy_word_share": 0.026706231454005934,
+        "length_ratio_mean": 1.0759211204338306,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 29,
+        "word_copy_sentence_rate": 0.9666666666666667,
+        "word_copy_words": 606,
+        "hyp_words_ge_min": 722,
+        "word_copy_word_share": 0.8393351800554016,
+        "length_ratio_mean": 1.3330880108439664,
+        "subword_untranslated_copy_rate": 0.1
+      },
+      "reference_level": {
+        "n": 30,
+        "ref_words_ge_min": 652,
+        "ref_words_equal_to_source_word": 115,
+        "ref_word_share": 0.17638036809815952,
+        "ref_sentences_with_any": 25,
+        "ref_sentence_share": 0.8333333333333334
+      }
+    },
+    "dev:seen": {
+      "n": 60,
+      "model": {
+        "word_copy_sentences": 13,
+        "word_copy_sentence_rate": 0.21666666666666667,
+        "word_copy_words": 18,
+        "hyp_words_ge_min": 330,
+        "word_copy_word_share": 0.05454545454545454,
+        "length_ratio_mean": 1.0586469234918723,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 57,
+        "word_copy_sentence_rate": 0.95,
+        "word_copy_words": 303,
+        "hyp_words_ge_min": 343,
+        "word_copy_word_share": 0.8833819241982507,
+        "length_ratio_mean": 1.173234012719307,
+        "subword_untranslated_copy_rate": 0.21666666666666667
+      },
+      "reference_level": {
+        "n": 60,
+        "ref_words_ge_min": 365,
+        "ref_words_equal_to_source_word": 39,
+        "ref_word_share": 0.10684931506849316,
+        "ref_sentences_with_any": 20,
+        "ref_sentence_share": 0.3333333333333333
+      }
+    },
+    "dev:unseen_domain": {
+      "n": 60,
+      "model": {
+        "word_copy_sentences": 9,
+        "word_copy_sentence_rate": 0.15,
+        "word_copy_words": 9,
+        "hyp_words_ge_min": 373,
+        "word_copy_word_share": 0.024128686327077747,
+        "length_ratio_mean": 0.9906031073022743,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 60,
+        "word_copy_sentence_rate": 1.0,
+        "word_copy_words": 389,
+        "hyp_words_ge_min": 412,
+        "word_copy_word_share": 0.9441747572815534,
+        "length_ratio_mean": 1.0657291663452657,
+        "subword_untranslated_copy_rate": 0.5166666666666667
+      },
+      "reference_level": {
+        "n": 60,
+        "ref_words_ge_min": 399,
+        "ref_words_equal_to_source_word": 23,
+        "ref_word_share": 0.05764411027568922,
+        "ref_sentences_with_any": 19,
+        "ref_sentence_share": 0.31666666666666665
+      }
+    },
+    "e1": {
+      "n": 1940,
+      "model": {
+        "word_copy_sentences": 495,
+        "word_copy_sentence_rate": 0.2551546391752577,
+        "word_copy_words": 820,
+        "hyp_words_ge_min": 19894,
+        "word_copy_word_share": 0.04121845782648034,
+        "length_ratio_mean": 1.0133750337241976,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 1878,
+        "word_copy_sentence_rate": 0.9680412371134021,
+        "word_copy_words": 19100,
+        "hyp_words_ge_min": 21672,
+        "word_copy_word_share": 0.8813215208564046,
+        "length_ratio_mean": 1.14168371053481,
+        "subword_untranslated_copy_rate": 0.17268041237113402
+      },
+      "reference_level": {
+        "n": 1940,
+        "ref_words_ge_min": 20411,
+        "ref_words_equal_to_source_word": 2590,
+        "ref_word_share": 0.12689236196168732,
+        "ref_sentences_with_any": 1000,
+        "ref_sentence_share": 0.5154639175257731
+      }
+    },
+    "e2": {
+      "n": 1000,
+      "model": {
+        "word_copy_sentences": 503,
+        "word_copy_sentence_rate": 0.503,
+        "word_copy_words": 889,
+        "hyp_words_ge_min": 24742,
+        "word_copy_word_share": 0.0359308059170641,
+        "length_ratio_mean": 1.0288992021075876,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 999,
+        "word_copy_sentence_rate": 0.999,
+        "word_copy_words": 23909,
+        "hyp_words_ge_min": 27040,
+        "word_copy_word_share": 0.8842085798816568,
+        "length_ratio_mean": 1.2313792647370974,
+        "subword_untranslated_copy_rate": 0.2
+      },
+      "reference_level": {
+        "n": 1000,
+        "ref_words_ge_min": 25113,
+        "ref_words_equal_to_source_word": 3161,
+        "ref_word_share": 0.12587106279616134,
+        "ref_sentences_with_any": 829,
+        "ref_sentence_share": 0.829
+      }
+    },
+    "e2synth": {
+      "n": 300,
+      "model": {
+        "word_copy_sentences": 241,
+        "word_copy_sentence_rate": 0.8033333333333333,
+        "word_copy_words": 637,
+        "hyp_words_ge_min": 16994,
+        "word_copy_word_share": 0.03748381781805343,
+        "length_ratio_mean": 1.0048541506627662,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 300,
+        "word_copy_sentence_rate": 1.0,
+        "word_copy_words": 16443,
+        "hyp_words_ge_min": 18567,
+        "word_copy_word_share": 0.885603490063015,
+        "length_ratio_mean": 1.1916894187455858,
+        "subword_untranslated_copy_rate": 0.16
+      },
+      "reference_level": {
+        "n": 300,
+        "ref_words_ge_min": 17385,
+        "ref_words_equal_to_source_word": 2150,
+        "ref_word_share": 0.12366983031348865,
+        "ref_sentences_with_any": 293,
+        "ref_sentence_share": 0.9766666666666667
+      }
+    },
+    "e2synth:e2synth_400_600": {
+      "n": 100,
+      "model": {
+        "word_copy_sentences": 77,
+        "word_copy_sentence_rate": 0.77,
+        "word_copy_words": 172,
+        "hyp_words_ge_min": 4255,
+        "word_copy_word_share": 0.04042303172737955,
+        "length_ratio_mean": 1.01335910824151,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 100,
+        "word_copy_sentence_rate": 1.0,
+        "word_copy_words": 4080,
+        "hyp_words_ge_min": 4609,
+        "word_copy_word_share": 0.8852245606422218,
+        "length_ratio_mean": 1.1952721283989853,
+        "subword_untranslated_copy_rate": 0.2
+      },
+      "reference_level": {
+        "n": 100,
+        "ref_words_ge_min": 4318,
+        "ref_words_equal_to_source_word": 535,
+        "ref_word_share": 0.12389995368226031,
+        "ref_sentences_with_any": 93,
+        "ref_sentence_share": 0.93
+      }
+    },
+    "e2synth:e2synth_600_800": {
+      "n": 100,
+      "model": {
+        "word_copy_sentences": 75,
+        "word_copy_sentence_rate": 0.75,
+        "word_copy_words": 213,
+        "hyp_words_ge_min": 5845,
+        "word_copy_word_share": 0.03644140290846878,
+        "length_ratio_mean": 1.0065086630937692,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 100,
+        "word_copy_sentence_rate": 1.0,
+        "word_copy_words": 5658,
+        "hyp_words_ge_min": 6388,
+        "word_copy_word_share": 0.8857232310582341,
+        "length_ratio_mean": 1.1968154725597149,
+        "subword_untranslated_copy_rate": 0.1
+      },
+      "reference_level": {
+        "n": 100,
+        "ref_words_ge_min": 6009,
+        "ref_words_equal_to_source_word": 737,
+        "ref_word_share": 0.12264935929439175,
+        "ref_sentences_with_any": 100,
+        "ref_sentence_share": 1.0
+      }
+    },
+    "e2synth:e2synth_800_900": {
+      "n": 100,
+      "model": {
+        "word_copy_sentences": 89,
+        "word_copy_sentence_rate": 0.89,
+        "word_copy_words": 252,
+        "hyp_words_ge_min": 6894,
+        "word_copy_word_share": 0.03655352480417755,
+        "length_ratio_mean": 0.9946946806530186,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 100,
+        "word_copy_sentence_rate": 1.0,
+        "word_copy_words": 6705,
+        "hyp_words_ge_min": 7570,
+        "word_copy_word_share": 0.8857331571994715,
+        "length_ratio_mean": 1.182980655278057,
+        "subword_untranslated_copy_rate": 0.18
+      },
+      "reference_level": {
+        "n": 100,
+        "ref_words_ge_min": 7058,
+        "ref_words_equal_to_source_word": 878,
+        "ref_word_share": 0.12439784641541513,
+        "ref_sentences_with_any": 100,
+        "ref_sentence_share": 1.0
+      }
+    },
+    "e3": {
+      "n": 1000,
+      "model": {
+        "word_copy_sentences": 323,
+        "word_copy_sentence_rate": 0.323,
+        "word_copy_words": 1320,
+        "hyp_words_ge_min": 10644,
+        "word_copy_word_share": 0.12401352874859076,
+        "length_ratio_mean": 0.9827156039731069,
+        "subword_untranslated_copy_rate": 0.0
+      },
+      "baseline_ceiling": {
+        "word_copy_sentences": 989,
+        "word_copy_sentence_rate": 0.989,
+        "word_copy_words": 10865,
+        "hyp_words_ge_min": 11655,
+        "word_copy_word_share": 0.9322179322179323,
+        "length_ratio_mean": 1.0450331416644298,
+        "subword_untranslated_copy_rate": 0.21
+      },
+      "reference_level": {
+        "n": 1000,
+        "ref_words_ge_min": 11461,
+        "ref_words_equal_to_source_word": 793,
+        "ref_word_share": 0.06919117005496903,
+        "ref_sentences_with_any": 437,
+        "ref_sentence_share": 0.437
+      }
+    }
+  }
+}

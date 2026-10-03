@@ -52,6 +52,9 @@ from scripts.eval_local import HYPOTHESES, RUNS, SPLITS, VARIANTS, gold_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 N_BOOTSTRAP, SEED = 1000, 1234
+BASELINE_RUN = (
+    "baseline_copy_source"  # copy-the-source floor, written by scripts.copy_source_baseline
+)
 PINNED_REVISIONS = {
     "main": "c3d8598252853fcd7df1ef4a00e8b0382b8f4351",
     "s1_sin_l4": "041d49269f61d0cbd9c0380a4f0a0a31f7599547",
@@ -235,16 +238,20 @@ def _reference_side_and_word_copy(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def build_diagnostics(out_root: Path, run: str, variant: str, res: Any) -> dict[str, Any]:
+def build_diagnostics(
+    out_root: Path, run: str, variant: str, res: Any, base_dir: Path | None = None
+) -> dict[str, Any]:
     """Failure-mode rates per set and per slice, and chrF by source-rarity quintile (pooled
-    E1+E2+E3, edges from the sources only), for one (run, variant)."""
+    E1+E2+E3, edges from the sources only), for one (run, variant). `base_dir` overrides the
+    default `<out_root>/<run>/<variant>` (the copy-source baseline has no variant level)."""
     sp, freq_src, freq_tgt, byte_ids = res
+    base = base_dir if base_dir is not None else out_root / run / variant
     groups: dict[str, list] = {}
     group_rows: dict[str, list] = {}
     pooled = []
     pooled_rows: list = []
     for split in SPLITS:
-        preds = _read(out_root / run / variant / f"{split}_predictions.json")
+        preds = _read(base / f"{split}_predictions.json")
         rows = _rows_with_predictions(split, preds)
         feats = build_sentence_features(rows, sp, freq_src, freq_tgt, byte_ids, split)
         groups[split] = feats
@@ -288,7 +295,7 @@ def build_diagnostics(out_root: Path, run: str, variant: str, res: Any) -> dict[
             "buckets": rarity_bucket_chrf(pooled, edges),
         },
     }
-    _write(out_root / run / variant / "diagnostics.json", out)
+    _write(base / "diagnostics.json", out)
     return out
 
 
@@ -442,8 +449,9 @@ def _row(
 
 
 def model_table(out_root: Path, run: str, variant: str) -> str:
-    ev = _read(out_root / run / variant / "eval.json")
-    cs_path = out_root / run / variant / "comet_summary.json"
+    rel = f"{run}/{variant}" if variant else run  # the baseline has no variant level
+    ev = _read(out_root / rel / "eval.json")
+    cs_path = out_root / rel / "comet_summary.json"
     cs = _read(cs_path) if cs_path.is_file() else None
     cfg = ev["decoding_config"]
     sets = ev["sets"]
@@ -481,18 +489,22 @@ def model_table(out_root: Path, run: str, variant: str) -> str:
                 )
     sig = sets["dev"]["sacrebleu"]
     thr = cfg["segment_threshold"]
-    head = (
-        f"alpha {cfg['alpha']}, beam {cfg['beam_size']}, segmentation "
-        f"{'OFF' if thr is None else f'T={thr}'}; "
-        f"checkpoint `{ev['checkpoint']}`; sacreBLEU BLEU `{sig['bleu']['signature']}`, "
-        f"chrF `{sig['chrf']['signature']}`"
+    decode = (
+        "no model, no decoding (output = source)"
+        if cfg["alpha"] is None
+        else f"alpha {cfg['alpha']}, beam {cfg['beam_size']}, segmentation "
+        f"{'OFF' if thr is None else f'T={thr}'}; checkpoint `{ev['checkpoint']}`"
     )
-    src = f"`{run}/{variant}/eval.json`" + (f", `{run}/{variant}/comet_summary.json`" if cs else "")
+    head = (
+        f"{decode}; sacreBLEU BLEU `{sig['bleu']['signature']}`, chrF `{sig['chrf']['signature']}`"
+    )
+    src = f"`{rel}/eval.json`" + (f", `{rel}/comet_summary.json`" if cs else "")
     return f"{head}\n\n" + "\n".join(lines) + f"\n\nSource: {src}.\n"
 
 
 def length_table(out_root: Path, run: str, variant: str) -> str:
-    lb = _read(out_root / run / variant / "eval.json")["length_buckets_e1_e2_e3"]
+    rel = f"{run}/{variant}" if variant else run
+    lb = _read(out_root / rel / "eval.json")["length_buckets_e1_e2_e3"]
     lines = ["| source words | n | BLEU [95% CI] | chrF [95% CI] |", "|---|---|---|---|"]
     for label in ("<=10", "11-20", "21-40", "41-80", ">80"):
         if label in lb:
@@ -502,9 +514,7 @@ def length_table(out_root: Path, run: str, variant: str) -> str:
                 f"{fmt_ci(b['bleu_ci']['point'], b['bleu_ci']['ci_low'], b['bleu_ci']['ci_high'])} | "
                 f"{fmt_ci(b['chrf_ci']['point'], b['chrf_ci']['ci_low'], b['chrf_ci']['ci_high'])} |"
             )
-    return (
-        "\n".join(lines) + f"\n\nSource: `{run}/{variant}/eval.json` (`length_buckets_e1_e2_e3`).\n"
-    )
+    return "\n".join(lines) + f"\n\nSource: `{rel}/eval.json` (`length_buckets_e1_e2_e3`).\n"
 
 
 def seg_table(out_root: Path, run: str) -> str:
@@ -727,6 +737,46 @@ def _failure_table(out_root: Path, variant: str) -> str:
     )
 
 
+def _baseline_section(out_root: Path) -> str:
+    """The copy-the-source floor (output = source) in the same table format as the models."""
+    obj = _read(out_root / BASELINE_RUN / "objective.json")
+    return (
+        "Output = the French source sentence verbatim, scored by the same code as the runs above "
+        "(`scripts/copy_source_baseline.py`); every row of a model table above should be read "
+        "against these floors.\n\n"
+        + model_table(out_root, BASELINE_RUN, "")
+        + "\nLength buckets (E1+E2+E3 pooled):\n\n"
+        + length_table(out_root, BASELINE_RUN, "")
+        + f"\nSelection objective of the baseline (0.4 BLEU(E1+E2) + 0.4 chrF(E1+E2) + 0.2 "
+        f"chrF(E1)): {obj['objective']:.4f}. Source: `{BASELINE_RUN}/objective.json`.\n"
+    )
+
+
+def _calibration_table(out_root: Path) -> str:
+    """Word-copy heuristic of main/seg_tuned next to the pure-copy ceiling and the reference
+    level (what the reference itself keeps from the source), per group."""
+    cal = _read(out_root / BASELINE_RUN / "calibration.json")["groups"]
+    lines = [
+        "| group | n | main: sentences (word share) | copy-source ceiling: sentences (word share) | "
+        "reference level: sentences (word share) |",
+        "|---|---|---|---|---|",
+    ]
+    for g, v in cal.items():
+        m, b, r = v["model"], v["baseline_ceiling"], v["reference_level"]
+        lines.append(
+            f"| {g} | {v['n']} | {m['word_copy_sentence_rate']:.3f} ({m['word_copy_word_share']:.3f})"
+            f" | {b['word_copy_sentence_rate']:.3f} ({b['word_copy_word_share']:.3f}) | "
+            f"{r['ref_sentence_share']:.3f} ({r['ref_word_share']:.3f}) |"
+        )
+    return "\n".join(lines) + (
+        f"\n\nCalibration of the word-copy heuristic: main/seg_tuned vs the same heuristic on the "
+        f"copy-the-source baseline (the ceiling) vs the share of reference words of length >= "
+        f"{COPY_MIN_LEN} that equal a source word (what the reference itself keeps). Word share = "
+        "flagged words / words of length >= 4. How to read it (and its limits) is in "
+        f"`{BASELINE_RUN}/README.md`. Source: `{BASELINE_RUN}/calibration.json`.\n"
+    )
+
+
 def _rarity_table(out_root: Path, variant: str) -> str:
     lines = [
         "| model | " + " | ".join(f"bucket {i}" for i in range(1, 6)) + " |",
@@ -774,6 +824,10 @@ def _provenance(out_root: Path, code_sha: str) -> str:
             ):
                 if (base / name).is_file():
                     files.append(base / name)
+    files += [
+        out_root / BASELINE_RUN / n
+        for n in ("eval.json", "objective.json", "diagnostics.json", "calibration.json")
+    ]
     files += sorted((out_root / "compare").glob("*.json"))
     files += [out_root / "sanity.json"]
     for f in files:
@@ -839,6 +893,7 @@ def build_summary(out_root: Path, code_sha: str) -> str:
             length_table(out_root, run, "seg_tuned"),
             "",
         ]
+    parts += ["## Copy-source baseline (floor)", "", _baseline_section(out_root), ""]
     parts += ["## Segmentation off vs tuned", ""]
     for run in RUNS:
         parts += [f"### {RUN_LABEL[run]}", "", seg_table(out_root, run), ""]
@@ -869,6 +924,9 @@ def build_summary(out_root: Path, code_sha: str) -> str:
         "### Failure-mode rates per slice (tuned config)",
         "",
         _failure_table(out_root, "seg_tuned"),
+        "### Word-copy heuristic calibration (main, tuned config)",
+        "",
+        _calibration_table(out_root),
         "### Chrf by source-rarity bucket (tuned config)",
         "",
         _rarity_table(out_root, "seg_tuned"),
@@ -898,10 +956,17 @@ def build_summary(out_root: Path, code_sha: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Derived artifacts + SUMMARY.md for reports/final.")
     p.add_argument("--out-root", type=Path, required=True)
+    p.add_argument(
+        "--reuse-sanity",
+        action="store_true",
+        help="keep the committed index.json, selection.json copies and sanity.json instead of "
+        "refreshing them (they need the gitignored HF `source/` pulls)",
+    )
     args = p.parse_args(argv)
     root: Path = args.out_root
-    print(f"normalized line endings of {normalize_and_reindex(root)} files")
-    for run in RUNS:  # the winner record is tiny and `source/` is gitignored, so keep a copy
+    if not args.reuse_sanity:
+        print(f"normalized line endings of {normalize_and_reindex(root)} files")
+    for run in RUNS if not args.reuse_sanity else ():  # winner record: tiny, `source/` gitignored
         shutil.copyfile(
             root / run / "source" / "runs" / run / "selection.json", root / run / "selection.json"
         )
@@ -911,7 +976,8 @@ def main(argv: list[str] | None = None) -> int:
             build_diagnostics(root, run, variant, res)
             build_comet_summary(root, run, variant)
     build_extras(root)
-    build_sanity(root)
+    if not args.reuse_sanity:
+        build_sanity(root)
     code_sha = subprocess.run(
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=REPO_ROOT
     ).stdout.strip()

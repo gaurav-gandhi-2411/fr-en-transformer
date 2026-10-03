@@ -91,8 +91,8 @@ Peak RSS = process peak working set in a fresh process per run (measured with `p
 - throughput sent/s, threads=1, beam5: no clear difference, run-to-run ranges overlap (ratio of medians 1.11)
 - quality, beam5: bleu -0.054 (CI includes 0); chrf +0.000 (CI includes 0); 660 of 1940 differ.
 - quality, greedy: bleu +0.035 (CI includes 0); chrf -0.003 (CI includes 0); 716 of 1940 differ.
-- background load: 7 of 12 timing cells had at least one run with total CPU above 30% in the 5 s before start; 6 of 12 latency cells have a relative p50 spread above 10%.
-- other-process CPU (machine-wide minus the worker's own share) DURING the 8 runs that recorded it (the repeat repetition): min 10.6%, max 35.9% of the machine; earlier runs have only the pre-run sample.
+- background load: 13 of 20 timing cells (9 of 12 latency, 4 of 8 throughput) had at least one run with total CPU above 30% in the 5 s before start (pre-run sample, strictly above); 6 of 12 latency cells have a relative p50 spread above 10%.
+- other-process CPU (machine-wide minus the worker's own share) DURING the 8 runs that recorded it (the repeat repetition): min 10.0%, max 39.4% of the machine; earlier runs have only the pre-run sample.
 - repetitions: 3 planned (1-3), then one more full pass (4) because several pre-run samples were above 30% or spreads were large; all runs are in the cells above, the `bg <= 30%` column restricts to runs whose pre-run sample was at or below 30%.
 
 ## Limits
