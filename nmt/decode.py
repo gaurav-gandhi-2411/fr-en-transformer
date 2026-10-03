@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 # Batched decoding: beam search (GNMT length penalty, 3-gram repetition block), greedy decode,
-# and the long-input sentence-segmentation fallback. Spec §7.
+# and the long-input sentence-segmentation # fallback.
 #
 # Beam search reduces exactly to greedy at beam_size=1 by construction (once the single active
-# slot for an example finds EOS, that example's target active-slot count drops to zero and its
-# group is frozen for the rest of the run -- no "keep searching for a second candidate" step, so
-# there is nothing for a token-level equivalence test to disagree on). `greedy_decode` below is a
-# separately-written, simpler/faster loop (no top-2K bookkeeping, no beam-index cache reorder);
-# `tests/test_decode.py::test_beam_size_1_equals_greedy` checks the two independent
-# implementations actually agree.
+# slot for an example finds EOS, its group is frozen for the rest of the run). `greedy_decode`
+# is a separately written, simpler loop; `tests/test_decode.py::test_beam_size_1_equals_greedy`
+# checks that the two agree.
 import re
 from dataclasses import dataclass
 
@@ -18,8 +15,8 @@ from torch import Tensor
 
 from nmt.model.transformer import Transformer
 
-# Sentence-ending punctuation for the segmentation fallback (spec §7): ". ! ? ; : and …
-# followed by space". The lookbehind keeps the punctuation attached to the preceding segment
+# Sentence-ending punctuation for the segmentation fallback: one of ". ! ? ; : …"
+# followed by whitespace. The lookbehind keeps the punctuation attached to the preceding segment
 # (delimiters are never dropped) and only the whitespace itself is consumed by the split.
 _SENT_END_CHARS = ".!?;:…"
 _SENT_SPLIT_RE = re.compile(rf"(?<=[{re.escape(_SENT_END_CHARS)}])\s+")
@@ -36,16 +33,15 @@ def split_sentences(text: str) -> list[str]:
 
 
 def gnmt_length_penalty(length: int, alpha: float) -> float:
-    """GNMT length penalty lp(Y) = ((5 + |Y|) / 6) ** alpha (spec §7). `length` is the number of
-    generated tokens (excluding BOS; conventionally including EOS, matching how `length` is
-    computed at every call site below).
+    """GNMT length penalty lp(Y) = ((5 + |Y|) / 6) ** alpha. `length` counts generated tokens
+    (excluding BOS, including EOS).
     """
     return ((5.0 + length) / 6.0) ** alpha
 
 
 def decode_max_len(src_len: int, max_len_a: float = 1.5, max_len_b: int = 10) -> int:
-    """max_len = floor(1.5 * src_len) + 10 (spec §7). `src_len` excludes padding, includes the
-    appended source EOS (matches `src_mask.sum(dim=1)`, the loader's padding-mask convention).
+    """max_len = floor(1.5 * src_len) + 10. `src_len` excludes padding but includes the source
+    EOS (i.e. `src_mask.sum(dim=1)`).
     """
     return int(max_len_a * src_len) + max_len_b
 
@@ -69,8 +65,7 @@ def _blocked_tokens(history: list[int], n: int) -> set[int]:
 
 @dataclass
 class DecodeConfig:
-    """Beam search hyperparameters (defaults from spec §7; its tuning grid overrides
-    alpha/beam_size)."""
+    """Beam search hyperparameters."""
 
     beam_size: int = 5
     alpha: float = 0.6
@@ -94,7 +89,7 @@ def _step_log_probs(model: Transformer, cur_tok: Tensor, cache: dict) -> Tensor:
     """One decode step's (B, V) log-probabilities. A model that sets `step_returns_log_probs`
     (nmt.ensemble.Ensemble) already returns log-probs from `decode_step`, used as is (no second
     log_softmax: it would renormalize the averaged log-probs and break exact single-model parity);
-    every other model returns logits and gets the log_softmax applied here, as before."""
+    every other model returns logits and gets the log_softmax applied here."""
     out = model.decode_step(cur_tok, cache)[:, 0, :]
     if getattr(model, "step_returns_log_probs", False):
         return out
@@ -204,7 +199,7 @@ def beam_search_nbest(
                     log_probs[i, list(banned)] = float("-inf")
             cur_len = len(tokens[i]) - 1  # generated so far, excluding BOS
             if cur_len + 1 >= max_lens[b]:
-                # this beam must terminate on its next token: max_len is a hard cap (spec §7).
+                # this beam must terminate on its next token: max_len is a hard cap.
                 forced = torch.full((vocab_size,), float("-inf"), device=device)
                 forced[eos_id] = 0.0
                 log_probs[i] = forced

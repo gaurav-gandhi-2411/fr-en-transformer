@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-# Paired A/B comparison CLI (spec §8: "paired bootstrap resampling (Koehn 2004) for every A/B
-# comparison (ablations, decoding options), reporting Delta, CI and p"). Reads the
+# Paired A/B comparison CLI: paired bootstrap resampling (Koehn 2004) reporting Delta, CI and p
+# for ablations and decoding options. Reads the
 # `<split>_predictions.json` files two `evaluate` runs already wrote, so a comparison never
 # re-decodes and always scores exactly the predictions behind each run's eval.json. Delta is
 # A - B per split (official BLEU and chrF), plus per slice (dev's official slices; E2-synth's

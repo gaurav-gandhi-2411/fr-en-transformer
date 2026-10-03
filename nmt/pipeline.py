@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # CLI entry point wiring every phase together: prepare|tokenize|train|evaluate|predict|analyze|
 # export|all. Reproduce command:
-# `python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234`. Spec §2.
+# `python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234`.
 #
 # Each stage delegates to the already-tested module it wires up (nmt.data.prepare, nmt.data.
 # tokenize, nmt.train, nmt.hub, nmt.evaluate, nmt.translate, nmt.analysis, nmt.submission) rather
@@ -250,7 +250,7 @@ def stage_analyze(
     other_eval_json_paths: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     """Reads `{e1,e3,dev}_predictions.json` written by `stage_evaluate`/`run_evaluation` under
-    `eval_dir`, then runs the full spec §10 analysis. `other_eval_json_paths` (optional, `{label:
+    `eval_dir`, then runs the full analysis. `other_eval_json_paths` (optional, `{label:
     path}`) lets the length-bucket figure overlay multiple runs (e.g. S1 vs S2, once those
     exist)."""
     e1_pred = json.loads((eval_dir / "e1_predictions.json").read_text(encoding="utf-8"))
@@ -341,11 +341,9 @@ def main(argv: list[str] | None = None) -> int:
         model_dir = export_dir or args.model
         if model_dir is None:
             raise ValueError("--stage evaluate requires --model (or run --stage export/all first)")
-        # `all` runs `tune` (spec section 7's E1/E2-only search) right before this, final
-        # `evaluate` -- its winning alpha/beam/segment_threshold replace the CLI defaults so the
-        # reported dev/E1/E2/E3 numbers are for the config tuning actually chose, not a fixed
-        # default. A standalone `--stage evaluate` run (no `tune` beforehand) keeps using the CLI
-        # flags, exactly as before.
+        # `all` runs `tune` (the E1/E2-only search) right before this, so its winning
+        # alpha/beam/segment_threshold replace the CLI defaults and the reported numbers are for
+        # the tuned config. A standalone `--stage evaluate` run keeps using the CLI flags.
         beam, alpha, segment_threshold = args.beam, args.alpha, args.segment_threshold
         if tune_result is not None:
             w = tune_result["winner"]

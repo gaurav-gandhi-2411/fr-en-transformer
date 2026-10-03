@@ -3,11 +3,11 @@ from __future__ import annotations
 # Hand-written encoder-decoder transformer: 8 encoder / 4 decoder layers, d=512,
 # 8 heads, FFN 2048, pre-LayerNorm, three-way tied embeddings, RoPE/sinusoidal
 # positional-encoding switch, F.scaled_dot_product_attention, decoder KV cache for
-# incremental decoding. Spec §5.
+# incremental decoding.
 #
 # No nn.Transformer / nn.TransformerEncoderLayer / nn.MultiheadAttention anywhere in this file
-# (spec requirement, and the point of a from-scratch take-home): every linear projection, mask
-# and positional encoding is written out explicitly so it can be explained line by line.
+# (the point of a from-scratch implementation): every linear projection, mask and positional
+# encoding is written out explicitly so it can be read line by line.
 import math
 from dataclasses import dataclass
 
@@ -19,8 +19,8 @@ from torch import Tensor, nn
 @dataclass
 class ModelConfig:
     """Architecture + special-token config. `vocab_size` comes from the trained SentencePiece
-    model (PLAN.md interface contract: pad=0, unk=1, bos=2, eos=3); everything else is a spec §5
-    hyperparameter with the main-run defaults.
+    model (special ids: pad=0, unk=1, bos=2, eos=3); everything else is a hyperparameter with
+    the main-run defaults.
     """
 
     vocab_size: int
@@ -30,7 +30,7 @@ class ModelConfig:
     dec_layers: int = 4
     d_ff: int = 2048
     dropout: float = 0.1
-    pos: str = "rope"  # "rope" | "sinusoidal" — spec §5/§9 ablation switch
+    pos: str = "rope"  # "rope" | "sinusoidal" — ablation switch
     max_len: int = 512  # sinusoidal table size and an implicit cap on positions seen at train time
     pad_id: int = 0
     bos_id: int = 2
@@ -116,7 +116,7 @@ class MultiHeadAttention(nn.Module):
 
     def project_kv(self, kv_in: Tensor, positions: Tensor | None) -> tuple[Tensor, Tensor]:
         """Project (and, for self-attention, rotate) K/V from `kv_in`. `positions` is None for
-        cross-attention (no positional term on cross-attention, per spec §5).
+        cross-attention (no positional term on cross-attention).
         """
         k = self._split_heads(self.k_proj(kv_in))
         v = self._split_heads(self.v_proj(kv_in))
@@ -284,7 +284,7 @@ def _padding_key_mask(ids: Tensor, pad_id: int) -> Tensor:
 
 
 class Transformer(nn.Module):
-    """Deep-encoder / shallow-decoder translation model (spec §5). Three-way tied embeddings
+    """Deep-encoder / shallow-decoder translation model. Three-way tied embeddings
     (source embedding == target embedding == output projection weight), scaled by sqrt(d_model)
     at input time (Vaswani et al. 2017 §3.4).
     """
@@ -313,12 +313,12 @@ class Transformer(nn.Module):
                     nn.init.zeros_(module.bias)
 
     def param_count(self) -> int:
-        """Exact trainable parameter count, for the spec §5/§14 "report the exact count" gate."""
+        """Exact trainable parameter count."""
         return sum(p.numel() for p in self.parameters())
 
     def _pos_add(self, x: Tensor, positions: Tensor) -> Tensor:
         if self.cfg.pos == "sinusoidal":
-            # Decoding uses max_len = floor(1.5*src_len) + 10 (spec §7), which on a long source
+            # Decoding uses max_len = floor(1.5*src_len) + 10, which on a long source
             # can exceed cfg.max_len (the training-time table size) and index past the end of a
             # fixed-size buffer. Grow the table on demand rather than crash: re-registering a
             # larger buffer is a few KB and happens at most once per decode call that needs it.
