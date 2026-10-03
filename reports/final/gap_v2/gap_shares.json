@@ -1,0 +1,403 @@
+{
+  "label": "EXPLORATORY / POST-HOC (not pre-registered)",
+  "definition": "scripts/gap_v2_stats.py header: Shapley over the mean difference",
+  "n": {
+    "e1": 1940,
+    "e3": 1000
+  },
+  "preregistered_reference": {
+    "source": "reports/final/main/seg_tuned/analysis.json",
+    "key": "gap_decomposition",
+    "total_gap_chrf_e1_minus_e3": 12.670018262513508,
+    "residual_domain_chrf": 12.877432139847357,
+    "r_squared": 0.1782077700966329,
+    "note": "cited unchanged, not recomputed or replaced; my_gap reproduces it",
+    "v2_reproduced_gap": 12.670018262513508
+  },
+  "primary_5groups": {
+    "outcome": "chrf",
+    "gap_e1_minus_e3": 12.670018262513508,
+    "groups": {
+      "rarity": {
+        "contribution": 2.3390569217338593,
+        "contribution_ci95": [
+          1.7994536897732745,
+          2.9853725060295253
+        ],
+        "share_of_gap": 0.18461353987581638,
+        "share_ci95": [
+          0.14010832461125844,
+          0.23849007487538457
+        ],
+        "r2_shapley": 0.04005664692327109,
+        "r2_shapley_ci95": [
+          0.03211679517064452,
+          0.05351601130395355
+        ]
+      },
+      "function_content": {
+        "contribution": 0.6561278215678259,
+        "contribution_ci95": [
+          0.31018645496189684,
+          1.0486803970726468
+        ],
+        "share_of_gap": 0.05178586233842268,
+        "share_ci95": [
+          0.025082081732896434,
+          0.08544530002537046
+        ],
+        "r2_shapley": 0.01034188981709017,
+        "r2_shapley_ci95": [
+          0.005032718144937257,
+          0.019259305468639486
+        ]
+      },
+      "alignment": {
+        "contribution": -1.7364445886050321,
+        "contribution_ci95": [
+          -2.314438415728864,
+          -1.2261871870598238
+        ],
+        "share_of_gap": -0.13705146690613784,
+        "share_ci95": [
+          -0.19128190151113883,
+          -0.09247990713941015
+        ],
+        "r2_shapley": 0.09498110603346036,
+        "r2_shapley_ci95": [
+          0.07411554813098925,
+          0.11560909884679088
+        ]
+      },
+      "register": {
+        "contribution": -0.16700335849048942,
+        "contribution_ci95": [
+          -0.8576257598027783,
+          0.5882688175094918
+        ],
+        "share_of_gap": -0.013180987985202706,
+        "share_ci95": [
+          -0.07062825257826486,
+          0.04559877578011874
+        ],
+        "r2_shapley": 0.011925849832922056,
+        "r2_shapley_ci95": [
+          0.006186953376182278,
+          0.02505647861798787
+        ]
+      },
+      "fertility": {
+        "contribution": 0.010663299948820176,
+        "contribution_ci95": [
+          -0.12066787367623083,
+          0.2027667442624348
+        ],
+        "share_of_gap": 0.0008416167781201576,
+        "share_ci95": [
+          -0.009233509914324646,
+          0.016486592083812333
+        ],
+        "r2_shapley": 0.0007826741228024034,
+        "r2_shapley_ci95": [
+          0.00044916734084980584,
+          0.0052155764720793795
+        ]
+      }
+    },
+    "explained_total": 1.1024000961549836,
+    "explained_share": 0.08700856410101865,
+    "residual": 11.567618166358525,
+    "residual_ci95": [
+      9.996022732852014,
+      13.029591860239085
+    ],
+    "residual_share": 0.9129914358989814,
+    "residual_share_ci95": [
+      0.8273555689280024,
+      1.0081046942989695
+    ],
+    "gap_ci95": [
+      11.191953863902521,
+      14.148225849918513
+    ],
+    "r2_full": 0.2296582517942819,
+    "r2_domain_only": 0.07157008506473583,
+    "bootstrap": {
+      "n_boot": 1000,
+      "seed": 1234,
+      "strata": "domain"
+    },
+    "sum_check": {
+      "sum_group_contributions_plus_residual_minus_gap": 0.0
+    }
+  },
+  "sensitivity_6groups_plus_length_control": {
+    "outcome": "chrf",
+    "gap_e1_minus_e3": 12.670018262513508,
+    "groups": {
+      "rarity": {
+        "contribution": 2.3489307870518448,
+        "contribution_ci95": [
+          1.803461167680106,
+          3.015784572841229
+        ],
+        "share_of_gap": 0.1853928493537829,
+        "share_ci95": [
+          0.14114734713613097,
+          0.23980772480590232
+        ],
+        "r2_shapley": 0.0402663955009277,
+        "r2_shapley_ci95": [
+          0.03243346757505049,
+          0.053399289709231704
+        ]
+      },
+      "function_content": {
+        "contribution": 0.7272589177052796,
+        "contribution_ci95": [
+          0.40111383566001674,
+          1.101910388252655
+        ],
+        "share_of_gap": 0.057399989695121736,
+        "share_ci95": [
+          0.03197650156571024,
+          0.08921818072860555
+        ],
+        "r2_shapley": 0.009362973896296659,
+        "r2_shapley_ci95": [
+          0.004647236419649612,
+          0.01719876523117298
+        ]
+      },
+      "alignment": {
+        "contribution": -1.6251065464787575,
+        "contribution_ci95": [
+          -2.1783909220452973,
+          -1.1281570261605645
+        ],
+        "share_of_gap": -0.12826394665009463,
+        "share_ci95": [
+          -0.1807243512132386,
+          -0.08624711439562145
+        ],
+        "r2_shapley": 0.09218066468012637,
+        "r2_shapley_ci95": [
+          0.07219221864947858,
+          0.11254453500340719
+        ]
+      },
+      "register": {
+        "contribution": -0.3350282729296121,
+        "contribution_ci95": [
+          -1.060134648201266,
+          0.4373914675653146
+        ],
+        "share_of_gap": -0.026442603790150215,
+        "share_ci95": [
+          -0.08834048445512535,
+          0.034674740330919565
+        ],
+        "r2_shapley": 0.01138001895484484,
+        "r2_shapley_ci95": [
+          0.005796836529417477,
+          0.024417340509682327
+        ]
+      },
+      "fertility": {
+        "contribution": -0.036943543458225224,
+        "contribution_ci95": [
+          -0.1827975001290666,
+          0.16729586709434802
+        ],
+        "share_of_gap": -0.0029158240100986463,
+        "share_ci95": [
+          -0.014575030925275822,
+          0.013089017372733231
+        ],
+        "r2_shapley": 0.0011566505695074095,
+        "r2_shapley_ci95": [
+          0.000586636662398381,
+          0.005809552792972997
+        ]
+      },
+      "length": {
+        "contribution": -0.5823502614909795,
+        "contribution_ci95": [
+          -0.860338434388879,
+          -0.3459431294761129
+        ],
+        "share_of_gap": -0.04596285888663364,
+        "share_ci95": [
+          -0.07157289386066769,
+          -0.026751037053167465
+        ],
+        "r2_shapley": 0.011572956964434724,
+        "r2_shapley_ci95": [
+          0.005528528783408932,
+          0.019888533016856887
+        ]
+      }
+    },
+    "explained_total": 0.4967610803995503,
+    "explained_share": 0.039207605711927496,
+    "residual": 12.173257182113959,
+    "residual_ci95": [
+      10.60452169040957,
+      13.650612625511087
+    ],
+    "residual_share": 0.9607923942880726,
+    "residual_share_ci95": [
+      0.8721772648526469,
+      1.0592390624021237
+    ],
+    "gap_ci95": [
+      11.191953863902521,
+      14.148225849918513
+    ],
+    "r2_full": 0.23748974563087355,
+    "r2_domain_only": 0.07157008506473583,
+    "bootstrap": {
+      "n_boot": 1000,
+      "seed": 1234,
+      "strata": "domain"
+    },
+    "sum_check": {
+      "sum_group_contributions_plus_residual_minus_gap": 0.0
+    }
+  },
+  "second_outcome_nll_5groups": {
+    "outcome": "sentence_mean_nll",
+    "gap_e1_minus_e3": -0.6924336053657774,
+    "groups": {
+      "rarity": {
+        "contribution": -0.25846115890765936,
+        "contribution_ci95": [
+          -0.3219073259452422,
+          -0.20042447535670355
+        ],
+        "share_of_gap": 0.3732648977530886,
+        "share_ci95": [
+          0.297573119949853,
+          0.45378930014097524
+        ],
+        "r2_shapley": 0.12966705707496973,
+        "r2_shapley_ci95": [
+          0.10648025534831085,
+          0.155958563187719
+        ]
+      },
+      "function_content": {
+        "contribution": 0.023401026956818186,
+        "contribution_ci95": [
+          0.004098325964162261,
+          0.04293340108060219
+        ],
+        "share_of_gap": -0.03379533687487137,
+        "share_ci95": [
+          -0.06596365150623065,
+          -0.005642355635853879
+        ],
+        "r2_shapley": 0.014827755017121755,
+        "r2_shapley_ci95": [
+          0.009688225937990761,
+          0.023194197365112714
+        ]
+      },
+      "alignment": {
+        "contribution": 0.106849902384901,
+        "contribution_ci95": [
+          0.07250603039623818,
+          0.1435614502639216
+        ],
+        "share_of_gap": -0.15431068272380807,
+        "share_ci95": [
+          -0.22099343006294558,
+          -0.10018798674013359
+        ],
+        "r2_shapley": 0.10557585094616062,
+        "r2_shapley_ci95": [
+          0.07977286555213926,
+          0.1310255158198849
+        ]
+      },
+      "register": {
+        "contribution": 0.0925607896181821,
+        "contribution_ci95": [
+          0.05491302539804152,
+          0.12890953133310531
+        ],
+        "share_of_gap": -0.13367460634624592,
+        "share_ci95": [
+          -0.19165957284799623,
+          -0.07870903890641169
+        ],
+        "r2_shapley": 0.011795775564120035,
+        "r2_shapley_ci95": [
+          0.007502471062892056,
+          0.02128464346968721
+        ]
+      },
+      "fertility": {
+        "contribution": 0.0035109704536410995,
+        "contribution_ci95": [
+          -0.005769339680666897,
+          0.01298658565836635
+        ],
+        "share_of_gap": -0.005070479575852522,
+        "share_ci95": [
+          -0.01900261061182658,
+          0.00821700347223043
+        ],
+        "r2_shapley": 0.004105655379354013,
+        "r2_shapley_ci95": [
+          0.0023245826326559267,
+          0.008252999145959972
+        ]
+      }
+    },
+    "explained_total": -0.03213846949411697,
+    "explained_share": 0.046413792232310645,
+    "residual": -0.6602951358716604,
+    "residual_ci95": [
+      -0.7561809263901368,
+      -0.5699606109694565
+    ],
+    "residual_share": 0.9535862077676894,
+    "residual_share_ci95": [
+      0.8390485244711618,
+      1.0743802757686827
+    ],
+    "gap_ci95": [
+      -0.7915310124851918,
+      -0.5937793741466575
+    ],
+    "r2_full": 0.3257681063887825,
+    "r2_domain_only": 0.05979601240705634,
+    "bootstrap": {
+      "n_boot": 1000,
+      "seed": 1234,
+      "strata": "domain"
+    },
+    "sum_check": {
+      "sum_group_contributions_plus_residual_minus_gap": -1.1102230246251565e-16
+    }
+  },
+  "bootstrap_runtime_seconds": {
+    "primary_5groups": 61.2,
+    "sensitivity_6groups_plus_length_control": 138.9,
+    "second_outcome_nll_5groups": 70.8
+  },
+  "residual_note": "residual = gap minus the explained part of the five groups (= -coefficient of the domain dummy in the primary OLS); it is NOT a measured domain effect and depends on the model form",
+  "estimand_sensitivity_chrf_5groups": {
+    "gap": 12.670018262513508,
+    "pooled_with_domain_dummy_explained": 1.1024000961549982,
+    "pooled_with_domain_dummy_share": 0.08700856410101981,
+    "pooled_no_dummy_explained": 3.984057567094886,
+    "pooled_no_dummy_share": 0.3144476578129667,
+    "oaxaca_e1_slopes_explained": 5.125841654319082,
+    "oaxaca_e1_slopes_share": 0.4045646618746235,
+    "oaxaca_e3_slopes_explained": -0.9543531240276931,
+    "oaxaca_e3_slopes_share": -0.07532373705027054,
+    "note": "explained part (all 5 groups together, no Shapley) and its share of the gap under alternative estimands; point estimates, no bootstrap. pooled_with_domain_dummy is the primary form; the other three show how much the 'unexplained' share depends on the model form."
+  }
+}
