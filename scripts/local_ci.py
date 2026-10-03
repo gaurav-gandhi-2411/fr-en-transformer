@@ -42,6 +42,19 @@ from __future__ import annotations
 #      step environment, as a GitHub runner has none, plus VIRTUAL_ENV / PYTHONPATH.
 #   6. Per-step timeout of STEP_TIMEOUT_S (the notebooks carry their own 1800 s timeout).
 #   7. Python patch versions come from the local uv-managed interpreters, not setup-python's.
+#   8. HEAD SHA vs MERGE REF: on pull_request Actions tests the synthetic merge commit
+#      (refs/pull/N/merge = PR head merged into current main); this runner tests exactly the
+#      commit given by --ref. To reproduce the Actions view, pass a SHA of the merge result
+#      (e.g. `git merge --no-commit` in a scratch branch, or the PR's merge ref) in addition to
+#      the head SHA. A head that passes here can still fail after merging into a moved main.
+#   9. uv VERSION IS UNPINNED: Actions uses astral-sh/setup-uv@v10.2.0; this runner uses whatever
+#      `uv` is on PATH (recorded in the summary under environment.uv). uv.lock is frozen, so
+#      resolved packages do not change, but uv's own behaviour can differ between versions.
+# Added safety/robustness (not ci.yml deviations): cleanup never follows junctions/symlinks (they
+# are unlinked first and refused if they point outside ci_work), cleanup runs in a `finally`,
+# per-env lockfiles serialise concurrent runs, `--prune [--yes]` lists/removes stale ci_work
+# worktrees, `--dry` exits 3 and prints no PASS.
+# Exit codes: 0 PASS, 1 FAIL, 2 could not run, 3 dry run (nothing executed).
 import argparse
 import concurrent.futures
 import contextlib
@@ -52,6 +65,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import threading
@@ -97,6 +111,8 @@ class Step:
     ci_run: str | None = None
     ci_uses: str | None = None
     local_only: bool = False
+    # Every other key of the ci.yml step (with/shell/env/...), compared exactly by ci_drift.
+    ci_extra: dict[str, object] = dataclasses.field(default_factory=dict)
 
 
 _RUN_SCORER = """\
@@ -194,9 +210,16 @@ STEPS: tuple[Step, ...] = (
         "Scorer-encoding tests, verbose (must run, not skip)",
         "scorer_encoding",
         ci_run=_RUN_SCORER,
+        ci_extra={"shell": "bash"},
     ),
     Step("3.12", "[local] verify env + checkout", "local_verify_312", local_only=True),
-    Step("3.13", "Set up Python 3.13", "setup_python_313", ci_uses="actions/setup-python@v5"),
+    Step(
+        "3.13",
+        "Set up Python 3.13",
+        "setup_python_313",
+        ci_uses="actions/setup-python@v5",
+        ci_extra={"with": {"python-version": "3.13"}},
+    ),
     Step(
         "3.13",
         "Create venv and install the Colab-style environment",
@@ -246,39 +269,104 @@ def norm(text: str) -> str:
 # --------------------------------------------------------------------------------------------
 # ci.yml <-> STEPS drift check (used by the test and at run time on the SHA's own ci.yml)
 # --------------------------------------------------------------------------------------------
-def workflow_steps(ci_yml_text: str) -> list[dict[str, str | None]]:
-    """[{job, name, run, uses}] for every step of every ci.yml job, in file order.
+# Everything in ci.yml outside the step list, compared exactly (name, `on`, concurrency, the job's
+# runs-on / strategy / matrix / env / timeout ...). yaml 1.1 parses the key `on` as True; the
+# expected side goes through the same parser so both sides agree.
+CI_META_YAML = """\
+name: CI
+on:
+  push:
+  pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps: []
+"""
 
-    `job` is the matrix python-version the step is gated on via `if: matrix.python-version == 'X'`
-    ("*" when ungated). Raises CiError on a step shape this runner does not understand.
-    """
+
+def _load_yaml(text: str) -> dict:
     try:
         import yaml
     except ImportError as exc:  # pragma: no cover - environment dependent
         raise CiError("PyYAML is required (it is a project dependency): use `uv run`") from exc
-    doc = yaml.safe_load(ci_yml_text)
-    out: list[dict[str, str | None]] = []
-    for job_name, job in doc["jobs"].items():
+    doc = yaml.safe_load(text)
+    if not isinstance(doc, dict) or "jobs" not in doc:
+        raise CiError("ci.yml is not a workflow mapping with `jobs`")
+    return doc
+
+
+def _meta(doc: dict) -> dict:
+    """The workflow minus every job's `steps` list."""
+    out = {k: v for k, v in doc.items() if k != "jobs"}
+    out["jobs"] = {
+        name: {k: v for k, v in job.items() if k != "steps"} for name, job in doc["jobs"].items()
+    }
+    return out
+
+
+def _gate(step: dict) -> str:
+    """Matrix python-version a step is gated on via `if:` ("*" if ungated); fail closed."""
+    cond = str(step.get("if", ""))
+    m = re.fullmatch(r"matrix\.python-version == '([0-9.]+)'", cond)
+    if cond and not m:
+        raise CiError(f"unsupported `if:` {cond!r}; extend local_ci.py")
+    return m.group(1) if m else "*"
+
+
+def workflow_steps(ci_yml_text: str) -> list[dict[str, object]]:
+    """[{job, name, run, uses, raw}] for every step of every ci.yml job, in file order.
+
+    `raw` is the complete parsed step mapping (all keys). Raises CiError on a shape this runner
+    does not understand.
+    """
+    doc = _load_yaml(ci_yml_text)
+    out: list[dict[str, object]] = []
+    for job in doc["jobs"].values():
         for step in job["steps"]:
-            cond = str(step.get("if", ""))
-            m = re.fullmatch(r"matrix\.python-version == '([0-9.]+)'", cond)
-            if cond and not m:
-                raise CiError(f"{job_name}: unsupported `if:` {cond!r}; extend local_ci.py")
             out.append(
                 {
-                    "job": m.group(1) if m else "*",
+                    "job": _gate(step),
                     "name": step.get("name") or step.get("uses"),
                     "run": step.get("run"),
                     "uses": step.get("uses"),
+                    "raw": step,
                 }
             )
     return out
 
 
+def expected_step_dict(s: Step) -> dict[str, object]:
+    """The complete ci.yml mapping (minus `run`) a table entry stands for."""
+    d: dict[str, object] = {}
+    if s.name != s.ci_uses:
+        d["name"] = s.name
+    if s.job != "*":
+        d["if"] = f"matrix.python-version == '{s.job}'"
+    if s.ci_uses is not None:
+        d["uses"] = s.ci_uses
+    d.update(s.ci_extra)
+    return d
+
+
 def ci_drift(ci_yml_text: str, steps: Sequence[Step] = STEPS) -> list[str]:
-    """Human-readable differences between ci.yml and the STEPS table ([] = in sync)."""
+    """Human-readable differences between ci.yml and the STEPS table ([] = in sync).
+
+    Compares the FULL parsed step mapping (every key: env, with, shell, continue-on-error,
+    timeout-minutes, ...), the run text, and everything outside the steps (job keys, matrix,
+    job/workflow env, triggers, concurrency).
+    """
     problems: list[str] = []
+    doc = _load_yaml(ci_yml_text)
     wf = workflow_steps(ci_yml_text)
+    if _meta(doc) != _meta(_load_yaml(CI_META_YAML)):
+        problems.append("workflow/job-level keys differ (on/concurrency/runs-on/strategy/env/...)")
     table = [s for s in steps if not s.local_only]
     if len(wf) != len(table):
         problems.append(f"step count: ci.yml has {len(wf)}, local table has {len(table)}")
@@ -288,14 +376,18 @@ def ci_drift(ci_yml_text: str, steps: Sequence[Step] = STEPS) -> list[str]:
         if s is None:
             problems.append(f"ci.yml step not in table: [{w['job']}] {w['name']!r}")
             continue
-        if w["run"] is not None and (s.ci_run is None or norm(s.ci_run) != norm(str(w["run"]))):
+        raw = dict(w["raw"])  # type: ignore[call-overload]
+        run = raw.pop("run", None)
+        if (run is None) != (s.ci_run is None) or (
+            run is not None and norm(s.ci_run or "") != norm(str(run))
+        ):
             problems.append(f"run text differs for {w['name']!r}")
-        if w["uses"] is not None and s.ci_uses != w["uses"]:
-            problems.append(f"uses differs for {w['name']!r}: {w['uses']} vs {s.ci_uses}")
+        if raw != expected_step_dict(s):
+            problems.append(f"step keys differ for {w['name']!r}: {raw} vs {expected_step_dict(s)}")
     wf_keys = {(str(w["job"]), str(w["name"])) for w in wf}
     problems.extend(f"table step not in ci.yml: {k!r}" for k in table_by_key if k not in wf_keys)
     # order within each job must match too
-    for job in ("3.12", "3.13"):
+    for job in JOBS_ALL:
         wf_order = [str(w["name"]) for w in wf if w["job"] in (job, "*")]
         tb_order = [s.name for s in table if s.job in (job, "*")]
         if wf_order != tb_order:
@@ -311,15 +403,18 @@ def ci_root() -> Path:
 
 
 def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    """Run git with explicit argv in `repo`."""
-    return subprocess.run(
+    """Run git with explicit argv in `repo`; a failure raises CiError carrying git's stderr."""
+    proc = subprocess.run(
         ["git", "-C", str(repo), *args],
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
-        check=check,
+        check=False,
     )
+    if check and proc.returncode != 0:
+        raise CiError(f"git {' '.join(args)} failed (rc {proc.returncode}): {proc.stderr.strip()}")
+    return proc
 
 
 def resolve_ref(repo: Path, ref: str) -> str:
@@ -359,21 +454,63 @@ class CleanupPlan:
     sha_dir: Path
     worktrees: list[Path]
     problems: list[str]
+    links: list[Path] = dataclasses.field(default_factory=list)
 
 
-def _is_link(p: Path) -> bool:
-    return p.is_symlink() or bool(getattr(os.path, "isjunction", lambda _p: False)(p))
+REPARSE_POINT = 0x400  # FILE_ATTRIBUTE_REPARSE_POINT (junctions, symlinks, mount points, ...)
+
+
+def _is_link(p: Path | str) -> bool:
+    """True for symlinks AND Windows junctions/other reparse points (lstat, never follows)."""
+    try:
+        st = os.lstat(p)
+    except OSError:
+        return False
+    return stat.S_ISLNK(st.st_mode) or bool(getattr(st, "st_file_attributes", 0) & REPARSE_POINT)
+
+
+def find_links(root: Path) -> list[Path]:
+    """Every symlink/junction/reparse point under `root` (root itself included), WITHOUT
+    descending into any of them."""
+    found: list[Path] = []
+    if _is_link(root):
+        return [root]
+    stack = [root]
+    while stack:
+        d = stack.pop()
+        try:
+            with os.scandir(d) as it:
+                entries = list(it)
+        except OSError:
+            continue
+        for e in entries:
+            if _is_link(e.path):
+                found.append(Path(e.path))
+            elif e.is_dir(follow_symlinks=False):
+                stack.append(Path(e.path))
+    return found
+
+
+def _remove_link(link: Path) -> None:
+    """Remove a link itself (never its target): unlink, else rmdir (directory junction)."""
+    try:
+        os.unlink(link)
+    except (IsADirectoryError, PermissionError, OSError):
+        os.rmdir(link)
 
 
 def plan_cleanup(repo: Path, work_root: Path, sha: str, worktrees: Sequence[Path]) -> CleanupPlan:
     """CHECK phase (deletes nothing): is everything we are about to remove ours and in ci_work?
 
-    A path is removable only if it resolves strictly inside work_root/<sha>, is not a link, and
-    (for worktrees) is a registered worktree of `repo`.
+    A path is removable only if it resolves strictly inside work_root/<sha>, is not itself a link,
+    (for worktrees) is a registered worktree of `repo`, and every link found inside the tree
+    points inside work_root (links are removed first, never followed; one that points outside
+    ci_work makes the plan refuse).
     """
     problems: list[str] = []
     sha_dir = work_root / sha
     root_r = work_root.resolve()
+    links: list[Path] = []
     if not SHA_RE.match(sha):
         problems.append(f"not a full sha: {sha!r}")
     if sha_dir.exists():
@@ -382,6 +519,12 @@ def plan_cleanup(repo: Path, work_root: Path, sha: str, worktrees: Sequence[Path
             problems.append(f"{sd} is not directly under {root_r}")
         if _is_link(sha_dir):
             problems.append(f"{sha_dir} is a link")
+        else:
+            links = find_links(sha_dir)
+            for link in links:
+                target = link.resolve()
+                if root_r not in target.parents:
+                    problems.append(f"link {link} points outside ci_work: {target}")
     registered = {
         Path(line.split(" ", 1)[1]).resolve()
         for line in git(repo, "worktree", "list", "--porcelain").stdout.splitlines()
@@ -396,18 +539,128 @@ def plan_cleanup(repo: Path, work_root: Path, sha: str, worktrees: Sequence[Path
             problems.append(f"{wt} is not directly under {sha_dir}")
         elif wt.resolve() not in registered:
             problems.append(f"{wt} is not a registered worktree of {repo}")
-    return CleanupPlan(sha_dir, [w for w in worktrees if w.exists()], problems)
+    return CleanupPlan(sha_dir, [w for w in worktrees if w.exists()], problems, links)
 
 
 def execute_cleanup(repo: Path, plan: CleanupPlan) -> None:
-    """DELETE phase: only ever called with a plan whose check phase found no problems."""
+    """DELETE phase: only ever called with a plan whose check phase found no problems.
+
+    Order: unlink every link (never following it), re-scan and require zero links, then
+    `git worktree remove` (plain first; --force only after the re-scan found no links, because
+    git's --force follows junctions on Windows), then remove the sha dir.
+    """
     if plan.problems:
         raise CiError("refusing to clean up: " + "; ".join(plan.problems))
-    for wt in plan.worktrees:
-        git(repo, "worktree", "remove", "--force", str(wt))
-    git(repo, "worktree", "prune")
     if plan.sha_dir.exists():
+        for link in find_links(plan.sha_dir):
+            _remove_link(link)
+        left = find_links(plan.sha_dir)
+        if left:
+            raise CiError(f"refusing to clean up: links remain after unlink: {left}")
+    for wt in plan.worktrees:
+        if find_links(wt):  # a link appeared after the scan: never hand it to git
+            raise CiError(f"refusing to clean up: new link inside {wt}")
+        if git(repo, "worktree", "remove", str(wt), check=False).returncode != 0:
+            git(repo, "worktree", "remove", "--force", str(wt))  # links are gone (checked above)
+    if plan.sha_dir.exists():
+        if find_links(plan.sha_dir):
+            raise CiError(f"refusing to rmtree {plan.sha_dir}: links present")
         shutil.rmtree(plan.sha_dir)
+
+
+def stale_worktrees(repo: Path, work_root: Path) -> list[dict[str, object]]:
+    """Registered worktrees of `repo` located directly in work_root/<sha>/, with sha and age."""
+    root_r = work_root.resolve()
+    rows: list[dict[str, object]] = []
+    for line in git(repo, "worktree", "list", "--porcelain").stdout.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        path = Path(line.split(" ", 1)[1])
+        try:
+            rp = path.resolve()
+        except OSError:
+            continue
+        if rp.parent.parent == root_r and SHA_RE.match(rp.parent.name):
+            age_h = (time.time() - rp.stat().st_mtime) / 3600 if rp.exists() else None
+            rows.append(
+                {
+                    "path": path,
+                    "sha": rp.parent.name,
+                    "exists": rp.exists(),
+                    "age_hours": None if age_h is None else round(age_h, 1),
+                }
+            )
+    return rows
+
+
+# --------------------------------------------------------------------------------------------
+# Per-env lock: two concurrent runs must not install into / run from the same cached env.
+# --------------------------------------------------------------------------------------------
+LOCK_STALE_S = 6 * 3600
+
+
+def pid_alive(pid: int) -> bool:
+    """Is a process with this PID running? (Windows: OpenProcess; POSIX: signal 0.)"""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        k32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(h, ctypes.byref(code))
+        k32.CloseHandle(h)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+@contextlib.contextmanager
+def env_lock(lock_path: Path, wait_s: float, poll_s: float = 1.0):
+    """Exclusive lockfile (PID + timestamp). Waits up to `wait_s`, then raises CiError.
+
+    A lock whose PID is dead, or older than LOCK_STALE_S, is taken over (noted on stderr).
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + wait_s
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            holder = ""
+            try:
+                holder = lock_path.read_text(encoding="utf-8").strip()
+                pid_s, ts_s = holder.split()[:2]
+                stale = (not pid_alive(int(pid_s))) or time.time() - float(ts_s) > LOCK_STALE_S
+            except (OSError, ValueError):
+                stale = False
+            if stale:
+                print(f"taking over stale lock {lock_path} ({holder})", file=sys.stderr)
+                with contextlib.suppress(OSError):
+                    lock_path.unlink()
+                continue
+            if time.monotonic() >= deadline:
+                raise CiError(
+                    f"env lock {lock_path} is held by (pid ts) {holder!r}; gave up"
+                ) from None
+            time.sleep(poll_s)
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(f"{os.getpid()} {time.time()}\n")
+        break
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            lock_path.unlink()
 
 
 # --------------------------------------------------------------------------------------------
@@ -428,6 +681,7 @@ class Ctx:
     uv: str
     dry: bool = False
     echo: bool = True
+    lock_wait: float = 3600.0
     python: str | None = None  # interpreter used to create the 3.13 venv
     py_version: str = ""
     tail: deque[str] = dataclasses.field(default_factory=lambda: deque(maxlen=2000))
@@ -823,6 +1077,14 @@ def job_steps(job: str) -> list[Step]:
 
 
 def run_job(ctx: Ctx) -> dict[str, object]:
+    """Run one job under an exclusive lock on its cached env (see env_lock)."""
+    if ctx.dry or ctx.env_dir is None:
+        return _run_steps(ctx)
+    with env_lock(ctx.root / "ci_envs" / f"{ctx.env_dir.name}.lock", ctx.lock_wait):
+        return _run_steps(ctx)
+
+
+def _run_steps(ctx: Ctx) -> dict[str, object]:
     """Run one job's steps in order; stop at the first failing step."""
     results: list[StepResult] = []
     failed: str | None = None
@@ -839,13 +1101,14 @@ def run_job(ctx: Ctx) -> dict[str, object]:
             rc, detail = 1, {"exception": f"{type(exc).__name__}: {exc}"}
         dur = round(time.monotonic() - t0, 2)
         status = "pass" if rc == 0 else "fail"
-        ctx.say(f"::: {status.upper()} ({dur}s): {step.name}")
+        label = "DRY (not run)" if ctx.dry and rc == 0 else status.upper()
+        ctx.say(f"::: {label} ({dur}s): {step.name}")
         results.append(StepResult(step.name, status, dur, rc, detail))
         if rc != 0:
             failed = step.name
     return {
         "job": ctx.job,
-        "status": "FAIL" if failed else "PASS",
+        "status": "FAIL" if failed else ("DRY" if ctx.dry else "PASS"),
         "first_failing_step": failed,
         "python": ctx.py_version,
         "steps": [dataclasses.asdict(r) for r in results],
@@ -934,12 +1197,74 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dry", action="store_true", help="resolve and print every command only")
     p.add_argument("--allow-ci-drift", action="store_true", help="warn (not fail) on ci.yml drift")
     p.add_argument("--quiet", action="store_true", help="do not echo step output to the console")
+    p.add_argument(
+        "--prune",
+        action="store_true",
+        help="list registered worktrees under ci_work (sha, age); with --yes remove them safely",
+    )
+    p.add_argument("--yes", action="store_true", help="with --prune: actually remove the listed")
+    p.add_argument(
+        "--lock-wait",
+        type=float,
+        default=3600.0,
+        help="seconds to wait for another run's env/sha lock before failing (0 = fail at once)",
+    )
     args = p.parse_args(argv)
     args.job_list = [j.strip() for j in args.jobs.split(",") if j.strip()]
     bad = [j for j in args.job_list if j not in JOBS_ALL]
     if bad or not args.job_list:
         p.error(f"--jobs must be a comma list drawn from {JOBS_ALL}, got {args.jobs!r}")
     return args
+
+
+def prune_main(repo: Path, root: Path, yes: bool) -> int:
+    """List (and with --yes remove, via the safe path) registered worktrees under ci_work."""
+    work_root = root / "ci_work"
+    rows = stale_worktrees(repo, work_root)
+    if not rows:
+        print(f"no registered worktrees of {repo} under {work_root}")
+        return 0
+    for r in rows:
+        print(f"{r['sha']}  {r['path']}  exists={r['exists']}  age_hours={r['age_hours']}")
+    if not yes:
+        print("listing only; nothing deleted. Re-run with --prune --yes to remove them.")
+        return 0
+    rc = 0
+    for sha in sorted({str(r["sha"]) for r in rows}):
+        paths = [Path(str(r["path"])) for r in rows if r["sha"] == sha and r["exists"]]
+        plan = plan_cleanup(repo, work_root, sha, paths)
+        print(f"cleanup check {sha}: {'OK' if not plan.problems else plan.problems}")
+        if plan.problems:
+            rc = 1
+            continue
+        try:
+            execute_cleanup(repo, plan)
+            print(f"removed {plan.sha_dir}")
+        except CiError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            rc = 1
+    return rc
+
+
+def _cleanup(
+    repo: Path, root: Path, sha: str, jobs: Sequence[str], keep: bool
+) -> dict[str, object]:
+    """CHECK phase, then (separately) DELETE phase; never raises (it runs in a `finally`)."""
+    cleanup: dict[str, object] = {"performed": False, "problems": []}
+    try:
+        cands = [root / "ci_work" / sha / job_key(j) for j in jobs]
+        plan = plan_cleanup(repo, root / "ci_work", sha, cands)
+        cleanup["problems"] = list(plan.problems)
+        print(f"cleanup check: {'OK' if not plan.problems else plan.problems}")
+        if keep:
+            print(f"--keep: leaving {plan.sha_dir}")
+        elif not plan.problems:
+            execute_cleanup(repo, plan)
+            cleanup["performed"] = True
+    except (CiError, OSError) as exc:
+        cleanup["problems"] = [*cleanup["problems"], f"cleanup failed: {exc}"]  # type: ignore[misc]
+        print(f"WARNING: cleanup failed: {exc}", file=sys.stderr)
+    return cleanup
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -949,12 +1274,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.list_steps:
         print(format_steps(args.job_list))
         return 0
+    repo = REPO_ROOT
+    root = ci_root()
+    if args.prune:
+        try:
+            return prune_main(repo, root, args.yes)
+        except CiError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
     uv = shutil.which("uv")
     if uv is None:
         print("ERROR: uv is not on PATH", file=sys.stderr)
         return 2
-    repo = REPO_ROOT
-    root = ci_root()
     try:
         sha = resolve_ref(repo, args.ref)
     except CiError as exc:
@@ -981,36 +1312,41 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     contexts: list[Ctx] = []
     results: list[dict[str, object]] = []
+    cleanup: dict[str, object] = {"performed": False, "problems": []}
+    error: str | None = None
     t_start = time.monotonic()
     try:
-        for job in args.job_list:
-            contexts.append(
-                prepare_job(repo, root, sha, job, uv, dry=args.dry, echo=not args.quiet)
-            )
-        if args.parallel and len(contexts) > 1:
-            with concurrent.futures.ThreadPoolExecutor(len(contexts)) as ex:
-                results = list(ex.map(run_job, contexts))
-        else:
-            results = [run_job(c) for c in contexts]
-    except CiError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        with contextlib.ExitStack() as stack:
+            if not args.dry:  # one run per SHA at a time: they share ci_work/<sha>/
+                stack.enter_context(env_lock(root / "ci_envs" / f"sha-{sha}.lock", args.lock_wait))
+            try:
+                for job in args.job_list:
+                    ctx = prepare_job(repo, root, sha, job, uv, dry=args.dry, echo=not args.quiet)
+                    ctx.lock_wait = args.lock_wait
+                    contexts.append(ctx)
+                if args.parallel and len(contexts) > 1:
+                    with concurrent.futures.ThreadPoolExecutor(len(contexts)) as ex:
+                        results = list(ex.map(run_job, contexts))
+                else:
+                    results = [run_job(c) for c in contexts]
+            finally:  # also on CiError / Ctrl-C: never leave registered worktrees behind
+                for c in contexts:
+                    if c.log is not None:
+                        c.log.close()
+                if not args.dry:
+                    cleanup = _cleanup(repo, root, sha, args.job_list, args.keep)
+    except (CiError, OSError) as exc:
+        error = f"{type(exc).__name__}: {exc}" if isinstance(exc, OSError) else str(exc)
+    except KeyboardInterrupt:
+        error = "interrupted"
+    if error is not None:
+        print(f"ERROR: {error}", file=sys.stderr)
         return 2
-    finally:
-        for c in contexts:
-            if c.log is not None:
-                c.log.close()
-
-    # ---- cleanup: CHECK phase, then (separately) DELETE phase ----
-    cleanup = {"performed": False, "problems": []}
-    if not args.dry:
-        plan = plan_cleanup(repo, root / "ci_work", sha, [c.checkout for c in contexts])
-        cleanup["problems"] = plan.problems
-        print(f"cleanup check: {'OK' if not plan.problems else plan.problems}")
-        if args.keep:
-            print(f"--keep: leaving {plan.sha_dir}")
-        elif not plan.problems:
-            execute_cleanup(repo, plan)
-            cleanup["performed"] = True
+    if args.dry:
+        for r in results:
+            print(f"planned job {r['job']}: {len(r['steps'])} steps")  # type: ignore[arg-type]
+        print("DRY RUN (nothing executed)")
+        return 3
 
     ok = all(r["status"] == "PASS" for r in results)
     summary: dict[str, object] = {
@@ -1027,10 +1363,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "parallel": bool(args.parallel),
         "cleanup": cleanup,
     }
-    if not args.dry:
-        out = root / "ci_logs" / f"{sha}.json"
-        out.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-        print(f"summary: {out}")
+    out = root / "ci_logs" / f"{sha}.json"
+    out.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    print(f"summary: {out}")
     for r in results:
         failing = r["first_failing_step"]
         print(
