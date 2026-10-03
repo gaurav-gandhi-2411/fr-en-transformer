@@ -936,6 +936,7 @@ def plan_final_all(
     repo_dir: Path | None = None,
     comet_batch_size: int = 64,
     comet_precision: str = "fp32",
+    comet_device: str = "cuda",
 ) -> list[tuple[str, list[str]]]:
     """The ordered (step name, argv) list of the staged `final_all` session, each argv a fresh
     interpreter: hf-verify (the notebook's skip check: it parses HF_RUN_COMPLETE and skips the rest
@@ -1033,6 +1034,7 @@ def plan_final_all(
         python=py,
         batch_size=comet_batch_size,
         precision=comet_precision,
+        device=comet_device,
     )
     return plan
 
@@ -1414,6 +1416,7 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--repo-dir", type=Path, default=ev.REPO_ROOT, help="for configs/<name>.yaml")
     s.add_argument("--comet-batch-size", type=int, default=64)
     s.add_argument("--comet-precision", choices=("fp32", "bf16", "fp16"), default="fp32")
+    s.add_argument("--comet-device", choices=("cuda", "auto", "cpu"), default="cuda")
     s.add_argument("--json", action="store_true", help="print [[name, argv], ...] as JSON")
 
     s = sub.add_parser("summary", help="print the Summary-cell lines of a finished session")
@@ -1487,6 +1490,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             repo_dir=args.repo_dir,
             comet_batch_size=args.comet_batch_size,
             comet_precision=args.comet_precision,
+            comet_device=args.comet_device,
         )
         if args.json:
             print(json.dumps([[name, argv] for name, argv in plan]))

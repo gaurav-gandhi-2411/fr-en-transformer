@@ -23,6 +23,7 @@ import os
 import platform
 import shutil
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from importlib import metadata
@@ -132,9 +133,16 @@ def run_chunks(
     chunk_size: int,
     get_scorer: Callable[[], Callable[[list[Triple]], list[float]]],
     log: Callable[[str], None] = print,
+    chunk_meta: Callable[[], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Score every chunk that has no valid file yet. `get_scorer` is called lazily, at most once,
-    so a complete cache never loads the model. Returns {"chunks", "skipped", "scored_triples",
+    so a complete cache never loads the model. `chunk_meta` (called after the scorer is
+    ready) is stored in every chunk file it scores, as provenance (model record, device,
+    precision, batch size, library versions): a killed run whose worker_meta.json was
+    never written can still be re-derived from the chunks. Batch size is recorded but NOT
+    part of a chunk's validity: it only changes padding, i.e. scores at the ~1e-7 level
+    (up to 6e-7 measured between chunk/batch compositions), never the model or the precision.
+    Returns {"chunks", "skipped", "scored_triples",
     "wall_seconds", "chunk_wall_seconds": {k: seconds}} for the chunks scored by THIS call."""
     bounds = chunk_bounds(len(triples), chunk_size)
     scorer: Callable[[list[Triple]], list[float]] | None = None
@@ -161,6 +169,7 @@ def run_chunks(
                 "n": len(part),
                 "scores": [float(s) for s in scores],
                 "wall_seconds": seconds,
+                "meta": chunk_meta() if chunk_meta else {},
             },
         )
         scored += len(part)
@@ -221,6 +230,17 @@ def prepare_pinned_model_dir(work_dir: Path, model_dir: Path, encoder_dir: Path)
     if not ckpt.exists():
         _link_or_copy(Path(model_dir) / "checkpoints" / "model.ckpt", ckpt)
     return ckpt
+
+
+def cpu_fallback_notice(device: str, gpus: int) -> str | None:
+    """LOUD text when `auto` ended on the CPU (days instead of minutes for the real
+    workload), else None. The notebook asks for `cuda`, which refuses instead."""
+    if device == "auto" and not gpus:
+        return (
+            "!!! COMET WORKER: --device auto found NO CUDA: scoring on the CPU, roughly "
+            "2 triples/s instead of the assumed 50-150 on a GPU. Use --device cuda to refuse. !!!"
+        )
+    return None
 
 
 def resolve_device(device: str, cuda_available: bool) -> int:
@@ -295,6 +315,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Score {src, mt, ref} triples with COMET-22.")
     p.add_argument("--in", dest="in_path", required=True, type=Path)
     p.add_argument("--cache-dir", required=True, type=Path)
+    p.add_argument(
+        "--model-dir",
+        type=Path,
+        default=Path(tempfile.gettempdir()) / "comet_model",
+        help="LOCAL disk dir for the 2.3 GB checkpoint link/copy (never Drive)",
+    )
     p.add_argument("--meta-out", required=True, type=Path)
     p.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
     p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
@@ -311,22 +337,43 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise WorkerError(f"{args.in_path}: expected a JSON list of {{src, mt, ref}} objects")
     state: dict[str, Any] = {}
 
+    def provenance() -> dict[str, Any]:
+        return {
+            "schema": 1,
+            "chunk_size": args.chunk_size,
+            "batch_size": args.batch_size,
+            "precision": args.precision,
+            "seed": args.seed,
+            "libraries": library_versions(),
+        }
+
     def get_scorer() -> Callable[[list[Triple]], list[float]]:
         import torch
 
         gpus = resolve_device(args.device, torch.cuda.is_available())
+        notice = cpu_fallback_notice(args.device, gpus)
+        if notice:
+            print(notice, file=sys.stderr, flush=True)
         if args.precision == "fp16" and not gpus:
             raise WorkerError("fp16 needs a GPU (CPU half-precision ops are not supported)")
         torch.manual_seed(args.seed)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-        model, record = load_model(args.cache_dir / "_load")
+        model, record = load_model(args.model_dir)
         state.update(record)
         state["device"] = f"cuda:0 ({torch.cuda.get_device_name(0)})" if gpus else "cpu"
+        # written as soon as the model is loaded, before the first chunk (atomic)
+        _write_json(args.meta_out, {**provenance(), **state, "model_loaded_this_call": True})
         return make_scorer(model, args.batch_size, gpus, args.precision)
 
     t0 = time.monotonic()
-    stats = run_chunks(triples, args.cache_dir, args.chunk_size, get_scorer)
+    stats = run_chunks(
+        triples,
+        args.cache_dir,
+        args.chunk_size,
+        get_scorer,
+        chunk_meta=lambda: {**provenance(), **state},
+    )
     try:  # a re-run that finds every chunk done loads no model: keep what the loading run saw
         previous = json.loads(args.meta_out.read_text(encoding="utf-8"))
     except (OSError, ValueError):

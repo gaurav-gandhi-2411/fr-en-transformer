@@ -73,6 +73,9 @@ MODEL_LICENSE = "apache-2.0 (Unbabel/wmt22-comet-da model card, LICENSE file)"
 ENCODER_LICENSE = "mit (FacebookAI/xlm-roberta-large model card)"
 # Colab-side venv (--system-site-packages keeps the preinstalled torch) and its constraints file.
 DEFAULT_VENV = "/content/comet_venv"
+# LOCAL runtime disk, never Drive: the pinned 2.3 GB checkpoint is linked/copied here, and
+# Drive FUSE may refuse symlinks/hardlinks (the copy would then be 2.3 GB onto Drive).
+DEFAULT_MODEL_DIR = "/content/comet_model"
 DEFAULT_CONSTRAINTS = "/content/comet_constraints.txt"
 # unbabel-comet 2.2.7 requires numpy<2 (no cp313 wheel -> `pip install unbabel-comet` cannot
 # resolve on Python 3.13 without compiling numpy). On 3.13 the explicit dependency list below is
@@ -377,20 +380,24 @@ def set_record(
 
 def read_all_chunks(
     unique: Sequence[tuple[str, str, str]], cache_dir: Path, chunk_size: int
-) -> tuple[list[float], float]:
+) -> tuple[list[float], float, dict[str, Any]]:
     """(scores of every distinct triple in order, summed chunk wall seconds). A missing or invalid
     chunk raises: scores are never partially assembled."""
     triples = [{"src": s, "mt": m, "ref": r} for s, m, r in unique]
     scores: list[float] = []
     seconds = 0.0
+    meta: dict[str, Any] = {}
     for k, (lo, hi) in enumerate(cw.chunk_bounds(len(triples), chunk_size)):
         path = cw.chunk_path(cache_dir, k)
         part = cw.read_chunk(path, triples[lo:hi])
         if part is None:
             raise CometStageError(f"COMET chunk {k} ({path}) is missing or does not match")
         scores.extend(part)
-        seconds += float((ev._read_json(path) or {}).get("wall_seconds", 0.0))
-    return scores, seconds
+        record = ev._read_json(path) or {}
+        seconds += float(record.get("wall_seconds", 0.0))
+        if not meta and isinstance(record.get("meta"), dict) and record["meta"].get("model"):
+            meta = record["meta"]  # provenance of the first chunk that has it
+    return scores, seconds, meta
 
 
 # ---------------------------------------------------------------------------------------------
@@ -415,6 +422,7 @@ def worker_command(
     cache_dir: Path,
     meta_path: Path,
     *,
+    model_dir: Path,
     chunk_size: int,
     batch_size: int,
     device: str,
@@ -430,6 +438,8 @@ def worker_command(
         str(cache_dir),
         "--meta-out",
         str(meta_path),
+        "--model-dir",
+        str(model_dir),
         "--chunk-size",
         str(chunk_size),
         "--batch-size",
@@ -465,13 +475,25 @@ def run_worker_subprocess(cmd: Sequence[str]) -> None:
         raise CometStageError(f"the COMET worker failed (exit {done.returncode}); see its output")
 
 
+def check_model_dir_is_local(model_dir: Path, eval_root: Path) -> None:
+    """Refuse a model dir under the eval root (Drive): the checkpoint link/copy is 2.3 GB."""
+    model = Path(model_dir).resolve()
+    root = Path(eval_root).resolve()
+    if model == root or root in model.parents:
+        raise CometStageError(
+            f"COMET model dir {model} is under the eval dir {root} (Drive): it must be on "
+            "the LOCAL runtime disk (e.g. /content/comet_model)"
+        )
+
+
 def score_stage(
     eval_root: Path,
     *,
     venv: Path = Path(DEFAULT_VENV),
     batch_size: int = cw.DEFAULT_BATCH_SIZE,
     precision: str = "fp32",
-    device: str = "auto",
+    device: str = "cuda",
+    model_dir: Path = Path(DEFAULT_MODEL_DIR),
     chunk_size: int = cw.DEFAULT_CHUNK_SIZE,
     runner: Callable[[Sequence[str]], None] = run_worker_subprocess,
     log: Callable[[str], None] = print,
@@ -480,6 +502,7 @@ def score_stage(
     the worker command (tests pass a stub). Returns the summary."""
     root = Path(eval_root)
     croot = comet_root(root)
+    check_model_dir_is_local(model_dir, root)
     candidates = report_candidates(root)
     write_copy_source_baseline(root)
     specs = enumerate_sets(root, candidates)
@@ -513,16 +536,21 @@ def score_stage(
                 triples_path,
                 cache_dir,
                 meta_path,
+                model_dir=Path(model_dir),
                 chunk_size=chunk_size,
                 batch_size=batch_size,
                 device=device,
                 precision=precision,
             )
         )
-        unique_scores, chunk_seconds = read_all_chunks(unique, cache_dir, chunk_size)
+        unique_scores, chunk_seconds, chunk_meta = read_all_chunks(unique, cache_dir, chunk_size)
         meta = ev._read_json(meta_path)
         if not isinstance(meta, dict) or not meta.get("model"):
-            raise CometStageError(f"{meta_path} is missing or records no loaded model")
+            # killed between the last chunk and the meta write (or the meta was lost):
+            # re-derive the record from the chunk cache's own provenance
+            meta = chunk_meta
+        if not meta.get("model"):
+            raise CometStageError(f"{meta_path} and the chunk cache record no loaded model")
         stage = {
             "scoring_wall_seconds": chunk_seconds,
             "distinct_triples_scored": len(unique),
@@ -964,7 +992,7 @@ def planned_counts(
         ]
     }
     run_specs = [
-        ScoreSet(r, v, s, Path(runs_root) / r / v / f"{s}_predictions.json")
+        ScoreSet(r, v, s, Path(runs_root or "") / r / v / f"{s}_predictions.json")
         for r in PINNED_RUNS
         for v in VARIANTS
         for s in SPLITS
@@ -1021,7 +1049,7 @@ def describe_stage(
     *,
     batch_size: int = cw.DEFAULT_BATCH_SIZE,
     precision: str = "fp32",
-    device: str = "auto",
+    device: str = "cuda",
     n_candidates: int | None = None,
 ) -> list[str]:
     """The COMET section of the dry run: what is scored, the distinct-triple counts (exact where
@@ -1046,8 +1074,9 @@ def describe_stage(
         f"  model: {cw.COMET_MODEL} @ {cw.COMET_MODEL_REVISION} (unbabel-comet {COMET_VERSION}); "
         f"licence {MODEL_LICENSE}",
         f"  encoder files: {cw.XLMR_REPO} @ {cw.XLMR_REVISION}; licence {ENCODER_LICENSE}",
-        f"  device: {device} (the Colab GPU; 'auto' falls back to CPU, 'cuda' refuses without "
-        f"CUDA); batch size {batch_size}; precision {precision}; chunk size "
+        f"  device: {device} ('cuda' refuses without CUDA; 'auto' falls back to the CPU "
+        f"with a loud message; 'cpu' only when set explicitly); "
+        f"batch size {batch_size}; precision {precision}; chunk size "
         f"{cw.DEFAULT_CHUNK_SIZE}; seed {cw.DEFAULT_SEED}",
         f"  bootstrap: {BOOTSTRAP_RESAMPLES} resamples, seed {BOOTSTRAP_SEED}, 95% percentile CI "
         "over segments (per set)",
@@ -1099,7 +1128,7 @@ def plan_steps(
     constraints: Path = Path(DEFAULT_CONSTRAINTS),
     batch_size: int = cw.DEFAULT_BATCH_SIZE,
     precision: str = "fp32",
-    device: str = "auto",
+    device: str = "cuda",
 ) -> list[tuple[str, list[str]]]:
     """The COMET steps appended to the final_all plan, after `upload`; each argv a fresh
     interpreter and each idempotent. Names start with `comet:` (the notebook runs them after the
@@ -1150,8 +1179,9 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--venv", type=Path, default=Path(DEFAULT_VENV))
     s.add_argument("--batch-size", type=int, default=cw.DEFAULT_BATCH_SIZE)
     s.add_argument("--precision", choices=cw.PRECISIONS, default="fp32")
-    s.add_argument("--device", choices=cw.DEVICES, default="auto")
+    s.add_argument("--device", choices=cw.DEVICES, default="cuda")
     s.add_argument("--chunk-size", type=int, default=cw.DEFAULT_CHUNK_SIZE)
+    s.add_argument("--model-dir", type=Path, default=Path(DEFAULT_MODEL_DIR))
 
     s = sub.add_parser("upload", help="second private commit under runs/final_all/comet/")
     s.add_argument("--eval-root", required=True, type=Path)
@@ -1162,7 +1192,7 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--runs-root", type=Path, default=ev.REPO_ROOT / "reports" / "final")
     s.add_argument("--batch-size", type=int, default=cw.DEFAULT_BATCH_SIZE)
     s.add_argument("--precision", choices=cw.PRECISIONS, default="fp32")
-    s.add_argument("--device", choices=cw.DEVICES, default="auto")
+    s.add_argument("--device", choices=cw.DEVICES, default="cuda")
     return p
 
 
@@ -1188,6 +1218,7 @@ def _dispatch(args: argparse.Namespace) -> int:
             batch_size=args.batch_size,
             precision=args.precision,
             device=args.device,
+            model_dir=args.model_dir,
             chunk_size=args.chunk_size,
         )
         print(

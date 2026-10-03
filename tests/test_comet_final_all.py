@@ -113,3 +113,16 @@ def test_summary_lines_report_comet_or_say_not_done(tmp_path: Path) -> None:
     assert "COMET-22: 61 sets" in text and "COMET main/seg_off: dev " in text
     assert "COMET copy_source/baseline:" in text and f"HF_COMET_REVISION={REVISION}" in text
     assert f"COMET final_all_report/{CANDS[0]}: e1 " in text
+
+
+def test_comet_device_passes_through_the_plan_and_defaults_to_cuda() -> None:
+    models = {n: Path(f"/m/{n}") for n in fa.MODEL_NAMES}
+    plan = dict(fa.plan_final_all(eval_root=Path("/e"), hf_repo="o/r", models=models, python="py"))
+    argv = plan["comet:score"]
+    assert argv[argv.index("--device") + 1] == "cuda"
+    cpu = dict(
+        fa.plan_final_all(
+            eval_root=Path("/e"), hf_repo="o/r", models=models, python="py", comet_device="cpu"
+        )
+    )["comet:score"]
+    assert cpu[cpu.index("--device") + 1] == "cpu"

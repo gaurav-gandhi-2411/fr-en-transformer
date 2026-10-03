@@ -53,7 +53,8 @@ class StubWorker:
     scorer, then writes the meta file like the real worker. `die_after_chunks` raises once that
     many chunks were scored in a call (a disconnect)."""
 
-    def __init__(self, die_after_chunks: int | None = None) -> None:
+    def __init__(self, die_after_chunks: int | None = None, write_meta: bool = True) -> None:
+        self.write_meta = write_meta  # False: killed after the last chunk, before the meta write
         self.calls: list[list[str]] = []
         self.scored: list[int] = []  # triples scored per call
         self.die_after_chunks = die_after_chunks
@@ -63,6 +64,16 @@ class StubWorker:
         arg = {cmd[i]: cmd[i + 1] for i in range(len(cmd) - 1) if cmd[i].startswith("--")}
         triples = json.loads(Path(arg["--in"]).read_text(encoding="utf-8"))
         counter = {"chunks": 0, "triples": 0}
+        base_meta = {
+            "model": cw.COMET_MODEL,
+            "model_revision": cw.COMET_MODEL_REVISION,
+            "model_class": "RegressionMetric",
+            "class_identifier": "regression_metric",
+            "device": "stub-gpu",
+            "precision": arg["--precision"],
+            "batch_size": int(arg["--batch-size"]),
+            "libraries": {"unbabel-comet": cs.COMET_VERSION},
+        }
 
         def get_scorer() -> Any:
             def score(part: list[dict[str, str]]) -> list[float]:
@@ -81,6 +92,7 @@ class StubWorker:
                 int(arg["--chunk-size"]),
                 get_scorer,
                 log=lambda _m: None,
+                chunk_meta=lambda: dict(base_meta),
             )
         finally:
             self.scored.append(counter["triples"])
@@ -96,7 +108,8 @@ class StubWorker:
             "libraries": {"unbabel-comet": cs.COMET_VERSION},
             **stats,
         }
-        ev._write_json(Path(arg["--meta-out"]), meta)
+        if self.write_meta:
+            ev._write_json(Path(arg["--meta-out"]), meta)
 
 
 # --- a fake eval dir with every prediction file ---------------------------------------------------
@@ -327,7 +340,7 @@ def test_score_stage_writes_every_set_with_provenance_and_dedups(tmp_path: Path)
     # worker argv: module, batch size, precision, chunk size
     cmd = worker.calls[0]
     assert cmd[1:3] == ["-m", "nmt.comet_worker"]
-    assert cmd[cmd.index("--batch-size") + 1] == "16" and cmd[cmd.index("--device") + 1] == "auto"
+    assert cmd[cmd.index("--batch-size") + 1] == "16" and cmd[cmd.index("--device") + 1] == "cuda"
     # summary: every set listed with the sha256 of its input and of its output
     row = next(r for r in summary["sets"] if r["system"] == "main" and r["split"] == "e1")
     assert row["file"] == "main/seg_off/e1.json" and len(row["output_sha256"]) == 64
@@ -915,3 +928,119 @@ def test_estimate_comet_arithmetic_is_labelled_assumed() -> None:
     assert rows[50.0]["total_seconds"] == 600.0 + cs.ASSUMED_COMET_FIXED_SECONDS
     assert rows[150.0]["total_hours"] == pytest.approx((200.0 + 600.0) / 3600)
     assert cs.ASSUMED_COMET_FIXED_SECONDS == 600.0
+
+
+# --- N1: the model dir is local, never under the (Drive) eval dir ---------------------------------
+
+
+def test_the_model_dir_is_local_by_default_and_refused_under_the_eval_dir(tmp_path: Path) -> None:
+    root = build_eval_root(tmp_path)
+    assert cs.DEFAULT_MODEL_DIR == "/content/comet_model"
+    assert not Path(cs.DEFAULT_MODEL_DIR).is_relative_to(Path("/content/drive"))
+    worker = StubWorker()
+    for bad in (root / "comet_model", root / "comet" / "_load", root):
+        with pytest.raises(cs.CometStageError, match="LOCAL runtime disk"):
+            run_score(root, worker, model_dir=bad)
+    assert worker.calls == []  # refused before any work
+    run_score(root, worker, model_dir=tmp_path / "local_disk" / "comet_model")
+    cmd = worker.calls[0]
+    assert Path(cmd[cmd.index("--model-dir") + 1]) == tmp_path / "local_disk" / "comet_model"
+
+
+def test_the_worker_default_model_dir_is_the_local_temp_dir(tmp_path: Path) -> None:
+    args = cw._parse_args(["--in", "i", "--cache-dir", str(tmp_path), "--meta-out", "m"])
+    assert args.model_dir.parent == Path(__import__("tempfile").gettempdir())
+    assert tmp_path not in args.model_dir.parents
+
+
+def test_the_chunk_cache_never_holds_the_model(tmp_path: Path) -> None:
+    root = build_eval_root(tmp_path)
+    run_score(root, StubWorker())
+    assert (
+        not list((root / "comet").rglob("model.ckpt"))
+        and not (root / "comet/_cache/_load").exists()
+    )
+
+
+# --- N2: a kill between the last chunk and the meta write cannot wedge re-runs --------------------
+
+
+def test_a_lost_worker_meta_is_re_derived_from_the_chunk_cache(tmp_path: Path) -> None:
+    root = build_eval_root(tmp_path)
+    killed = StubWorker(write_meta=False)  # all chunks written, meta never was
+    summary = run_score(root, killed)  # the stage re-derives the model record from the chunks
+    assert summary["model"]["revision"] == cw.COMET_MODEL_REVISION
+    assert summary["device"] == "stub-gpu" and summary["batch_size"] == cw.DEFAULT_BATCH_SIZE
+    # and a re-run after deleting the outputs AND the meta (chunks only) still works, no model load
+    for f in (root / "comet").rglob("*.json"):
+        if "_cache" not in f.parts and "_inputs" not in f.parts and "_pulled" not in f.parts:
+            f.unlink()
+    worker = StubWorker(write_meta=False)
+    again = run_score(root, worker)
+    assert worker.scored == [0] and again["n_sets"] == 61
+
+
+def test_the_meta_is_written_atomically_and_chunks_carry_the_provenance(tmp_path: Path) -> None:
+    root = build_eval_root(tmp_path)
+    run_score(root, StubWorker(), batch_size=16)
+    chunk = json.loads(
+        next((root / "comet/_cache/fp32-2760a223").glob("chunk_*.json")).read_text("utf-8")
+    )
+    meta = chunk["meta"]
+    assert meta["batch_size"] == 16 and meta["precision"] == "fp32" and meta["model"]
+    assert not list((root / "comet").rglob("*.tmp"))  # atomic writes leave no temp files
+
+
+def test_batch_size_is_recorded_but_does_not_invalidate_chunks(tmp_path: Path) -> None:
+    triples = [{"src": "a", "mt": "b", "ref": "c"}]
+    seen: list[int] = []
+
+    def scorer() -> Any:
+        return lambda part: seen.append(len(part)) or [0.5] * len(part)
+
+    cw.run_chunks(
+        triples, tmp_path, 4, scorer, log=lambda _m: None, chunk_meta=lambda: {"batch_size": 64}
+    )
+    stats = cw.run_chunks(
+        triples, tmp_path, 4, scorer, log=lambda _m: None, chunk_meta=lambda: {"batch_size": 8}
+    )
+    assert stats["skipped"] == 1 and seen == [1]  # a different batch size reuses the chunk
+    stored = json.loads(cw.chunk_path(tmp_path, 0).read_text("utf-8"))
+    assert stored["meta"] == {"batch_size": 64}  # provenance of the run that scored it
+
+
+# --- N3: no silent CPU --------------------------------------------------------------------------
+
+
+def test_auto_falls_back_to_cpu_only_with_a_loud_message() -> None:
+    assert "NO CUDA" in (cw.cpu_fallback_notice("auto", 0) or "")
+    assert cw.cpu_fallback_notice("auto", 1) is None
+    assert cw.cpu_fallback_notice("cpu", 0) is None  # asked for on purpose: no alarm
+    with pytest.raises(cw.WorkerError, match="cuda"):
+        cw.resolve_device("cuda", False)  # the default of the stage refuses instead
+
+
+def test_the_stage_defaults_to_cuda_everywhere() -> None:
+    assert cs._parser().parse_args(["score", "--eval-root", "e"]).device == "cuda"
+    assert cs._parser().parse_args(["plan", "--eval-root", "e"]).device == "cuda"
+    argv = dict(cs.plan_steps(eval_root=Path("/e"), hf_repo="o/r", python="py"))["comet:score"]
+    assert argv[argv.index("--device") + 1] == "cuda"
+    assert "device: cuda" in "\n".join(cs.describe_stage(Path("/nope"), None))
+
+
+# --- N4: the "before the COMET upload" privacy check on its own -----------------------------------
+
+
+def test_upload_comet_refuses_a_public_repo_before_any_commit_even_if_verify_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _models, api = comet_ready(tmp_path)
+    before = len(api.commits)
+    api.private = False
+    monkeypatch.setattr(
+        ev, "verify_run_on_hf", lambda *_a, **_k: {"complete": True, "revision": REVISION}
+    )
+    with pytest.raises(ev.HFNotPrivateError, match="before the COMET upload"):
+        cs.upload_comet(api, REPO, root)
+    assert len(api.commits) == before  # nothing was committed
+    assert not (root / "comet" / cs.COMET_MANIFEST_NAME).exists()

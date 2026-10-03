@@ -178,7 +178,7 @@ def test_dry_run_prints_the_staged_plan_the_checkpoint_check_and_the_estimate(
     assert [n for n, _ in rec.pure] == ["plan", "estimate", "comet-plan"]
     assert "COMET stage: after the upload, NON-FATAL" in out and "61 sets" in out
     assert "Unbabel/wmt22-comet-da @ " in out and "batch size 64" in out
-    assert "device: auto" in out and "precision fp32" in out
+    assert "device: cuda" in out and "precision fp32" in out
     assert "distinct (exact, from the files here)" in out and "17294" in out and "4385" in out
     assert "ASSUMED 50 triples/s" in out and "ASSUMED 150 triples/s" in out
     assert "NO L4 COMET rate has been measured" in out
@@ -416,6 +416,10 @@ def test_the_plan_splitter_refuses_a_comet_step_before_the_upload() -> None:
 def test_comet_parameters_are_validated() -> None:
     ns = _eval_params(RUN='"final_all"')
     assert (ns["COMET_BATCH_SIZE"], ns["COMET_PRECISION"]) == (64, "fp32")
+    assert ns["COMET_DEVICE"] == "cuda"  # refuses without CUDA unless "cpu" is set on purpose
+    with pytest.raises(ValueError, match="COMET_DEVICE"):
+        _eval_params(RUN='"final_all"', COMET_DEVICE='"tpu"')
+    assert _eval_params(RUN='"final_all"', COMET_DEVICE='"cpu"')["COMET_DEVICE"] == "cpu"
     for edit in (
         {"COMET_BATCH_SIZE": "0"},
         {"COMET_BATCH_SIZE": '"64"'},
