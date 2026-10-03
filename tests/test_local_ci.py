@@ -471,3 +471,114 @@ def test_env_lock_respects_a_live_holder(tmp_path: Path) -> None:
     assert local_ci.pid_alive(os.getpid())
     with pytest.raises(local_ci.CiError), local_ci.env_lock(lock, wait_s=0):
         pass
+
+
+# ---------------------------------------------------------------------------------------------
+# freeze failure is a FAIL, lock waits are recorded, script provenance
+# ---------------------------------------------------------------------------------------------
+def _verify_ctx(repo: Path, tmp_path: Path) -> local_ci.Ctx:
+    return local_ci.Ctx(
+        job="3.13",
+        sha="0" * 40,
+        repo=repo,
+        root=tmp_path,
+        checkout=repo,
+        runner_temp=tmp_path / "rt",
+        env_dir=tmp_path / "env",
+        log=None,
+        uv="uv",
+        echo=False,
+    )
+
+
+def _scripted_run(freeze: tuple[int, list[str]], calls: list[list[str]]):
+    def run(self: local_ci.Ctx, argv: list[str], **_env: str) -> tuple[int, list[str]]:
+        calls.append([str(a) for a in argv])
+        if "-c" in argv and local_ci._NMT_WHERE in argv:
+            return 0, [str(self.checkout / "nmt" / "__init__.py")]
+        if "-c" in argv:  # requirements-colab pin check
+            return 0, []
+        return freeze  # the freeze/list command
+
+    return run
+
+
+def test_failed_freeze_fails_the_verify_step(
+    tiny_repo: tuple[Path, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = tiny_repo
+    calls: list[list[str]] = []
+    traceback = ["Traceback (most recent call last):", "ValueError: path is on mount 'd:'"]
+    monkeypatch.setattr(local_ci.Ctx, "run", _scripted_run((1, traceback), calls))
+    rc, detail = local_ci.h_local_verify_313(_verify_ctx(repo, tmp_path))
+    assert rc != 0
+    assert detail["freeze_rc"] == 1
+    # the 3.13 env is listed with `pip list --format=freeze`, never the cwd-relative `pip freeze`
+    assert any("list" in c and "--format=freeze" in c for c in calls)
+    assert not any(c[-1:] == ["freeze"] or "freeze" in c[1:4] for c in calls)
+
+
+def test_empty_freeze_fails_and_good_freeze_records_the_package_count(
+    tiny_repo: tuple[Path, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _ = tiny_repo
+    ctx = _verify_ctx(repo, tmp_path)
+    monkeypatch.setattr(local_ci.Ctx, "run", _scripted_run((0, []), []))
+    assert local_ci.h_local_verify_313(ctx)[0] != 0
+    monkeypatch.setattr(local_ci.Ctx, "run", _scripted_run((0, ["a==1", "b==2"]), []))
+    rc, detail = local_ci.h_local_verify_313(ctx)
+    assert rc == 0
+    assert detail["freeze_packages"] == 2
+    assert len(str(detail["freeze_sha256"])) == 64
+
+
+def test_lock_wait_is_printed_and_returned(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import threading
+    import time
+
+    lock = tmp_path / "x.lock"
+    release = threading.Event()
+    holding = threading.Event()
+
+    def hold() -> None:
+        with local_ci.env_lock(lock, wait_s=0):
+            holding.set()
+            release.wait(5)
+
+    t = threading.Thread(target=hold)
+    t.start()
+    assert holding.wait(5)
+    threading.Timer(0.4, release.set).start()
+    t0 = time.monotonic()
+    with local_ci.env_lock(lock, wait_s=10, poll_s=0.05) as waited:
+        pass
+    t.join()
+    assert waited >= 0.2 and waited <= time.monotonic() - t0 + 0.01
+    out = capsys.readouterr().out
+    assert "waiting for lock" in out and "acquired lock" in out
+    with local_ci.env_lock(lock, wait_s=0) as free:
+        assert free < 0.5
+
+
+def test_script_provenance_compares_normalised_bytes(tmp_path: Path) -> None:
+    repo = tmp_path / "r"
+    (repo / "scripts").mkdir(parents=True)
+    f = repo / "scripts" / "tool.py"
+    f.write_bytes(b"print(1)\nprint(2)\n")
+    _git(repo, "init", "-q")
+    _git(repo, "add", "scripts/tool.py")
+    _git(repo, "commit", "-q", "-m", "x")
+    sha = _git(repo, "rev-parse", "HEAD")
+    f.write_bytes(b"print(1)\r\nprint(2)\r\n")  # checkout line endings must not matter
+    assert local_ci.script_provenance(repo, sha, f)["matches_committed_blob"] is True
+    f.write_bytes(b"print(1)\nprint(3)\n")
+    prov = local_ci.script_provenance(repo, sha, f)
+    assert prov["matches_committed_blob"] is False and prov["path"] == "scripts/tool.py"
+    (repo / "other.txt").write_text("o", encoding="utf-8")
+    _git(repo, "rm", "-q", "--cached", "scripts/tool.py")
+    _git(repo, "add", "other.txt")
+    _git(repo, "commit", "-q", "-m", "remove tool")
+    absent = local_ci.script_provenance(repo, _git(repo, "rev-parse", "HEAD"), f)
+    assert absent["matches_committed_blob"] is None

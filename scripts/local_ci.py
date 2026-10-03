@@ -430,6 +430,28 @@ def job_key(job: str) -> str:
     return "py" + job.replace(".", "")
 
 
+def _lf(data: bytes) -> bytes:
+    return data.replace(b"\r\n", b"\n")
+
+
+def script_provenance(repo: Path, sha: str, script: Path | None = None) -> dict[str, object]:
+    """sha256 of the running script (CRLF->LF) vs the blob committed at `sha`, so a provenance
+    comparison is automatic. `matches_committed_blob` is None when `sha` has no such file."""
+    script = script or Path(__file__).resolve()
+    rel = script.resolve().relative_to(repo.resolve()).as_posix()
+    local = hashlib.sha256(_lf(script.read_bytes())).hexdigest()
+    proc = subprocess.run(
+        ["git", "-C", str(repo), "show", f"{sha}:{rel}"], capture_output=True, check=False
+    )
+    blob = hashlib.sha256(_lf(proc.stdout)).hexdigest() if proc.returncode == 0 else None
+    return {
+        "path": rel,
+        "running_sha256_lf": local,
+        "committed_blob_sha256_lf": blob,
+        "matches_committed_blob": None if blob is None else blob == local,
+    }
+
+
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -626,11 +648,14 @@ def pid_alive(pid: int) -> bool:
 @contextlib.contextmanager
 def env_lock(lock_path: Path, wait_s: float, poll_s: float = 1.0):
     """Exclusive lockfile (PID + timestamp). Waits up to `wait_s`, then raises CiError.
+    Yields the seconds spent waiting.
 
     A lock whose PID is dead, or older than LOCK_STALE_S, is taken over (noted on stderr).
     """
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + wait_s
+    t_start = time.monotonic()
+    deadline = t_start + wait_s
+    announced = False
     while True:
         try:
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -651,13 +676,19 @@ def env_lock(lock_path: Path, wait_s: float, poll_s: float = 1.0):
                 raise CiError(
                     f"env lock {lock_path} is held by (pid ts) {holder!r}; gave up"
                 ) from None
+            if not announced:
+                print(f"waiting for lock {lock_path} held by (pid ts) {holder!r}", flush=True)
+                announced = True
             time.sleep(poll_s)
             continue
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(f"{os.getpid()} {time.time()}\n")
         break
+    waited = round(time.monotonic() - t_start, 2)
+    if announced:
+        print(f"acquired lock {lock_path} after {waited}s", flush=True)
     try:
-        yield
+        yield waited  # seconds spent waiting (0.0 when free)
     finally:
         with contextlib.suppress(OSError):
             lock_path.unlink()
@@ -868,13 +899,27 @@ def _interpreter_version(argv0: str) -> str:
     return (out.stdout or out.stderr).strip()
 
 
-def _freeze_hash(ctx: Ctx) -> tuple[str, int]:
+def _freeze_hash(ctx: Ctx) -> tuple[int, str, int]:
+    """(rc, sha256 of the sorted frozen requirement lines, package count).
+
+    3.13 uses `pip list --format=freeze`, not `pip freeze`: freeze renders editable installs
+    relative to the cwd and crashed with "path is on mount 'd:', start on mount 'C:'" when the
+    interpreter's cwd/temp was on another drive; list --format=freeze prints name==version only.
+    """
     if ctx.job == "3.12":
         argv = [ctx.uv, "pip", "freeze", "--python", str(ctx.env_dir / "venv" / _py_rel())]
     else:
-        argv = [str(ctx.venv_python), "-m", "pip", "freeze", "--disable-pip-version-check"]
+        argv = [
+            str(ctx.venv_python),
+            "-m",
+            "pip",
+            "list",
+            "--format=freeze",
+            "--disable-pip-version-check",
+        ]
     rc, lines = ctx.run(argv)
-    return hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest(), len(lines)
+    lines = [ln for ln in lines if ln.strip() and not ln.startswith(("Traceback", " "))]
+    return rc, hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest(), len(lines)
 
 
 def _py_rel() -> str:
@@ -920,9 +965,13 @@ def _verify(ctx: Ctx, py: list[str]) -> tuple[int, dict[str, object]]:
             rc = 1
     if rc == 0 and ctx.job == "3.13":
         rc, _ = ctx.run([*py, "-c", _VERIFY_REQS])
-    digest, n = _freeze_hash(ctx)
+    frc, digest, n = _freeze_hash(ctx)
     detail["freeze_sha256"] = digest
     detail["freeze_packages"] = n
+    if not ctx.dry and (frc != 0 or n == 0):  # a failed/empty freeze must never read as PASS
+        ctx.say(f"environment freeze failed (rc {frc}, {n} packages)")
+        detail["freeze_rc"] = frc
+        rc = rc or 1
     if not ctx.dry:
         st = git(ctx.checkout, "status", "--porcelain", "--untracked-files=no").stdout.strip()
         detail["tracked_files_modified_by_ci"] = st.splitlines()
@@ -1080,8 +1129,10 @@ def run_job(ctx: Ctx) -> dict[str, object]:
     """Run one job under an exclusive lock on its cached env (see env_lock)."""
     if ctx.dry or ctx.env_dir is None:
         return _run_steps(ctx)
-    with env_lock(ctx.root / "ci_envs" / f"{ctx.env_dir.name}.lock", ctx.lock_wait):
-        return _run_steps(ctx)
+    with env_lock(ctx.root / "ci_envs" / f"{ctx.env_dir.name}.lock", ctx.lock_wait) as waited:
+        result = _run_steps(ctx)
+    result["lock_wait_seconds"] = waited
+    return result
 
 
 def _run_steps(ctx: Ctx) -> dict[str, object]:
@@ -1314,11 +1365,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     results: list[dict[str, object]] = []
     cleanup: dict[str, object] = {"performed": False, "problems": []}
     error: str | None = None
+    sha_lock_wait = 0.0
     t_start = time.monotonic()
     try:
         with contextlib.ExitStack() as stack:
             if not args.dry:  # one run per SHA at a time: they share ci_work/<sha>/
-                stack.enter_context(env_lock(root / "ci_envs" / f"sha-{sha}.lock", args.lock_wait))
+                sha_lock_wait = stack.enter_context(
+                    env_lock(root / "ci_envs" / f"sha-{sha}.lock", args.lock_wait)
+                )
             try:
                 for job in args.job_list:
                     ctx = prepare_job(repo, root, sha, job, uv, dry=args.dry, echo=not args.quiet)
@@ -1359,6 +1413,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "timestamp_utc": started,
         "duration_s": round(time.monotonic() - t_start, 1),
         "script_sha256": sha256_file(Path(__file__)),
+        "script_provenance": script_provenance(repo, sha),
+        "sha_lock_wait_seconds": sha_lock_wait,
         "exit_code": 0 if ok else 1,
         "parallel": bool(args.parallel),
         "cleanup": cleanup,
