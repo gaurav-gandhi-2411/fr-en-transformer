@@ -23,3 +23,4 @@ reports/**/export/spm.model
 
 # huggingface_hub's per-download metadata inside the pulled eval_l4 artifacts
 reports/eval/**/.cache/
+report/build/

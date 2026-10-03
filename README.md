@@ -2,13 +2,17 @@
 
 A French->English encoder-decoder transformer, trained from scratch (no pretrained
 translation models or LMs) on `Helsinki-NLP/opus-100` (en-fr), within a free Colab T4
-budget. Built for the take-home challenge: hand-written model (RoPE/sinusoidal switch,
+budget. Built for a take-home challenge: hand-written model (RoPE/sinusoidal switch,
 deep-encoder/shallow-decoder), a from-scratch SentencePiece tokenizer, a leakage-guarded
 data pipeline, and a statistically honest sliced evaluation with bootstrap CIs.
 
 **Status: work in progress (P0).**
 
 Safety-net test predictions (v1, run `main`, candidate `final`): see `submission/README.md`.
+
+Draft write-ups: `report/report.md` (decisions, results, gap analysis; `python -m scripts.build_report_pdf` renders it), `report/model_card.md`, `docs/WALKTHROUGH.md`.
+
+Licence: code Apache-2.0; model weights licence "other", research and evaluation use only (trained on OPUS-100, licence not specified on its card; upstream corpus terms apply). See `report/model_card.md`.
 
 ## Reproduce
 
