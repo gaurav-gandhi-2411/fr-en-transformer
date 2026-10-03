@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-# The `final_all` run: STAGED final selection (PREREG 2026-10-03, which supersedes rule 5 and the
-# beam grid of rule 1 of the 2026-10-02 post-selection amendment; rules 2-4 and 6 stand).
+# The `final_all` run: staged final selection, as pre-registered (see PREREG.md).
 #
 #   Stage 1: each of 7 model sets {main final, A, B, {main,A}, {main,B}, {A,B}, {main,A,B}} tuned
 #            with BEAM only (alpha {1.2,1.4,1.6,1.8,2.0} x beam {4,5}, then the T step) on the full
-#            E1 + E2 by the section 2 objective; the 2 best sets go on (ties: earlier model set).
+#            E1 + E2 by the selection objective; the 2 best sets go on (ties: earlier model set).
 #   Interim: right after stage 1 and BEFORE any stage-2 step, the stage-1 winner's test
 #            predictions are decoded, validated (330 ids, 0 empty) and uploaded privately to
 #            runs/final_all_stage1/ (nmt/stage1_interim.py): the safety net if the session is
@@ -25,11 +24,11 @@ from __future__ import annotations
 #            lists its steps (names `comet:*`) after `upload`; hf-verify of the main upload does
 #            not depend on them.
 #
-# Interpretations of the rule text (also in the PR description, none changes the candidate set):
+# Interpretations of the pre-registered text (none changes the candidate set):
 #   * An MBR candidate takes the GNMT alpha of the winning (alpha, beam) of the SAME model-set's
 #     stage-1 beam candidate. The pool size N, not that beam width, sets the beam width of the
 #     n-best pool (an N-best list needs beam >= N). Sampling pools do not use alpha. T is tuned for
-#     the MBR candidate like the T step of section 1 (E1 undecoded-segmented, E2 per T).
+#     the MBR candidate like the T step of stage 1 (E1 undecoded-segmented, E2 per T).
 #   * The candidate NAMES still span the full 35-name space (7 sets x {beam + 4 pools}), but only
 #     the 7 beam names and the 8 MBR names of the top-2 sets are ever tuned.
 #
@@ -50,11 +49,11 @@ from typing import Any
 
 from nmt import eval_l4 as ev
 
-FINAL_ALL_ALPHAS: tuple[float, ...] = (1.2, 1.4, 1.6, 1.8, 2.0)  # PREREG rule 1 (extended)
-FINAL_ALL_BEAMS: tuple[int, ...] = (4, 5)  # PREREG 2026-10-03: beam 1 is dropped
+FINAL_ALL_ALPHAS: tuple[float, ...] = (1.2, 1.4, 1.6, 1.8, 2.0)  # pre-registered grid
+FINAL_ALL_BEAMS: tuple[int, ...] = (4, 5)  # pre-registered: beam 1 is dropped
 STAGE1_TOP_N = 2  # model sets that go on to stage 2
 MODEL_NAMES: tuple[str, ...] = ("main", "A", "B")
-# PREREG rules 3 and 5: the single models, then exactly the four ensembles, in this order.
+# Pre-registered: the single models, then exactly the four ensembles, in this order.
 MODEL_SETS: tuple[tuple[str, ...], ...] = (
     ("main",),
     ("A",),
@@ -66,8 +65,8 @@ MODEL_SETS: tuple[tuple[str, ...], ...] = (
 )
 # (kind, N); kind "beam" = n-best from a beam of width N, "sample" = N epsilon samples.
 POOL_SPECS: tuple[tuple[str, int], ...] = (("beam", 8), ("beam", 16), ("sample", 8), ("sample", 16))
-SAMPLING_EPSILON = 0.02  # PREREG rule 2 (== nmt.mbr.DEFAULT_EPSILON, checked by a test)
-SAMPLING_SEED = 1234  # PREREG rule 2 (== nmt.mbr.DEFAULT_SAMPLING_SEED)
+SAMPLING_EPSILON = 0.02  # == nmt.mbr.DEFAULT_EPSILON, checked by a test
+SAMPLING_SEED = 1234  # == nmt.mbr.DEFAULT_SAMPLING_SEED
 BEAM_KIND = "beam"
 
 
@@ -123,7 +122,7 @@ def candidate_by_name(name: str) -> FinalAllCandidate:
 # The three models of the run and where their FINAL checkpoints live on Drive:
 # model name -> (run dir under runs/, checkpoint step, configs/<name>.yaml of that run).
 # main: the main run's last checkpoint (the `final` candidate of its own eval); A and B: the ends of
-# the PREREG rule-4 extension branches (A decays 30,000 -> 37,500; B 40,000 -> 50,000).
+# the pre-registered extension branches (A decays 30,000 -> 37,500; B 40,000 -> 50,000).
 FINAL_ALL_CHECKPOINTS: dict[str, tuple[str, int, str]] = {
     "main": ("main", 24645, "main"),
     "A": ("ext_branch_a_l4", 37500, "ext_branch_a_l4"),
@@ -478,8 +477,8 @@ def _stage1_data(tuning_dir: Path) -> dict[str, Any]:
 
 
 def run_stage1_select(tuning_dir: Path, out_path: Path) -> dict[str, Any]:
-    """stage1.json: the 7 beam candidates' objectives and the top 2 model sets (PREREG staged
-    selection, stage 1). Refuses a missing / smoke / wrong-grid / mixed-weights tuning."""
+    """stage1.json: the 7 beam candidates' objectives and the top 2 model sets (stage 1
+    of the staged selection). Refuses a missing / smoke / wrong-grid / mixed-weights tuning."""
     data = _stage1_data(tuning_dir)
     ev._write_json(out_path, data)
     print(
@@ -685,7 +684,7 @@ def decode_winner(
 # report: paired bootstrap (winner vs runner-up, vs production) + latency
 # ---------------------------------------------------------------------------------------------
 
-BOOTSTRAP_RESAMPLES = 1000  # PREREG staged selection: nmt/compare.py --objective
+BOOTSTRAP_RESAMPLES = 1000  # nmt/compare.py --objective
 BOOTSTRAP_SEED = 1234
 LATENCY_N_SENTENCES = ev.BENCH_N_SENTENCES  # the first 200 E2 sentences, like bench.json
 REPORT_NAME = "report.json"
@@ -1244,15 +1243,15 @@ def _comet_summary_lines(root: Path) -> list[str]:
 
 # MEASURED on the L4 for the main final model (bench.json, 200 first E2 sentences, batch 32, fp32,
 # alpha 0.6): runs/main/bench.json at HF eval revision c3d8598252853fcd7df1ef4a00e8b0382b8f4351
-# (pulled read-only; its numbers equal the ones in the PREREG 2026-10-03 amendment).
+# (pulled read-only).
 MEASURED_L4_RATES = {"greedy": 2305.93, "beam": 1198.86}  # output tokens / s, one model
 MEASURED_L4_SENTENCES_PER_SECOND = {"greedy": 41.097, "beam5": 21.345}
 # MEASURED on the dev laptop CPU (not Colab, which may be slower): mean seconds of one mbr_select
 # over a pool of N distinct strings of ~160 characters (the mean E1/E2 reference length), 300 pools
-# each; the command and output are in the PR description.
+# each.
 MEASURED_MBR_CPU_SECONDS_PER_POOL = {8: 0.0120, 16: 0.0354}
 ASSUMED_FIXED_SECONDS = 900.0  # ASSUMED, same as the notebook (clone, install, loads, upload)
-CU_PER_HOUR = 1.54  # reported by GG for the L4 pilot
+CU_PER_HOUR = 1.54  # compute units per hour reported for the L4 pilot
 ASSUMED_INTERIM_UPLOAD_SECONDS = 60.0  # ASSUMED: the interim private commit (~60 KB of JSON)
 PRE_STAGED_ESTIMATE_HOURS = 20.6  # the exhaustive 35-candidate set under ASSUMED rates 2500/1000
 
@@ -1265,7 +1264,7 @@ def estimate_final_all(
     mbr_cpu_seconds: Mapping[int, float] | None = None,
     comet_triples: int | None = None,
 ) -> dict[str, Any]:
-    """ESTIMATE (not a measurement) of the wall time of the STAGED session (PREREG 2026-10-03).
+    """ESTIMATE (not a measurement) of the wall time of the staged session.
 
     Token counts: colab/eval_workload.json (reference SentencePiece tokens as the proxy of output
     length). `rates`: single-model output tokens/s (default: the MEASURED L4 numbers). Assumptions:
@@ -1276,7 +1275,7 @@ def estimate_final_all(
       * the chrF utility time per pool is MEASURED once on a laptop CPU;
       * the stage-1 interim result decodes only the 330 test sentences with the stage-1 winner
         (beam, up to 3 members: 1 / 3 x the beam-5 time per token) and uploads (ASSUMED 60 s);
-      * COMET stage (GG 2026-10-03: on the L4 after the upload): `comet_triples` distinct triples
+      * COMET stage (on the L4 after the upload): `comet_triples` distinct triples
         (default: the UNDEDUPED segment count of every set from the workload, a conservative upper
         bound) at an ASSUMED central 100 triples/s (range 50-150, NO L4 COMET rate has been
         measured; see `comet.rows`) + ASSUMED setup (install, model download + load, pulls) and

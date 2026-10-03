@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Submission-format validator: exactly the 330 test ids, no empty/whitespace-only or non-string
-# values, valid UTF-8 JSON object. Spec §7, §12.
+# values, valid UTF-8 JSON object.
 import json
 from pathlib import Path
 
@@ -12,7 +12,7 @@ DEFAULT_SAMPLE_PATH = REPO_ROOT / "data" / "test" / "sample_submission.json"
 def validate_submission(
     path: str | Path, sample_path: str | Path = DEFAULT_SAMPLE_PATH
 ) -> dict[str, int]:
-    """Validate a submission JSON file against `sample_path`'s id set (spec §12).
+    """Validate a submission JSON file against `sample_path`'s id set.
 
     Raises `ValueError` naming the problem on any violation: not a JSON object, an id set that
     doesn't exactly match `sample_path`, or any value that is missing/empty/whitespace-only/not a

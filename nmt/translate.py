@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Public production API and CLI: `Translator.from_pretrained(path_or_repo_id).translate(...)`.
 # Applies the same normalization as training, calls decode.py, and reports batched inference
-# latency/throughput. Spec §7.
+# latency/throughput.
 #
 # CLI: `python -m nmt.translate --model DIR --input data/test/inputs.jsonl --output preds.json
 # [--beam 5 --alpha 0.6 --batch-size 32 --segment-threshold T]`.
@@ -28,8 +28,8 @@ FallbackKind = str  # "beam" | "greedy" | "copy"
 
 @dataclass
 class TranslatorStats:
-    """Running counts of how each output was produced (spec §7: "never emit an empty string",
-    counts of each fallback logged)."""
+    """Running counts of how each output was produced (an output is never empty; each fallback
+    is counted)."""
 
     n_total: int = 0
     n_beam: int = 0
@@ -71,7 +71,7 @@ class Translator:
     """The production translation API: `Translator.from_pretrained(dir_or_repo_id).translate(...)`.
     Applies `normalize_text` to every input (the same normalization used at train time),
     length-sorts for efficient batching, restores input order, and guarantees a non-empty output
-    per input via the beam -> greedy -> normalized-source-copy fallback chain (spec §7).
+    per input via the beam -> greedy -> normalized-source-copy fallback chain.
     """
 
     def __init__(self, model: NMTModel, sp: spm.SentencePieceProcessor, device: torch.device):
@@ -146,10 +146,8 @@ class Translator:
                     outputs[i], kinds[i] = text, "greedy"
                 else:
                     # Final fallback: the normalized source itself, flagged so callers can count
-                    # it (spec §7: "output the normalized source with a copy flag ... logged and
-                    # counted"). If even the normalized source is empty/whitespace (a pathological
-                    # empty input), a single space is the only way to honor "never emit an empty
-                    # string" -- documented here since spec §7 does not cover empty-input inputs.
+                    # it. If even that is empty/whitespace (an empty input), a single space is
+                    # the only way to honor "never emit an empty string".
                     outputs[i] = texts[i].strip() or " "
                     kinds[i] = "copy"
 
@@ -216,7 +214,7 @@ class Translator:
 
         `segment_threshold`: sources whose subword token count exceeds this are split on
         sentence punctuation (`nmt.decode.split_sentences`), each segment translated
-        independently, and the results joined with a space (spec §7). `None` (default) disables
+        independently, and the results joined with a space. `None` (default) disables
         segmentation entirely. `mbr` (default None = plain beam search, unchanged) switches each
         segment to MBR decoding over the pool it describes; `beam` is then unused.
         """
@@ -266,11 +264,11 @@ def model_size_mb(model: NMTModel) -> float:
 
 @dataclass
 class BenchmarkResult:
-    """Production benchmark (spec §7): throughput, per-batch latency percentiles, peak memory
+    """Production benchmark: throughput, per-batch latency percentiles, peak memory
     and model size. `memory_metric` documents which proxy was used for peak memory: CUDA reports
     true `max_memory_allocated`; CPU falls back to `tracemalloc`'s peak Python-tracked allocation
     (not full process RSS -- no cross-platform, stdlib-only RSS reader exists on Windows without
-    adding `psutil`, which is out of scope for this phase without an explicit ask).
+    adding `psutil`).
     """
 
     device: str

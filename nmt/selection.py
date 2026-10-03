@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 # Checkpoint/decoding-config selection, restricted by construction to two hard-coded eval sets
-# (spec §8, §15: "Selection is restricted ... by code path"). This module must never import or
-# reference any other eval set's paths or loaders -- enforced both by review (no such reference
-# exists below) and by tests/test_selection.py's source scan. Every string literal that names the
-# two allowed sets appears only as "e1"/"e2"; nothing else is ever named here.
+# (selection is restricted to them by code path). This module must never import or
+# reference any other eval set's paths or loaders; tests/test_selection.py enforces this with a
+# source scan. The only eval-set names that appear here are the string literals "e1" and "e2".
 import functools
 import hashlib
 import json

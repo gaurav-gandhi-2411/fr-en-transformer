@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-# The COMET-22 STAGE of the final_all Colab session (GG decision 2026-10-03: COMET runs on the L4,
-# the CPU projection was 2.2 h). It runs AFTER the final_all selection/decode/validation/upload and
-# is NON-FATAL for them (the notebook prints COMET FAILED and exits non-zero, never undoes them).
+# The COMET-22 stage of the final_all Colab session. COMET runs on the L4 GPU (on CPU it would
+# take hours). It runs after the final_all selection/decode/validation/upload and is non-fatal
+# for them: the notebook prints COMET FAILED and exits non-zero, but never undoes them.
 # Eval-only: nothing here feeds selection.
 #
 # What is scored (one COMET score per segment, per set; a "set" = system x variant x split):
@@ -60,8 +60,8 @@ BASELINE_VARIANT = "baseline"
 BOOTSTRAP_RESAMPLES = 1000
 BOOTSTRAP_SEED = 1234
 HF_EVAL_REPO = "OWNER/fr-en-transformer-eval"
-# The 4 existing runs and the HF eval repo revisions their reports were built from (GG, 2026-10-03;
-# equal to reports/final/<run>/pull_record.json, which a test checks). Never a branch name.
+# The 4 existing runs and the HF eval repo revisions their reports were built from (equal to
+# reports/final/<run>/pull_record.json, which a test checks). Never a branch name.
 PINNED_RUNS: dict[str, str] = {
     "main": "c3d8598252853fcd7df1ef4a00e8b0382b8f4351",
     "s1_sin_l4": "041d49269f61d0cbd9c0380a4f0a0a31f7599547",

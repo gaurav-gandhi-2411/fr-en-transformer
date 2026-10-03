@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# Decoding-tuning CLI (spec section 7): alpha in {0.6, 0.8, 1.0, 1.2} x beam in {1, 4, 5} is
+# Decoding-tuning CLI: alpha in {0.6, 0.8, 1.0, 1.2} x beam in {1, 4, 5} is
 # searched first, then the segmentation threshold T is tuned separately (holding the winning
 # alpha/beam fixed) over the T grid {64, 128, 192, 256}, compared against "off" (no segmentation
 # at all, always decoded and scored as the candidate named `no_segmentation`). Every candidate
@@ -238,7 +238,7 @@ def run_tune(
     translator: Translator | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Run the full decoding-tuning path (spec section 7) and write it to `out_path`: the alpha x
+    """Run the full decoding-tuning path and write it to `out_path`: the alpha x
     beam grid (full score table, winner, per-decode timings, the greedy dedup note), then the
     segmentation-threshold search on top of the winning alpha/beam, then the combined winner,
     model sha256 and git SHA. `limit_e1`/`limit_e2` decode/score only the first N sentences of

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-# Colab-side evaluation steps for `CONFIG = "eval_l4"` (RUNBOOK §4.5). The notebook runs each
+# Colab-side evaluation steps for `CONFIG = "eval_l4"`. The notebook runs each
 # subcommand below as its own subprocess (the kernel imports only the stdlib and torch), in this
 # order: hf-verify (the notebook's skip check), hf-check, candidates (final only) + bench,
 # candidates, tune (per candidate), select, decode, validate-test, upload. The throughput bench
 # runs before any tuning/selection/decoding. Selection happens HERE, on Colab, on E1 + E2 only
-# (dev and E3 are only ever DECODED, after the winner is fixed; PREREG §1-§2,
+# (dev and E3 are only ever DECODED, after the winner is fixed; see PREREG.md,
 # via nmt.tune / nmt.selection); the local pipeline (scripts/eval_local.py) never decodes or
 # selects, it only scores what this module uploaded.
 #
@@ -35,7 +35,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 RUNS: tuple[str, ...] = ("main", "s1_sin_l4", "s2_rope_l4", "s3_rope_concat_l4")
-# The post-selection run (PREREG 2026-10-02 amendment, rule 5; nmt.final_all). Kept OUT of RUNS on
+# The post-selection run (nmt.final_all). Kept OUT of RUNS on
 # purpose: RUNS is the pre-registered ablation/main list that the notebook, scripts/eval_local.py
 # and their tests pin; ALL_RUNS is what upload / hf-verify accept.
 FINAL_ALL_RUN = "final_all"
@@ -57,7 +57,7 @@ TIE_RULE = (
     f"candidates within {TIE_EPSILON:g} of the best objective are tied; the tie goes to the "
     "earliest candidate in the pre-registered order (final, avg_last5, avg_decay)"
 )
-# The candidates each run's selection compares (PREREG §6, 2026-10-02 (b)); the notebook holds the
+# The candidates each run's selection compares (see PREREG.md); the notebook holds the
 # same lists as step numbers and tests/test_colab_eval_l4.py checks the two agree.
 MAIN_CANDIDATES: tuple[str, ...] = ("final", "avg_last5", "avg_decay")
 ABLATION_CANDIDATES: tuple[str, ...] = ("final",)
@@ -499,10 +499,11 @@ def run_tune_step(
     alphas: Sequence[float] | None = None,
     beams: Sequence[int] | None = None,
 ) -> bool:
-    """nmt.tune.run_tune over full E1 + E2 (PREREG §1); skipped when `out_path` is a valid full
-    tune. Returns True when it ran. `alphas` / `beams` default to nmt.tune's grid (the PREREG §1
-    one, unchanged); a caller with another grid (nmt.final_all) must also validate the grid of an
-    existing file itself, since `tuning_is_full` does not look at it."""
+    """nmt.tune.run_tune over full E1 + E2; skipped when `out_path` is a valid full
+    tune. Returns True when it ran. `alphas` / `beams` default to nmt.tune's grid
+    (the pre-registered one); a caller with another grid (nmt.final_all)
+    must also validate the grid of an existing file itself, since `tuning_is_full` does not
+    look at it."""
     if tuning_is_full(_read_json(out_path)):
         print(f"tune {Path(out_path).stem}: SKIP (valid full tuning at {out_path})")
         return False
@@ -881,7 +882,7 @@ def verify_run_on_hf(api: Any, repo_id: str, run: str) -> dict[str, Any]:
 
     Complete means ALL of: the repo is private; a commit titled `commit_message(run)` exists; at
     the repo head runs/<run>/manifest.json exists, names this run, lists every required file
-    (candidates fixed by PREREG); every listed file exists with the manifest's size and sha256
+    (candidates fixed in advance); every listed file exists with the manifest's size and sha256
     (LFS files via the hub's own sha256, small files by downloading and hashing them); for main,
     validation.json says valid with 330 ids. Returns {"complete": bool, "reason", "revision"}
     where revision is the upload commit's sha. A 404 (no repo / no runs/<run>/) is "not
