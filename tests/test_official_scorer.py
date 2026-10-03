@@ -18,7 +18,7 @@ SCORE_PY = REPO_ROOT / "official" / "score.py"
 SHA256SUMS = REPO_ROOT / "official" / "SHA256SUMS"
 DEV_LABELS = REPO_ROOT / "data" / "dev" / "labels.jsonl"
 
-# sha256 of the score.py handed out for the take-home challenge (LF line endings, no CR bytes).
+# sha256 of the score.py provided with the challenge (LF line endings, no CR bytes).
 EXPECTED_SCORE_PY_SHA256 = "0e023e486a2a0ca5a2d111b4bf43b0419479b23d4cb79b7789827f35783a8393"
 
 

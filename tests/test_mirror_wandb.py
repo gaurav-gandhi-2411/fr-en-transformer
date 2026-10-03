@@ -83,7 +83,6 @@ def test_label_text() -> None:
 @pytest.mark.parametrize(
     ("text", "key"),
     [
-        ("made for the challenge sponsor", "sponsor_name"),
         ("a.b@example.com", "email"),
         ("C:\\Users\\x", "windows_user_path"),
         ("host Legion", "host_name"),
@@ -137,3 +136,10 @@ def test_ensure_private_project_refuses_non_private() -> None:
         mw.ensure_private_project(_FakeApi("OPEN"), "e", "p")
     with pytest.raises(RuntimeError, match="not PRIVATE"):
         mw.ensure_private_project(_FakeApi(None, after_create="OPEN"), "e", "p")
+
+
+def test_extra_patterns_come_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MIRROR_EXTRA_PATTERNS", '{"secret_word": "(?i)hunter2"}')
+    assert mw.scan_text("my HUNTER2 text")["secret_word"] == 1
+    monkeypatch.delenv("MIRROR_EXTRA_PATTERNS")
+    assert "secret_word" not in mw.scan_text("my HUNTER2 text")

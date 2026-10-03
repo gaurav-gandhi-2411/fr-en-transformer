@@ -44,11 +44,11 @@
     "gpu_name"
   ],
   "scan_patterns": {
-    "sponsor_name": "(?i)four[\\s_-]*kites",
+    "sponsor_name": "<from MIRROR_EXTRA_PATTERNS>",
     "email": "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\\.[A-Za-z]{2,}",
     "windows_user_path": "(?i)C:[\\\\/]+Users",
     "host_name": "(?i)legion",
-    "account_email_prefix": "gauravgandhi429@",
+    "account_email_prefix": "<from MIRROR_EXTRA_PATTERNS>",
     "drive_path": "/content/drive|MyDrive",
     "dev_test_id": "\\b(?:dev|test)_\\d{5}\\b"
   },

@@ -72,14 +72,20 @@ _DROP_HISTORY_KEYS = frozenset({"_runtime", "_timestamp", "_wandb", "_step"})
 # Scan targets: strings that must never appear in a mirrored run (the entity name inside URLs is
 # deliberately not matched).
 FORBIDDEN_PATTERNS: dict[str, str] = {
-    "sponsor_name": r"(?i)four[\s_-]*kites",
     "email": r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}",
     "windows_user_path": r"(?i)C:[\\/]+Users",
     "host_name": r"(?i)legion",
-    "account_email_prefix": r"gauravgandhi429@",
     "drive_path": r"/content/drive|MyDrive",
     "dev_test_id": r"\b(?:dev|test)_\d{5}\b",
 }
+
+
+# Owner-specific strings (sponsor name, personal e-mail prefix) are not stored in the repository:
+# pass them as a JSON object of {name: regex} in MIRROR_EXTRA_PATTERNS.
+def extra_patterns() -> dict[str, str]:
+    raw = os.environ.get("MIRROR_EXTRA_PATTERNS", "")
+    return dict(json.loads(raw)) if raw else {}
+
 
 _PRIVATE_QUERY = """
 query ProjectAccess($name: String!, $entity: String!) {
@@ -173,7 +179,8 @@ def scan_text(text: str, literals: Iterable[str] = ()) -> dict[str, int]:
 
     `literals` are dev/test sentences or ids; each is checked as a plain substring.
     """
-    counts = {name: len(re.findall(pat, text)) for name, pat in FORBIDDEN_PATTERNS.items()}
+    patterns = {**FORBIDDEN_PATTERNS, **extra_patterns()}
+    counts = {name: len(re.findall(pat, text)) for name, pat in patterns.items()}
     counts["dev_test_literal"] = sum(1 for lit in literals if lit and lit in text)
     return counts
 
@@ -428,7 +435,10 @@ def main(argv: list[str] | None = None) -> int:
             "after_upload": final_vis,
         },
         "config_whitelist": list(CONFIG_WHITELIST),
-        "scan_patterns": FORBIDDEN_PATTERNS,
+        "scan_patterns": {
+            **FORBIDDEN_PATTERNS,
+            **{k: "<from MIRROR_EXTRA_PATTERNS>" for k in extra_patterns()},
+        },
         "scan_literals_count": len(literals),
         "runs": runs_log,
         "scan_total_all_runs": sum(r["scan"]["total"] for r in runs_log),
