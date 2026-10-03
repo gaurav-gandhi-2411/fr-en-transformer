@@ -1013,7 +1013,9 @@ def test_batch_size_is_recorded_but_does_not_invalidate_chunks(tmp_path: Path) -
 
 
 def test_auto_falls_back_to_cpu_only_with_a_loud_message() -> None:
-    assert "NO CUDA" in (cw.cpu_fallback_notice("auto", 0) or "")
+    notice = cw.cpu_fallback_notice("auto", 0) or ""
+    assert "NO CUDA" in notice and "a few triples/s" in notice and "ASSUMED 50-150" in notice
+    assert "roughly 2 triples/s" not in notice
     assert cw.cpu_fallback_notice("auto", 1) is None
     assert cw.cpu_fallback_notice("cpu", 0) is None  # asked for on purpose: no alarm
     with pytest.raises(cw.WorkerError, match="cuda"):

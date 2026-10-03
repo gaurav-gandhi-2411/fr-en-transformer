@@ -237,8 +237,9 @@ def cpu_fallback_notice(device: str, gpus: int) -> str | None:
     workload), else None. The notebook asks for `cuda`, which refuses instead."""
     if device == "auto" and not gpus:
         return (
-            "!!! COMET WORKER: --device auto found NO CUDA: scoring on the CPU, roughly "
-            "2 triples/s instead of the assumed 50-150 on a GPU. Use --device cuda to refuse. !!!"
+            "!!! COMET WORKER: --device auto found NO CUDA: scoring on the CPU, a few "
+            "triples/s (1.6-7.5 measured on laptop CPUs, small samples) instead of the ASSUMED "
+            "50-150 on a GPU. Use --device cuda to refuse. !!!"
         )
     return None
 
