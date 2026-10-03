@@ -256,7 +256,60 @@ def test_watch_lines_report_flag_and_minimum(tmp_path: Path) -> None:
     )
     (line,) = ns["extend_watch_lines"](tmp_path)
     assert "4 evals" in line and "min 1.8000 (step 1000)" in line
-    assert "FLAGGED since step 2000" in line
+    assert "first flagged at step 2000, last flagged at step 2000 (1 flagged evals)" in line
+    assert "current state at the final eval: FLAGGED (consecutive rises 2, last > min)" in line
+
+
+def _watch_line(ns: dict, tmp_path: Path, series: list[float]) -> str:
+    """Replay `series` (one value per 500 steps from 500) through the real OverfitWatch rule, write
+    the metrics.jsonl the trainer would write, and return the notebook's printed line."""
+    from nmt.train import OverfitWatch
+
+    watch, rows = OverfitWatch(), []
+    for i, v in enumerate(series):
+        step = 500 * (i + 1)
+        flagged = watch.update(step, v)
+        rows.append(
+            {
+                "eval": {
+                    "step": step,
+                    "val_loss": v,
+                    "overfit_flag": int(flagged),
+                    "val_loss_running_min": watch.min_loss,
+                    "val_loss_rises": watch.rises,
+                }
+            }
+        )
+    body = "\n".join(json.dumps(r) for r in rows)
+    (tmp_path / "metrics.jsonl").write_text(body, encoding="utf-8")
+    (line,) = ns["extend_watch_lines"](tmp_path)
+    return line
+
+
+def test_watch_lines_stable_plateau_still_flagged_at_the_end(tmp_path: Path) -> None:
+    # shape of ext_stable_l4: flagged stretches, min at step 2500, rising again at the last evals
+    series = [3.0, 2.9, 2.95, 2.96, 2.8, 2.85, 2.9, 2.95, 2.97]
+    line = _watch_line(_ns(tmp_path, FakeRunStep()), tmp_path, series)
+    assert "min 2.8000 (step 2500)" in line and "last val_loss=2.9700 (step 4500)" in line
+    assert "first flagged at step 2000, last flagged at step 4500 (4 flagged evals)" in line
+    assert "current state at the final eval: FLAGGED (consecutive rises 4, last > min)" in line
+
+
+def test_watch_lines_monotone_decrease_never_flagged(tmp_path: Path) -> None:
+    # shape of ext_branch_a_l4: one single rise, never two in a row, ends at its minimum
+    series = [3.0, 2.95, 2.97, 2.9, 2.85, 2.8]
+    line = _watch_line(_ns(tmp_path, FakeRunStep()), tmp_path, series)
+    assert "flag history: never flagged;" in line
+    assert "current state at the final eval: not flagged (consecutive rises 0, last == min)" in line
+
+
+def test_watch_lines_flagged_stretch_that_recovers_is_unambiguous(tmp_path: Path) -> None:
+    # shape of ext_branch_b_l4: flagged mid-run (rises 2,3), recovers, ends at its minimum
+    series = [3.0, 2.9, 2.95, 2.96, 2.97, 2.89, 2.85, 2.8]
+    line = _watch_line(_ns(tmp_path, FakeRunStep()), tmp_path, series)
+    assert "first flagged at step 2000, last flagged at step 2500 (2 flagged evals)" in line
+    assert "current state at the final eval: not flagged (consecutive rises 0, last == min)" in line
+    assert "FLAGGED since" not in line
 
 
 # --- wiring ---------------------------------------------------------------------------------
