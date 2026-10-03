@@ -27,7 +27,7 @@ Install (Python 3.12 or 3.13):
 uv sync --frozen          # or: pip install -r requirements.txt
 ```
 
-The data pipeline needs the evaluation package files that were provided for the challenge; they are not in this repository. Place them at `data/dev/inputs.jsonl`, `data/dev/labels.jsonl`, `data/test/inputs.jsonl`, `data/test/sample_submission.json` and `official/score.py`, then check them with `cd official && sha256sum -c SHA256SUMS` (the hashes are published). Without them the pipeline stops at the `prepare` stage and the tests that depend on them are skipped.
+The data pipeline needs the evaluation package files that were provided for the challenge; they are not in this repository. Place them at `data/dev/inputs.jsonl`, `data/dev/labels.jsonl`, `data/test/inputs.jsonl`, `data/test/sample_submission.json` and `official/score.py`, then check them from the repository root with `sha256sum -c official/SHA256SUMS` (the hashes are published). Without them the pipeline stops at the `prepare` stage and the tests that depend on them are skipped.
 
 The one seeded reproduce command:
 
