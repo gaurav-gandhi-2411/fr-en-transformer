@@ -509,8 +509,21 @@ def test_a_worker_failure_is_a_comet_stage_error_naming_the_exit_code(
 # --- pull (manifest-verified, pinned, private) ----------------------------------------------------
 
 
-def test_pull_is_pinned_private_and_manifest_verified(tmp_path: Path) -> None:
-    from tests.test_eval_local import FakeHub, _run_files
+@pytest.fixture
+def eval_local_fakes() -> Any:
+    """tests.test_eval_local's FakeHub / run-file builder. Its module-level prediction cache is
+    keyed by split name only and filled from the FULL splits when this module calls it, which
+    would poison that module's own tests (they run on tiny splits): cleared afterwards."""
+    from tests import test_eval_local as t
+
+    yield t
+    t._PRED_CACHE.clear()
+
+
+def test_pull_is_pinned_private_and_manifest_verified(
+    tmp_path: Path, eval_local_fakes: Any
+) -> None:
+    FakeHub, _run_files = eval_local_fakes.FakeHub, eval_local_fakes._run_files  # noqa: N806
 
     rev = "d" * 40
     hub = FakeHub()
