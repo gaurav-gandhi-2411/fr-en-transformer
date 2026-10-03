@@ -203,13 +203,15 @@ def reading(calibration: dict[str, Any]) -> str:
     """What the heuristic can and cannot tell, with the ranges printed from `calibration`
     (the prose is fixed, every number in it is computed)."""
     e3 = calibration["e3"]["model"]["word_copy_word_share"]
+    e3_ref = calibration["e3"]["reference_level"]["ref_word_share"]
     return (
         "## What the heuristic can and cannot tell\n\n"
         "On a pure copy of the source the word-copy heuristic flags "
         f"{_span(calibration, 'baseline_ceiling', 'word_copy_word_share')} of the length >= 4 "
         "words across groups (the ceiling), while main/seg_tuned has "
         f"{_span(calibration, 'model', 'word_copy_word_share')} flagged, so the word share "
-        "separates copying from translating by a wide margin in every group. "
+        "separates a pure copy from this model in every group. The ceiling is an upper bound, "
+        "not a detection rate, and the heuristic is not validated against labelled copy errors. "
         "The sentence-level rate is not comparable across sets: the model's own sentence rate "
         f"ranges {_span(calibration, 'model', 'word_copy_sentence_rate')} across groups and is "
         "highest on the long E2-synth inputs while its word share stays low, so the word share is "
@@ -217,12 +219,11 @@ def reading(calibration: dict[str, Any]) -> str:
         "was not tested directly). "
         "The flagged words are words the reference does not use, so the heuristic cannot tell an "
         "untranslated word from a name spelled differently in the reference or a cognate chosen "
-        "where the reference paraphrased (E3, the books proxy, has the highest model share, "
-        f"{e3:.3f}; whether those words are names, cognates or true copies was not examined), and "
-        "it misses copied words shorter than 4 characters or that also occur in the reference. "
+        "where the reference paraphrased, and it misses copied words shorter than 4 characters or that also occur in the reference. "
         "The reference level (words the reference itself keeps from the source: "
         f"{_span(calibration, 'reference_level', 'ref_word_share')} of its length >= 4 words) "
-        "shows such shared words are common and legitimate, but they are excluded from the "
+        f"shows such shared words are common and legitimate (E3, the books proxy, has the highest "
+        f"model share, {e3:.3f}, above its reference level of {e3_ref:.3f}; it was not examined), but they are excluded from the "
         "heuristic by construction, so it is context for the ceiling, not a value to subtract. "
         "The older subword-based `untranslated_copy_rate` is a weak detector even on a pure copy "
         f"({_span(calibration, 'baseline_ceiling', 'subword_untranslated_copy_rate')} across "
@@ -310,7 +311,10 @@ def build_readme(
         "",
         "## Provenance",
         "",
-        f"- Code: commit `{code_sha}` (HEAD when generated); `python -m scripts.copy_source_baseline`.",
+        f"- Code: commit `{code_sha}` (HEAD when generated).",
+        "- Regenerate (from a clean tree, PYTHONUTF8=1, in this order):",
+        "  - `python -m scripts.copy_source_baseline`",
+        "  - `python -m scripts.build_final_report --out-root reports/final --reuse-sanity`",
         "- Input sha256 (LF, no CR in any generated text file):",
         "",
         "| file | sha256 |",
