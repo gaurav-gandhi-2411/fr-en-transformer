@@ -296,3 +296,8 @@ ablation and main-run selection results exist and states what was already known)
   A6/A7 candidates (extension branches, ensembles, MBR, extended alpha grid) were trained or
   implemented but never scored, so no post-selection result exists and nothing was selected on one.
   They are reported as pre-registered, not evaluated.
+- **2026-10-04 — precision and hardware correction.** The text above (preamble and §4 notes) plans
+  fp16 on a Colab T4 for `main`. That plan was superseded before training: `main`, the pilot, the
+  ablations S1 to S3 and the extension runs all trained in **bf16 on one Colab L4**
+  (`reports/main_l4/run_meta.json` `config.precision`; no GradScaler, no skipped optimizer step in
+  24,645). The original text is left as written; this note is the correction of record.
