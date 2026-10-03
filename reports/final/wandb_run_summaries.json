@@ -1,0 +1,53 @@
+{
+ "source": "W&B API run summaries, project gauravgandhi429-gaurav-gandhi/fr-en-transformer (PRIVATE)",
+ "runs": {
+  "main": {
+   "id": "5d9fc85d",
+   "state": "finished",
+   "url": "https://wandb.ai/gauravgandhi429-gaurav-gandhi/fr-en-transformer/runs/5d9fc85d",
+   "final_step": 24645,
+   "epoch_fraction": 8.815617676598594,
+   "train_wall_seconds": 11791.83147286308,
+   "wait_seconds_total": 0,
+   "exit_reason": "completed",
+   "val_loss_e1_last": 2.904052645759428,
+   "wall_step_s_last": 0.4477753989995108
+  },
+  "s1_sin_l4": {
+   "id": "a150f75a",
+   "state": "finished",
+   "url": "https://wandb.ai/gauravgandhi429-gaurav-gandhi/fr-en-transformer/runs/a150f75a",
+   "final_step": 4107,
+   "epoch_fraction": 1.7967962925649807,
+   "train_wall_seconds": 1785.122518690999,
+   "wait_seconds_total": 0,
+   "exit_reason": "completed",
+   "val_loss_e1_last": 3.349786832830783,
+   "wall_step_s_last": 0.4034621620003236
+  },
+  "s2_rope_l4": {
+   "id": "ba29d416",
+   "state": "finished",
+   "url": "https://wandb.ai/gauravgandhi429-gaurav-gandhi/fr-en-transformer/runs/ba29d416",
+   "final_step": 4107,
+   "epoch_fraction": 1.7967962925649807,
+   "train_wall_seconds": 1976.159870274966,
+   "wait_seconds_total": 0,
+   "exit_reason": "completed",
+   "val_loss_e1_last": 3.2800495123992945,
+   "wall_step_s_last": 0.442279258999406
+  },
+  "s3_rope_concat_l4": {
+   "id": "f8200e87",
+   "state": "finished",
+   "url": "https://wandb.ai/gauravgandhi429-gaurav-gandhi/fr-en-transformer/runs/f8200e87",
+   "final_step": 4107,
+   "epoch_fraction": 1.4708448695360348,
+   "train_wall_seconds": 1928.1951829239931,
+   "wait_seconds_total": 0,
+   "exit_reason": "completed",
+   "val_loss_e1_last": 3.2887328688378052,
+   "wall_step_s_last": 0.4431241780002893
+  }
+ }
+}
