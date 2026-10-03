@@ -1,0 +1,10 @@
+{
+  "objective": 18.89537675836496,
+  "bleu_union": 5.559618835006606,
+  "chrf_union": 28.400922927599687,
+  "chrf_e1": 26.55580026661222,
+  "formula": "0.4*BLEU(E1+E2) + 0.4*chrF(E1+E2) + 0.2*chrF(E1), official score.py",
+  "n_e1": 1940,
+  "n_e2": 1000,
+  "main_seg_tuned_local_rescore_all_seg_tuned": 48.75141585376798
+}
