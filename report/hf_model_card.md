@@ -28,8 +28,13 @@ pip install git+https://github.com/gaurav-gandhi-2411/fr-en-transformer
 
 ```python
 from nmt.translate import Translator
+
 tr = Translator.from_pretrained("gauravgandhi2411/fr-en-transformer", device="cpu")
-print(tr.translate(["La bibliothèque ferme plus tôt le dimanche."], beam=5, alpha=1.2, segment_threshold=192)[0])
+print(
+    tr.translate(
+        ["La bibliothèque ferme plus tôt le dimanche."], beam=5, alpha=1.2, segment_threshold=192
+    )[0]
+)
 ```
 
 This is not a `transformers` model; it needs the code in the GitHub repository above. Pass the decoding values shown, because the API defaults are alpha 0.6 and no segmentation.

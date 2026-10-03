@@ -42,7 +42,10 @@ On Windows set `PYTHONUTF8=1`: the official scorer reads files in the platform e
 ## Translate with the released model
 
 ```python
-from nmt.translate import Translator  # pip install git+https://github.com/gaurav-gandhi-2411/fr-en-transformer
+from nmt.translate import (
+    Translator,
+)  # pip install git+https://github.com/gaurav-gandhi-2411/fr-en-transformer
+
 tr = Translator.from_pretrained("gauravgandhi2411/fr-en-transformer")
 print(tr.translate(["Le chat dort sur le canapé."], beam=5, alpha=1.2, segment_threshold=192))
 ```
