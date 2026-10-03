@@ -580,11 +580,11 @@ def test_write_scope_problem(who: dict[str, Any], refused: bool) -> None:
     assert (ev.write_scope_problem(who, REPO) is not None) is refused
 
 
-def test_read_only_token_fails_with_the_instruction_for_gg() -> None:
+def test_read_only_token_fails_with_the_instruction_for_the_owner() -> None:
     with pytest.raises(ev.HFWriteTokenError) as err:
         ev.check_write_token(FakeApi(who=READ), REPO)
     msg = str(err.value)
-    assert "fine-grained" in msg and REPO in msg and "HF_TOKEN_WRITE" in msg and "GG" in msg
+    assert "fine-grained" in msg and REPO in msg and "HF_TOKEN_WRITE" in msg and "create the PRIVATE" in msg
     with pytest.raises(ev.HFWriteTokenError):
         ev.hf_check(FakeApi(who=_fine(["repo.content.read"])), REPO)
 
