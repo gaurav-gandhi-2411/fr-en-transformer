@@ -194,7 +194,8 @@ def _fmt(v: float | None, digits: int = 3) -> str:
 
 def _span(calibration: dict[str, Any], who: str, key: str) -> str:
     vals = [v[who][key] for v in calibration.values() if v[who][key] is not None]
-    return f"{min(vals):.3f} to {max(vals):.3f}"
+    lo, hi = min(vals), max(vals)
+    return f"{lo:.3f}" if lo == hi else f"{lo:.3f} to {hi:.3f}"
 
 
 def reading(calibration: dict[str, Any]) -> str:
@@ -211,7 +212,8 @@ def reading(calibration: dict[str, Any]) -> str:
         "The sentence-level rate is not comparable across sets: the model's own sentence rate "
         f"ranges {_span(calibration, 'model', 'word_copy_sentence_rate')} across groups and is "
         "highest on the long E2-synth inputs while its word share stays low, so the word share is "
-        "the figure to read and the sentence rate mostly reflects sentence length. "
+        "the figure to read (the sentence rate is consistent with tracking sentence length; that "
+        "was not tested directly). "
         "The flagged words are words the reference does not use, so the heuristic cannot tell an "
         "untranslated word from a name spelled differently in the reference or a cognate chosen "
         "where the reference paraphrased (E3, the books proxy, has the highest model share, "
