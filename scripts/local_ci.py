@@ -122,6 +122,10 @@ class Step:
 
 _RUN_SCORER = """\
 set -eo pipefail
+if [ ! -f official/score.py ]; then
+  echo "official/score.py absent (public checkout): scorer-encoding step not applicable"
+  exit 0
+fi
 uv run pytest tests/test_scorer_encoding.py tests/test_official_scorer.py -v -rs \\
   | tee "$RUNNER_TEMP/scorer_encoding.log"
 if grep -q " SKIPPED" "$RUNNER_TEMP/scorer_encoding.log"; then
@@ -906,7 +910,13 @@ def h_pytest_312(ctx: Ctx) -> tuple[int, dict[str, object]]:
 
 
 def h_scorer_encoding(ctx: Ctx) -> tuple[int, dict[str, object]]:
-    """`pytest -v -rs | tee scorer_encoding.log`, then fail if any line contains ' SKIPPED'."""
+    """`pytest -v -rs | tee scorer_encoding.log`, then fail if any line contains ' SKIPPED'.
+
+    Like ci.yml, a checkout without official/score.py (the public repo) passes without running.
+    """
+    if not ctx.dry and not (ctx.checkout / "official" / "score.py").is_file():
+        ctx.say("official/score.py absent (public checkout): scorer-encoding step not applicable")
+        return 0, {"applicable": False}
     if not ctx.dry:
         ctx.runner_temp.mkdir(parents=True, exist_ok=True)
     log_path = ctx.runner_temp / "scorer_encoding.log"
