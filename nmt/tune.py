@@ -235,6 +235,8 @@ def run_tune(
     limit_e1: int | None = None,
     limit_e2: int | None = None,
     batch_size: int = 16,
+    translator: Translator | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the full decoding-tuning path (spec section 7) and write it to `out_path`: the alpha x
     beam grid (full score table, winner, per-decode timings, the greedy dedup note), then the
@@ -242,11 +244,16 @@ def run_tune(
     model sha256 and git SHA. `limit_e1`/`limit_e2` decode/score only the first N sentences of
     each set (a verified prefix, via `nmt.selection.limited_selection_set` -- never a different or
     tampered set) to keep CPU-only runs fast; `None` (default) uses the whole set. Always runs on
-    `Translator.from_pretrained`'s own default compute placement (CUDA if present, else CPU)."""
+    `Translator.from_pretrained`'s own default compute placement (CUDA if present, else CPU).
+    `translator` (default None = load `model_dir`) lets a caller tune an already-built translator,
+    e.g. an ensemble (nmt.final_all); then `model_dir` is only a label, `model_sha256` is None and
+    `extra` (extra top-level result keys, e.g. the member list and their hashes) is recorded."""
+    provided = translator
     e1 = limited_selection_set(load_selection_set("e1"), limit_e1)
     e2 = limited_selection_set(load_selection_set("e2"), limit_e2)
 
-    translator = Translator.from_pretrained(str(model_dir))
+    if translator is None:
+        translator = Translator.from_pretrained(str(model_dir))
 
     ab = _alpha_beam_grid_search(translator, e1, e2, alphas, beams, batch_size)
     # A greedy winner's predictions live under its shared decode key ("beam=1"), not its grid key.
@@ -258,7 +265,7 @@ def run_tune(
 
     result: dict[str, Any] = {
         "model_dir": str(model_dir),
-        "model_sha256": _sha256_of_model(Path(model_dir)),
+        "model_sha256": _sha256_of_model(Path(model_dir)) if provided is None else None,
         "git_sha": _git_sha(),
         "limit_e1": limit_e1,
         "limit_e2": limit_e2,
@@ -284,6 +291,7 @@ def run_tune(
             "copy": translator.stats.n_copy_fallback,
         },
     }
+    result.update(extra or {})
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

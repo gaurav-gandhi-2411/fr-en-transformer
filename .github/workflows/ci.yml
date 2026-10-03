@@ -140,6 +140,17 @@ jobs:
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
             --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"all"'
 
+      # CONFIG="eval_l4" + RUN="final_all" (the STAGED final selection over main final + Branch A +
+      # Branch B: exports, bench, 7 stage-1 tunes, stage1-select, 8 stage-2 tunes, select, report,
+      # decode, validation, private upload) executed end to end as a DRY RUN: the staged plan (stage-2
+      # steps marked as depending on the stage-1 top 2), the three checkpoint files (MISSING on this
+      # host, reported not fatal in a dry run) and the staged ESTIMATE are printed; nothing is run.
+      - name: Execute colab/train.ipynb in eval_l4 RUN=final_all DRY_RUN mode (Python 3.13)
+        if: matrix.python-version == '3.13'
+        run: |
+          PY="$RUNNER_TEMP/venv/bin/python"
+          "$PY" colab/execute_notebook.py colab/train.ipynb 1800             --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"final_all"'
+
       # CONFIG="extend_l4" (PREREG rule 4: stable 19k -> 40k, Branch A, Branch B in one Colab
       # session) executed end to end as a DRY RUN: the input-checkpoint check (MISSING on this
       # host, reported not fatal in a dry run), each run's plan and exact argv (--init-from only on

@@ -47,7 +47,7 @@ def test_parameters_cell_defaults_are_the_l4_main_run() -> None:
         'CONFIG = "main"',
         "PLANNED_STEPS = 24645",
         "RESUME_TEST = False",
-        'GIT_REF = "v0.3.0-colab"',
+        'GIT_REF = "v0.3.1-colab"',
     ):
         assert any(ln.startswith(expected) for ln in lines), expected
     # pilot/smoke stay selectable; ablations_l4 (s1 -> s2 -> s3 in one session) is the addition

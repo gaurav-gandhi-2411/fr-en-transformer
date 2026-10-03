@@ -28,13 +28,18 @@ import re
 import shutil
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 RUNS: tuple[str, ...] = ("main", "s1_sin_l4", "s2_rope_l4", "s3_rope_concat_l4")
+# The post-selection run (PREREG 2026-10-02 amendment, rule 5; nmt.final_all). Kept OUT of RUNS on
+# purpose: RUNS is the pre-registered ablation/main list that the notebook, scripts/eval_local.py
+# and their tests pin; ALL_RUNS is what upload / hf-verify accept.
+FINAL_ALL_RUN = "final_all"
+ALL_RUNS: tuple[str, ...] = (*RUNS, FINAL_ALL_RUN)
 DECODE_SPLITS: tuple[str, ...] = ("dev", "e1", "e2", "e2synth", "e3")
 VARIANT_SEG_OFF = "seg_off"
 VARIANT_TUNED = "seg_tuned"
@@ -487,15 +492,28 @@ def tuning_is_full(tuning: Any, sizes: tuple[int, int] | None = None) -> bool:
     )
 
 
-def run_tune_step(model_dir: Path, out_path: Path, batch_size: int = EVAL_BATCH_SIZE) -> bool:
+def run_tune_step(
+    model_dir: Path,
+    out_path: Path,
+    batch_size: int = EVAL_BATCH_SIZE,
+    alphas: Sequence[float] | None = None,
+    beams: Sequence[int] | None = None,
+) -> bool:
     """nmt.tune.run_tune over full E1 + E2 (PREREG §1); skipped when `out_path` is a valid full
-    tune. Returns True when it ran."""
+    tune. Returns True when it ran. `alphas` / `beams` default to nmt.tune's grid (the PREREG §1
+    one, unchanged); a caller with another grid (nmt.final_all) must also validate the grid of an
+    existing file itself, since `tuning_is_full` does not look at it."""
     if tuning_is_full(_read_json(out_path)):
         print(f"tune {Path(out_path).stem}: SKIP (valid full tuning at {out_path})")
         return False
     from nmt.tune import run_tune
 
-    result = run_tune(Path(model_dir), Path(out_path), batch_size=batch_size)
+    grid: dict[str, Any] = {}  # only what the caller set: the default call is byte-identical
+    if alphas:
+        grid["alphas"] = tuple(alphas)
+    if beams:
+        grid["beams"] = tuple(beams)
+    result = run_tune(Path(model_dir), Path(out_path), batch_size=batch_size, **grid)
     w = result["winner"]
     print(
         f"tune: winner alpha={w['alpha']} beam={w['beam']} "
@@ -755,6 +773,10 @@ _MODEL_FILES = ("model.safetensors", "config.json", "spm.model")
 
 def expected_candidates(run: str) -> tuple[str, ...]:
     """The candidate names a finished `run` must have tuned (pre-registered)."""
+    if run == FINAL_ALL_RUN:
+        from nmt.final_all import STAGE1_CANDIDATES  # lazy: final_all imports this module
+
+        return STAGE1_CANDIDATES  # the 7 stage-1 tunings; stage 2 is listed by the manifest
     return MAIN_CANDIDATES if run == "main" else ABLATION_CANDIDATES
 
 
@@ -763,23 +785,54 @@ def required_rels(run: str, candidate_order: Sequence[str]) -> list[str]:
     rels = ["bench.json", "selection.json", "decode_summary.json", "run_meta.json"]
     rels += [f"tuning/{c}.json" for c in candidate_order]
     rels += [f"predictions/{v}/{s}_predictions.json" for v in VARIANTS for s in DECODE_SPLITS]
-    if run == "main":
+    if run in ("main", FINAL_ALL_RUN):
         rels += ["test_predictions.json", "validation.json"]
+    if run == FINAL_ALL_RUN:
+        # stage-1 file and the report (bootstrap + latency); the winner's member models and the
+        # stage-2 tunings depend on the winner / top 2 and are listed by the manifest
+        return [*rels, "stage1.json", "report.json"]
     return rels + [f"model/{name}" for name in _MODEL_FILES]
 
 
-def collect_upload_files(eval_dir: Path, run: str) -> list[tuple[Path, str]]:
+def final_all_model_rels(members: Sequence[str]) -> list[str]:
+    """Paths under runs/final_all/ of the winning candidate's member models (one dir each)."""
+    return [f"models/{m}/{name}" for m in members for name in _MODEL_FILES]
+
+
+def final_all_stage2_rels(stage2_candidates: Sequence[str]) -> list[str]:
+    """Paths under runs/final_all/ of the stage-2 (MBR) tunings of the top-2 model sets."""
+    return [f"tuning/{c}.json" for c in stage2_candidates]
+
+
+def collect_upload_files(
+    eval_dir: Path, run: str, model_dirs: Mapping[str, Path] | None = None
+) -> list[tuple[Path, str]]:
     """(local path, path in repo) for everything the local pipeline needs, under runs/<run>/.
-    Raises EvalStepError listing any required file that is missing."""
+    Raises EvalStepError listing any required file that is missing. For `final_all`, `model_dirs`
+    (member name -> export dir) supplies the files of the winner's members."""
     eval_dir = Path(eval_dir)
     selection = _read_json(eval_dir / "selection.json")
     if not isinstance(selection, dict):
         raise EvalStepError(f"upload: {eval_dir}/selection.json missing or unreadable")
     winner = selection["winner"]["candidate"]
     files = []
-    for rel in required_rels(run, selection["candidate_order"]):
+    rels = required_rels(run, selection["candidate_order"])
+    if run == FINAL_ALL_RUN:
+        rels = required_rels(run, expected_candidates(run))  # the 7 stage-1 tunings
+        rels += final_all_stage2_rels(selection.get("stage2_candidates") or [])
+        members = selection["winner"].get("members")
+        if not members or not model_dirs or any(m not in model_dirs for m in members):
+            raise EvalStepError(
+                f"upload: final_all needs a model dir for every winner member {members!r} "
+                f"(--model NAME=DIR); got {sorted(model_dirs or {})}"
+            )
+        rels += final_all_model_rels(members)
+    for rel in rels:
         if rel.startswith("model/"):
             local = eval_dir / "candidates" / winner / rel.removeprefix("model/")
+        elif rel.startswith("models/"):
+            _, member, fname = rel.split("/")
+            local = Path(model_dirs[member]) / fname  # type: ignore[index]
         else:
             local = eval_dir / rel
         files.append((local, f"runs/{run}/{rel}"))
@@ -799,7 +852,7 @@ def build_manifest(run: str, files: Sequence[tuple[Path, str]], eval_dir: Path) 
     candidate order and winner. Uploaded as runs/<run>/manifest.json in the same commit."""
     selection = _read_json(Path(eval_dir) / "selection.json") or {}
     prefix = f"runs/{run}/"
-    return {
+    manifest: dict[str, Any] = {
         "schema": 1,
         "run": run,
         "candidate_order": list(selection.get("candidate_order", [])),
@@ -809,6 +862,11 @@ def build_manifest(run: str, files: Sequence[tuple[Path, str]], eval_dir: Path) 
             for p, rel in files
         },
     }
+    if run == FINAL_ALL_RUN:  # hf-verify needs the member list to know which model files to require
+        manifest["candidate_order"] = list(expected_candidates(run))  # the 7 stage-1 tunings
+        manifest["stage2_candidates"] = list(selection.get("stage2_candidates", []))
+        manifest["winner_members"] = list((selection.get("winner") or {}).get("members", []))
+    return manifest
 
 
 def _lfs_sha256(entry: Any) -> str | None:
@@ -894,7 +952,17 @@ def verify_run_on_hf(api: Any, repo_id: str, run: str) -> dict[str, Any]:
         listed, dict
     ):
         return no("manifest.json candidate order / file list is not the pre-registered one")
-    absent = [r for r in required_rels(run, expected_candidates(run)) if r not in listed]
+    needed = required_rels(run, expected_candidates(run))
+    if run == FINAL_ALL_RUN:
+        members = manifest.get("winner_members")
+        if not isinstance(members, list) or not members:
+            return no("manifest.json lacks winner_members")
+        needed += final_all_model_rels(members)
+        stage2 = manifest.get("stage2_candidates")
+        if not isinstance(stage2, list) or not stage2:
+            return no("manifest.json lacks stage2_candidates")
+        needed += final_all_stage2_rels(stage2)
+    absent = [r for r in needed if r not in listed]
     if absent:
         return no(f"manifest.json lacks required file(s): {', '.join(absent)}")
     for rel, want in listed.items():
@@ -906,7 +974,7 @@ def verify_run_on_hf(api: Any, repo_id: str, run: str) -> dict[str, Any]:
         got = _lfs_sha256(entry) or _sha256_file(fetch(rel))
         if got != want.get("sha256"):
             return no(f"{prefix}/{rel}: sha256 differs from the manifest")
-    if run == "main":
+    if run in ("main", FINAL_ALL_RUN):
         validation = _read_json(fetch("validation.json"))
         if not (
             isinstance(validation, dict)
@@ -921,7 +989,13 @@ def verify_run_on_hf(api: Any, repo_id: str, run: str) -> dict[str, Any]:
     }
 
 
-def upload_run(api: Any, repo_id: str, run: str, eval_dir: Path) -> dict[str, Any]:
+def upload_run(
+    api: Any,
+    repo_id: str,
+    run: str,
+    eval_dir: Path,
+    model_dirs: Mapping[str, Path] | None = None,
+) -> dict[str, Any]:
     """Upload one run to the PRIVATE HF repo in a single commit. Order: gather files (refuse if
     any missing), check token scope, look for evidence on HF that the run is already complete
     (verify_run_on_hf; skip if so), create_repo(private=True, exist_ok=True) and read back
@@ -930,11 +1004,11 @@ def upload_run(api: Any, repo_id: str, run: str, eval_dir: Path) -> dict[str, An
     from huggingface_hub import CommitOperationAdd
 
     eval_dir = Path(eval_dir)
-    if run not in RUNS:
-        raise EvalStepError(f"upload: RUN {run!r} not in {RUNS}")
+    if run not in ALL_RUNS:
+        raise EvalStepError(f"upload: RUN {run!r} not in {ALL_RUNS}")
     if not _REPO_ID_RE.match(repo_id):
         raise EvalStepError(f"HF_EVAL_REPO={repo_id!r} is not '<owner>/<name>'")
-    files = collect_upload_files(eval_dir, run)
+    files = collect_upload_files(eval_dir, run, model_dirs)
     check_write_token(api, repo_id)
     state = verify_run_on_hf(api, repo_id, run)  # also refuses a non-private repo
     if state["complete"]:
@@ -1066,7 +1140,7 @@ def _parser() -> argparse.ArgumentParser:
         "hf-verify", help="is runs/<run>/ complete on the private HF repo (manifest + sha256)?"
     )
     s.add_argument("--repo", required=True)
-    s.add_argument("--run", required=True, choices=RUNS)
+    s.add_argument("--run", required=True, choices=ALL_RUNS)
 
     s = sub.add_parser("candidates", help="average checkpoints and export candidate model dirs")
     s.add_argument("--ckpt-dir", required=True, type=Path)
@@ -1078,13 +1152,15 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("bench", help="throughput benchmark (first 200 E2 sentences)")
     s.add_argument("--model", required=True, type=Path)
     s.add_argument("--out", required=True, type=Path)
-    s.add_argument("--run", required=True, choices=RUNS)
+    s.add_argument("--run", required=True, choices=ALL_RUNS)
     s.add_argument("--batch-size", type=int, default=EVAL_BATCH_SIZE)
 
     s = sub.add_parser("tune", help="PREREG §1 decoding tuning on full E1+E2 for one candidate")
     s.add_argument("--model", required=True, type=Path)
     s.add_argument("--out", required=True, type=Path)
     s.add_argument("--batch-size", type=int, default=EVAL_BATCH_SIZE)
+    s.add_argument("--alphas", type=float, nargs="+", default=None, help="default: nmt.tune's")
+    s.add_argument("--beams", type=int, nargs="+", default=None, help="default: nmt.tune's")
 
     s = sub.add_parser("select", help="pick the (candidate, decode config) by the §2 objective")
     s.add_argument("--tuning-dir", required=True, type=Path)
@@ -1102,8 +1178,11 @@ def _parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("upload", help="upload one run to the PRIVATE HF repo")
     s.add_argument("--repo", required=True)
-    s.add_argument("--run", required=True, choices=RUNS)
+    s.add_argument("--run", required=True, choices=ALL_RUNS)
     s.add_argument("--eval-dir", required=True, type=Path)
+    s.add_argument(
+        "--model", action="append", default=[], help="final_all only: member=DIR (repeatable)"
+    )
 
     s = sub.add_parser("workload", help="write colab/eval_workload.json")
     s.add_argument("--out", required=True, type=Path)
@@ -1152,7 +1231,7 @@ def _dispatch(args: argparse.Namespace) -> int:
                     f"{m['output_tokens_per_second']} out-tok/s on {r['gpu']}"
                 )
     elif args.cmd == "tune":
-        run_tune_step(args.model, args.out, args.batch_size)
+        run_tune_step(args.model, args.out, args.batch_size, args.alphas, args.beams)
     elif args.cmd == "select":
         if selection_is_valid(args.out, args.candidates) and _selection_current(args):
             print(f"select: SKIP (valid {args.out})")
@@ -1163,7 +1242,13 @@ def _dispatch(args: argparse.Namespace) -> int:
     elif args.cmd == "validate-test":
         validate_test_predictions(args.pred, args.out)
     elif args.cmd == "upload":
-        upload_run(_hf_api(), args.repo, args.run, args.eval_dir)
+        model_dirs = {}
+        for spec in args.model:
+            name, sep, path = spec.partition("=")
+            if not sep or not name or not path:
+                raise EvalStepError(f"bad --model {spec!r}; expected member=DIR")
+            model_dirs[name] = Path(path)
+        upload_run(_hf_api(), args.repo, args.run, args.eval_dir, model_dirs or None)
     elif args.cmd == "workload":
         _write_json(args.out, measure_workload())
     return 0

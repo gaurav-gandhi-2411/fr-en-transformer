@@ -111,7 +111,7 @@ def _put_main_input(tmp_path: Path) -> str:
 
 def test_extend_is_a_selectable_config_and_pins_the_new_tag() -> None:
     ns = _params(DRY_RUN="True")
-    assert ns["EXTEND"] is True and ns["GIT_REF"] == "v0.3.0-colab"
+    assert ns["EXTEND"] is True and ns["GIT_REF"] == "v0.3.1-colab"
     assert ns["PLANNED_STEPS"] is None  # ignored, not forwarded (24645 is main's value)
     assert ns["EXTEND_CONFIGS"] == ORDER
     assert ns["EXTEND_INIT"] == {
