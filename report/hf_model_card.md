@@ -80,7 +80,7 @@ Joint French and English SentencePiece BPE, 16,000 pieces, byte fallback on, tra
 
 ## Evaluation
 
-BLEU and chrF come from the scoring script `official/score.py` (BLEU on lowercased word and punctuation tokens, sentence-averaged chrF). Each cell is the point estimate with a 95% bootstrap interval (1,000 resamples, seed 1234). "Copy source" is a floor: the output is simply the French input, scored the same way. chrF gives partial credit for words shared with the reference, so a chrF in the 20s is not evidence of translation.
+BLEU and chrF come from the challenge's scoring script, which is not redistributed (BLEU on lowercased word and punctuation tokens, sentence-averaged chrF). Each cell is the point estimate with a 95% bootstrap interval (1,000 resamples, seed 1234). "Copy source" is a floor: the output is simply the French input, scored the same way. chrF gives partial credit for words shared with the reference, so a chrF in the 20s is not evidence of translation.
 
 | Slice | n | v1 BLEU | v1 chrF | Copy-source BLEU | Copy-source chrF |
 |---|---|---|---|---|---|
