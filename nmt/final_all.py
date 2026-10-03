@@ -14,6 +14,12 @@ from __future__ import annotations
 #   Report:  paired bootstrap (nmt.compare, 1,000 resamples, seed 1234) winner vs runner-up and
 #            winner vs the production config (best single model, beam only), and the latency of
 #            the winner and of the production config. Reported, not gates.
+#   COMET:   after the private upload, a NON-FATAL eval-only stage (nmt/comet_stage.py) scores the
+#            final_all decodes, the report-step predictions, the 4 existing runs (pulled from the
+#            private HF eval repo at pinned revisions) and the copy-the-source baseline with
+#            COMET-22 on the session's GPU, then makes a second private upload commit. The plan
+#            lists its steps (names `comet:*`) after `upload`; hf-verify of the main upload does
+#            not depend on them.
 #
 # Interpretations of the rule text (also in the PR description, none changes the candidate set):
 #   * An MBR candidate takes the GNMT alpha of the winning (alpha, beam) of the SAME model-set's
@@ -928,6 +934,8 @@ def plan_final_all(
     python: str | None = None,
     ckpt_files: Mapping[str, Path] | None = None,
     repo_dir: Path | None = None,
+    comet_batch_size: int = 64,
+    comet_precision: str = "fp32",
 ) -> list[tuple[str, list[str]]]:
     """The ordered (step name, argv) list of the staged `final_all` session, each argv a fresh
     interpreter: hf-verify (the notebook's skip check: it parses HF_RUN_COMPLETE and skips the rest
@@ -935,7 +943,9 @@ def plan_final_all(
     stage-1 tunes, stage1-select (writes stage1.json: the top 2 model sets), the 8 stage-2 tunes
     (`tune-stage2 --pool P --rank 1|2`, which read the top 2 from stage1.json at run time), select
     (10 candidates), report (bootstrap + latency), decode (+test) for the winner, validate-test,
-    and the PRIVATE upload last. The plan is static: only the model sets of the stage-2 steps
+    and the PRIVATE upload, then the COMET stage (`comet:install`, `comet:pull:<run>` x 4,
+    `comet:score`, `comet:upload`; non-fatal for everything before it, see nmt/comet_stage.py).
+    The plan is static: only the model sets of the stage-2 steps
     depend on stage 1, and they are resolved when those steps run. With `ckpt_files` (and
     `repo_dir`) the three `export:<name>` steps go right after hf-check (so the export, which
     reads Drive, comes after the token check but before bench); `models` must then point at
@@ -1015,6 +1025,15 @@ def plan_final_all(
             ],
         ),
     ]
+    from nmt import comet_stage  # lazy: the module top level stays stdlib + eval_l4
+
+    plan += comet_stage.plan_steps(
+        eval_root=root,
+        hf_repo=hf_repo,
+        python=py,
+        batch_size=comet_batch_size,
+        precision=comet_precision,
+    )
     return plan
 
 
@@ -1027,6 +1046,9 @@ def describe_plan(plan: Sequence[tuple[str, Sequence[str]]]) -> list[str]:
     lines = []
     for name, argv in plan:
         mark = f"   <- {STAGE2_NOTE}" if name.startswith("tune-stage2") else ""
+        mark = mark or (
+            "   <- COMET stage: non-fatal, after the upload" if name == "comet:install" else ""
+        )
         lines.append(f"  [{name}] {' '.join(argv)}{mark}")
     return lines
 
@@ -1121,6 +1143,43 @@ def format_final_all_summary(
         lines.append(f"HF_EVAL_REVISION={up['revision']}")
     else:
         lines.append(f"HF upload to {hf_repo}: NOT DONE")
+    lines += _comet_summary_lines(root)
+    return lines
+
+
+def _comet_summary_lines(root: Path) -> list[str]:
+    """COMET-22 lines of the summary: counts, model, device, then one line per system / variant
+    with the per-split means [95% bootstrap CI]; the second upload's revision. NOT DONE when the
+    stage has not produced them (it is non-fatal, so this is a normal state after a failure)."""
+    summary = _read(root / "comet" / "comet_summary.json")
+    if not summary:
+        return ["COMET-22: NOT DONE (see the COMET FAILED line of the run cell, if any)"]
+    model = summary.get("model") or {}
+    runtime = summary.get("runtime") or {}
+    lines = [
+        f"COMET-22: {summary['n_sets']} sets, {summary['n_segments']} segments, "
+        f"{summary['n_distinct_triples_all_sets']} distinct triples; {model.get('name')}@"
+        f"{str(model.get('revision'))[:8]}; device {summary.get('device')}; precision "
+        f"{summary.get('precision')}; batch {summary.get('batch_size')}; scoring "
+        f"{runtime.get('scoring_wall_seconds')} s"
+    ]
+    groups: dict[tuple[str, str], list[str]] = {}
+    for row in summary["sets"]:
+        lo, hi = row["ci95"]
+        groups.setdefault((row["system"], row["variant"]), []).append(
+            f"{row['split']} {row['mean']:.4f} [{lo:.4f}, {hi:.4f}]"
+        )
+    for (system, variant), cells in groups.items():
+        lines.append(f"COMET {system}/{variant}: " + "; ".join(cells))
+    up = _read(root / "comet_hf_upload.json")
+    if up:
+        lines.append(
+            f"HF COMET upload: {up['repo']} revision: {up['revision']} private: {up['private']} "
+            "(prefix runs/final_all/comet/)"
+        )
+        lines.append(f"HF_COMET_REVISION={up['revision']}")
+    else:
+        lines.append("HF COMET upload: NOT DONE")
     return lines
 
 
@@ -1148,6 +1207,7 @@ def estimate_final_all(
     basis: str = "MEASURED L4 beam-5 rate (main final, bench.json at HF revision c3d85982), "
     "everything else ASSUMED as listed",
     mbr_cpu_seconds: Mapping[int, float] | None = None,
+    comet_triples: int | None = None,
 ) -> dict[str, Any]:
     """ESTIMATE (not a measurement) of the wall time of the STAGED session (PREREG 2026-10-03).
 
@@ -1157,7 +1217,12 @@ def estimate_final_all(
       * an M-member ensemble costs M x a single model per token (ASSUMED; encoder cost ignored);
       * an MBR pool of N costs like a beam of width N: N/5 x the beam-5 time per token (ASSUMED,
         linear; sampling pools are costed the same);
-      * the chrF utility time per pool is MEASURED once on a laptop CPU.
+      * the chrF utility time per pool is MEASURED once on a laptop CPU;
+      * COMET stage (GG 2026-10-03: on the L4 after the upload): `comet_triples` distinct triples
+        (default: the UNDEDUPED segment count of every set from the workload, a conservative upper
+        bound) at an ASSUMED central 100 triples/s (range 50-150, NO L4 COMET rate has been
+        measured; see `comet.rows`) + ASSUMED setup (install, model download + load, pulls) and
+        second-upload times.
     Stage 1 is exact (all 7 model sets are known). Stage 2 depends on WHICH 2 sets win stage 1, so
     it is given for the cheapest (two single models) and the dearest (the 3- and 2-member
     ensembles) outcome, with the report/final decode costed on the dearest pool (N=16, the
@@ -1195,6 +1260,14 @@ def estimate_final_all(
     split_tokens = sum(sp[s]["out_tokens"] for s in ev.DECODE_SPLITS)
     final_tokens = 2 * split_tokens + sp["test"]["out_tokens"]  # two variants per split, test once
     final_sentences = 2 * sum(sp[s]["n"] for s in ev.DECODE_SPLITS) + sp["test"]["n"]
+    from nmt import comet_stage  # lazy: the module top level stays stdlib + eval_l4
+
+    seg_all = sum(sp[s]["n"] for s in ev.DECODE_SPLITS)
+    if comet_triples is None:  # 4 runs x 2 variants + baseline + winner x 2 variants + 3 report
+        comet_triples = (
+            len(comet_stage.PINNED_RUNS) * len(ev.VARIANTS) + 1 + len(ev.VARIANTS)
+        ) * seg_all + comet_stage.FINAL_ALL_REPORT_CONFIGS * (sp["e1"]["n"] + sp["e2"]["n"])
+    comet = comet_stage.estimate_comet(comet_triples)
     # report: E1+E2 for the winner, runner-up and production (3 configs, costed at the dearest
     # pool) + 2 latency runs of the first 200 E2 sentences
     report_tokens = 3 * e12 + 2 * workload["bench_e2_first200_out_tokens"]
@@ -1203,6 +1276,7 @@ def estimate_final_all(
         "rates": rates,
         "stage1": stage1,
         "stage2": scenarios,
+        "comet": comet,
         "scenarios": {},
     }
     for label, s2 in scenarios.items():
@@ -1220,6 +1294,9 @@ def estimate_final_all(
             "bench": workload["bench_e2_first200_out_tokens"]
             * (1 / rates["greedy"] + 1 / beam_rate),
             "fixed_overhead": ASSUMED_FIXED_SECONDS,
+            "comet_gpu": comet_triples / comet_stage.ASSUMED_COMET_CENTRAL,
+            "comet_setup": comet_stage.ASSUMED_COMET_SETUP_SECONDS,
+            "comet_second_upload": comet_stage.ASSUMED_COMET_UPLOAD_SECONDS,
         }
         seconds = sum(parts.values())
         out["scenarios"][label] = {
@@ -1257,6 +1334,18 @@ def format_final_estimate(est: Mapping[str, Any]) -> list[str]:
             + f" (min) = {sc['seconds'] / 60:.0f} min = {sc['hours']:.1f} h ~ {sc['cu']:.1f} CU "
             f"at {CU_PER_HOUR} CU/h"
         )
+    c = est["comet"]
+    lines.append(
+        f"  COMET stage (after the upload; {c['n_triples']:,} distinct triples at most; NO L4 "
+        f"COMET rate measured): setup + second upload ASSUMED {c['fixed_seconds'] / 60:.0f} min; "
+        "scoring ASSUMED "
+        + ", ".join(
+            f"{r['triples_per_second']:.0f}/s -> {r['scoring_seconds'] / 60:.1f} min "
+            f"({r['total_hours']:.2f} h with setup)"
+            for r in c["rows"]
+        )
+        + "; the totals above use the central rate"
+    )
     lines.append(
         f"  before staging: {est['pre_staged_hours']} h (exhaustive 35 candidates, ASSUMED rates "
         "2500/1000)"
@@ -1323,6 +1412,8 @@ def _parser() -> argparse.ArgumentParser:
         help="main|A|B=checkpoint file: adds the three export steps after hf-check",
     )
     s.add_argument("--repo-dir", type=Path, default=ev.REPO_ROOT, help="for configs/<name>.yaml")
+    s.add_argument("--comet-batch-size", type=int, default=64)
+    s.add_argument("--comet-precision", choices=("fp32", "bf16", "fp16"), default="fp32")
     s.add_argument("--json", action="store_true", help="print [[name, argv], ...] as JSON")
 
     s = sub.add_parser("summary", help="print the Summary-cell lines of a finished session")
@@ -1335,6 +1426,12 @@ def _parser() -> argparse.ArgumentParser:
     s = sub.add_parser("estimate", help="print the cost ESTIMATE of the staged flow")
     s.add_argument("--workload", type=Path, default=ev.REPO_ROOT / "colab" / "eval_workload.json")
     s.add_argument("--bench", type=Path, default=None, help="bench.json: use its measured rates")
+    s.add_argument(
+        "--runs-root",
+        type=Path,
+        default=ev.REPO_ROOT / "reports" / "final",
+        help="the 4 runs' predictions (checkout): exact COMET distinct-triple count if present",
+    )
     return p
 
 
@@ -1388,6 +1485,8 @@ def _dispatch(args: argparse.Namespace) -> int:
             models=models,
             ckpt_files=parse_model_args(args.ckpt_file) if args.ckpt_file else None,
             repo_dir=args.repo_dir,
+            comet_batch_size=args.comet_batch_size,
+            comet_precision=args.comet_precision,
         )
         if args.json:
             print(json.dumps([[name, argv] for name, argv in plan]))
@@ -1407,7 +1506,14 @@ def _dispatch(args: argparse.Namespace) -> int:
                 "beam": float(m["beam5"]["output_tokens_per_second"]),
             }
             basis = f"MEASURED rates from {args.bench}, everything else ASSUMED as listed"
-        est = estimate_final_all(workload, rates, basis) if basis else estimate_final_all(workload)
+        from nmt import comet_stage
+
+        triples = comet_stage.planned_counts(Path("."), args.runs_root)["distinct_upper_bound"]
+        est = (
+            estimate_final_all(workload, rates, basis, comet_triples=triples)
+            if basis
+            else estimate_final_all(workload, comet_triples=triples)
+        )
         print("\n".join(format_final_estimate(est)))
     return 0
 

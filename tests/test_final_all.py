@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+import nmt.comet_stage as cs
 import nmt.eval_l4 as ev
 import nmt.final_all as fa
 from tests.test_eval_l4 import REPO, REVISION, FakeApi
@@ -596,8 +597,14 @@ def test_plan_is_staged_gates_first_and_private_upload_last() -> None:
     assert names[10] == "stage1-select"
     stage2 = names[11:19]
     assert stage2 == [f"tune-stage2:rank{r}:{p}" for r in (1, 2) for p in fa.POOL_LABELS]
-    assert names[19:] == ["select", "report", "decode", "validate-test", "upload"]
-    assert len(names) == 24
+    assert names[19:24] == ["select", "report", "decode", "validate-test", "upload"]
+    assert names[24:] == [  # the non-fatal COMET stage, strictly after the private upload
+        "comet:install",
+        *[f"comet:pull:{r}" for r in ev.RUNS],
+        "comet:score",
+        "comet:upload",
+    ]
+    assert len(names) == 31
 
 
 def test_plan_stage2_steps_read_the_top_two_at_run_time() -> None:
@@ -613,7 +620,8 @@ def test_plan_stage2_steps_read_the_top_two_at_run_time() -> None:
 
 def test_plan_argvs_are_real_subcommands() -> None:
     for name, argv in _plan():
-        parser = fa._parser() if argv[2] == "nmt.final_all" else ev._parser()
+        parsers = {"nmt.final_all": fa._parser(), "nmt.comet_stage": cs._parser()}
+        parser = parsers.get(argv[2], ev._parser())
         args = parser.parse_args(argv[3:])
         assert args.cmd == argv[3], name
     assert fa._parser().parse_args(dict(_plan())["tune-stage2:rank2:mbr_beam16"][3:]).rank == 2
@@ -1104,7 +1112,7 @@ def test_plan_with_checkpoints_adds_the_three_exports_right_after_hf_check() -> 
     )
     names = [n for n, _ in plan]
     assert names[:6] == ["hf-verify", "hf-check", "export:main", "export:A", "export:B", "bench"]
-    assert len(names) == 27
+    assert len(names) == 34
     exports = dict(plan)
     for name, (run, step, cfg) in fa.FINAL_ALL_CHECKPOINTS.items():
         argv = exports[f"export:{name}"]
@@ -1114,8 +1122,8 @@ def test_plan_with_checkpoints_adds_the_three_exports_right_after_hf_check() -> 
         assert Path(argv[argv.index("--ckpt-dir") + 1]) == Path("/d/runs") / run / "ckpt"
         assert Path(argv[argv.index("--out-dir") + 1]) == Path("/d/eval/final_all/models")
         assert ev._parser().parse_args(argv[3:]).cmd == "candidates"
-    # without checkpoints the plan is the 24-step one (existing behaviour)
-    assert len(_plan()) == 24
+    # without checkpoints: the 24 steps up to the upload + the 7 COMET steps
+    assert len(_plan()) == 31
 
 
 def test_describe_plan_marks_only_the_stage2_steps() -> None:
