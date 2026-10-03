@@ -46,17 +46,17 @@ was flagged at 45,000 to 46,000 and again at 48,000, recovered to a new minimum 
 (2.8755), and ended at its minimum with 0 rises. The stable run's line was accurate on both counts
 (still flagged at the end, rises=4).
 
-GG's numbers checked against the data: every figure given (stable min 2.9121 at 38,000, flagged
-since 31,500, rises=4; A last = min = 2.8750; B last = min = 2.8703, flagged since 45,000) matches
+The values reported to the maintainer before this analysis (stable min 2.9121 at 38,000, flagged
+since 31,500, rises=4; A last = min = 2.8750; B last = min = 2.8703, flagged since 45,000) match
 the series. No correction needed.
 
 ## Statement for the report
 
-The stable-phase flag reflects the high-LR plateau: `configs/ext_stable_l4.yaml` holds the LR
+The stable-phase flag is best read as the high-LR plateau (an interpretation, not tested by these
+runs): `configs/ext_stable_l4.yaml` holds the LR
 constant at 7.0e-4 from the init step to step 40,000, and E1 val loss there moves by a few
 thousandths between evaluations (rises of up to about 0.010 around a slowly falling trend, from 2.9841
-at step 19,500 to a minimum of 2.9121 at step 38,000). The "constant-LR noise" reading is an
-interpretation consistent with this series, not something these runs test directly. Both decayed
+at step 19,500 to a minimum of 2.9121 at step 38,000). The "constant-LR noise" reading is consistent with this series. Both decayed
 branches end at their own minima: Branch A 2.8750 at step 37,500 (decay 30,000 to 37,500) and
 Branch B 2.8703 at step 50,000 (decay 40,000 to 50,000), versus the stable run's own minimum of
 2.9121 and its values of 2.9198 at step 37,500 and 2.9192 at step 40,000 at the matching steps.
@@ -69,8 +69,8 @@ Branch B 2.8703 at step 50,000 (decay 40,000 to 50,000), versus the stable run's
 | ext_branch_a_l4 | 30,000 -> 37,500 | 3481.18 | `/content/drive/MyDrive/fr-en-transformer/runs/ext_stable_l4/ckpt/step_00030000.pt` |
 | ext_branch_b_l4 | 40,000 -> 50,000 | 4695.37 | `/content/drive/MyDrive/fr-en-transformer/runs/ext_stable_l4/ckpt/step_00040000.pt` |
 
-Final checkpoint paths: UNVERIFIED. The task text said GG listed them, but no list reached this
-session, and W&B does not record them. By the repo's naming they would be
+Final checkpoint paths: UNVERIFIED. W&B does not record them and no list of them was available to
+this analysis. By the repo's naming they would be
 `.../runs/<run>/ckpt/step_<final>.pt` (stable step_00040000, A step_00037500, B step_00050000);
 that is an inference, to be confirmed against Drive.
 
