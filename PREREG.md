@@ -290,3 +290,9 @@ ablation and main-run selection results exist and states what was already known)
   - Nothing else in the amendments changes: the §2 objective, selection on E1 + E2 only, and
     dev, E2-synth and E3 report-only.
 
+- **2026-10-04 — closing note (made before any extension-branch, MBR, ensemble or stage-1 score
+  exists).** `final_all` was not run within the deadline. Per §5 and the 2026-10-03 time-box, v1
+  stands: `main`, `final`, alpha 1.2, beam 5, T 192 (`submission/test_predictions_v1.json`). The
+  A6/A7 candidates (extension branches, ensembles, MBR, extended alpha grid) were trained or
+  implemented but never scored, so no post-selection result exists and nothing was selected on one.
+  They are reported as pre-registered, not evaluated.
