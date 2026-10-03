@@ -424,3 +424,39 @@ def test_train_reports_overfit_flag_loudly_and_keeps_training(
     ]
     assert [e["overfit_flag"] for e in ev] == [0, 0, 1, 1]
     assert _rows(tmp_path, "w").keys() == set(range(1, 9))  # never auto-stopped
+
+
+class _FakeRun:
+    """Minimal stand-in for a W&B run: a dict summary, no network."""
+
+    def __init__(self) -> None:
+        self.summary: dict = {}
+        self.config = self
+
+    def update(self, *a: object, **k: object) -> None:
+        self.summary.update(a[0] if a and isinstance(a[0], dict) else {})
+
+    def log(self, *a: object, **k: object) -> None:
+        pass
+
+    def finish(self) -> None:
+        pass
+
+
+def test_wandb_summary_separates_flagged_ever_from_current(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run flagged mid-way that recovers to a new minimum: `overfit_flagged_ever` stays True
+    (first/last flagged step recorded) while `overfit_flag_current` is False at the end."""
+    run = _FakeRun()
+    monkeypatch.setattr(train_module, "init_wandb", lambda *a, **k: run)
+    # evals at steps 2,4,6,8,10: min 1.0, rise, rise (flag@6), rise (flag@8), new min (clear@10)
+    losses = iter([1.0, 2.0, 3.0, 4.0, 0.5])
+    monkeypatch.setattr(train_module, "_eval_val_loss", lambda *a, **k: next(losses))
+    cfg = _cfg(tmp_path, "w", planned=10, decay=None)
+    cfg = replace(cfg, eval=EvalSection(eval_every=2, overfit_watch=True))
+    _go(cfg)
+    assert run.summary["overfit_flagged_ever"] is True
+    assert run.summary["overfit_flag_current"] is False
+    assert run.summary["overfit_flag"] is True  # legacy sticky field, unchanged semantics
+    assert (run.summary["overfit_flag_first_step"], run.summary["overfit_flag_last_step"]) == (6, 8)
