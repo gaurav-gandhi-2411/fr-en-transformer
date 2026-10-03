@@ -53,7 +53,7 @@ On a pure copy of the source the word-copy heuristic flags 0.839 to 0.944 of the
 
 ## Provenance
 
-- Code: commit `fee893ef55830f8b48f3ee402806280df3a795e0` (HEAD when generated); `python -m scripts.copy_source_baseline`.
+- Code: commit `a6ac6e3b2a184381936a630a3e00dae136ae22a4` (HEAD when generated); `python -m scripts.copy_source_baseline`.
 - Input sha256 (LF, no CR in any generated text file):
 
 | file | sha256 |

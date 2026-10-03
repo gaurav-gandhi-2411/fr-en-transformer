@@ -543,7 +543,7 @@ Source: `sanity.json`.
 
 ## Provenance
 
-- Code: commit `fee893ef55830f8b48f3ee402806280df3a795e0` (HEAD when the artifacts were generated), eval tag of the Colab decodes `v0.2.4-colab` (adb3c8c781dc70e204e0f48d1a48123b7bcd261f).
+- Code: commit `a6ac6e3b2a184381936a630a3e00dae136ae22a4` (HEAD when the artifacts were generated), eval tag of the Colab decodes `v0.2.4-colab` (adb3c8c781dc70e204e0f48d1a48123b7bcd261f).
 - Bootstrap: 1,000 resamples, seed 1234, 95% percentile CIs; paired tests share resample indices.
 - HF repo `OWNER/fr-en-transformer-eval` (private), pinned revisions (each `pull_record.json` has `verified: true`):
   - `main`: `c3d8598252853fcd7df1ef4a00e8b0382b8f4351`
