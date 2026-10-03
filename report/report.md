@@ -2,7 +2,7 @@
 
 DRAFT, private; double-brace items are filled from `report/PLACEHOLDERS.md`. "v1" is the safety-net submission (`main`, checkpoint `final`, tuned decoding).
 
-I trained a 50.2M-parameter encoder-decoder on 921,670 OPUS-100 en-fr pairs, with no pretrained model of any kind. Each number comes from a file in the repository, named where used.
+I trained a 50.2M-parameter encoder-decoder on 921,670 OPUS-100 en-fr pairs, with no pretrained model of any kind. Licence: code Apache-2.0; weights "other", research and evaluation use only. Each number comes from a file in the repository, named where used.
 
 ## 1. Architecture decisions
 
@@ -16,7 +16,7 @@ I trained a 50.2M-parameter encoder-decoder on 921,670 OPUS-100 en-fr pairs, wit
 | Beam 5, GNMT length penalty alpha 1.2, 3-gram block, segmentation above 192 source tokens | Greedy; T=64 | Alpha 1.2 was the top of the grid in all 6 tuning runs, so the optimum may be higher; segmentation moved `main` by at most +0.07 chrF | `selection.json`; segmentation tables in `reports/final/SUMMARY.md` |
 | Selection on 0.4 BLEU(E1+E2) + 0.4 chrF(E1+E2) + 0.2 chrF(E1) | Selecting on dev or E3 | E2 is held out of the training pool but in-domain, so it flatters the winner | `nmt/selection.py` can load only E1 and E2; objective 48.7455 (`selection.json`) |
 | MBR with chrF utility; log-probability ensembles | Single model, beam only | 8 or 16 candidates plus a pairwise chrF pass, slower than beam 5 | {{FINAL_SELECTED_CONFIG}}; objective {{FINAL_OBJECTIVE}} against v1 48.7455 |
-| bf16 autocast, no loss scaling; label smoothing 0.1, dropout 0.1 | fp16 with GradScaler (the spec's T4 plan); stronger regularisation | Compute moved to an L4, which supports bf16; regularisation not tuned, `main` ran 8.86 epochs, below the 10-epoch trigger (`reports/epoch_accounting.json`) | `run_meta.json` `config.precision`; no skipped optimizer step in 24,645 (`run_audit.json`, `grad_skip_count` 0) |
+| bf16 autocast, no loss scaling; label smoothing 0.1, dropout 0.1 | fp16 with GradScaler (the spec's T4 plan); stronger regularisation | Compute moved to an L4, which supports bf16; regularisation not tuned, `main` ran 8.86 epochs, below the 10-epoch trigger (`epoch_accounting.json`) | `run_meta.json` `config.precision`; no skipped optimizer step in 24,645 (`run_audit.json`, `grad_skip_count` 0) |
 
 ## 2. References
 
@@ -40,7 +40,7 @@ I trained a 50.2M-parameter encoder-decoder on 921,670 OPUS-100 en-fr pairs, wit
 
 **Process.** The 3070 was shared with another of my jobs: S1 waited 5.7 h and was stopped at step 3, so S1 to S3 moved to one Colab L4 session (PLAN.md, 2026-10-02). My commit `9e36831` blamed the wrong cause; I corrected the record in PLAN.md, not the history. PRs #25 and #26 merged into their stack bases, not main, and PR #27 carried the branch onto main; I now retarget every stacked PR to main first. COMET-22 was projected at 2.2 h on CPU (estimate, `HANDOFF.md`); I stopped after 5 of 7 chunks and kept the output marked incomplete (`reports/final/comet_partial_cpu_INCOMPLETE/`). COMET: {{FINAL_COMET_SUMMARY}}.
 
-**Compute and effort.** About 8-9 hours of my hands-on time. Elapsed: 67.0 h from the first commit to the last on `main` (`0d6cce3`), 43.3 h from the first W&B run to the last run's final heartbeat (`reports/final/effort_compute.json`, `git_span`, `wandb_span`). The eight Colab L4 runs (pilot, `main`, S1 to S3, three extension runs) trained for 36,440.4 s, 10.12 h, about 15.6 CU at the 1.54 CU/h I reported (an ESTIMATE, not a Colab ledger figure): `main` 11,791.8 s, S1 to S3 1,785.1, 1,976.2 and 1,928.2 s (`reports/final/wandb_run_summaries.json`), extension 9,798.2 + 3,481.2 + 4,695.4 = 17,974.7 s (`reports/extension/ext_val_loss_summary.json`). The RTX 3070 added 48.1 s; its two pilots have no `train_wall_seconds` and are not added. Colab evaluation and final-selection hours: {{FINAL_COLAB_HOURS}} h.
+**Compute and effort.** About 8-9 hours of my hands-on time. Elapsed: 67.0 h from the first commit to the last on `main` (`0d6cce3`), 43.3 h from the first W&B run to the last run's final heartbeat (`reports/final/effort_compute.json`, `git_span`, `wandb_span`). The eight Colab L4 runs (pilot, `main`, S1 to S3, three extension runs) trained for 36,440.4 s, 10.12 h, about 15.6 CU at the 1.54 CU/h I reported (an ESTIMATE, not a Colab ledger figure): `main` 11,791.8 s, S1 to S3 1,785.1, 1,976.2 and 1,928.2 s (`reports/final/wandb_run_summaries.json`), the pilot 984.4 s (W&B `train_wall_seconds`), extension 9,798.2 + 3,481.2 + 4,695.4 = 17,974.7 s (`reports/extension/ext_val_loss_summary.json`). The RTX 3070 added 48.1 s; its two pilots have no `train_wall_seconds` and are not added. Colab evaluation and final-selection hours: {{FINAL_COLAB_HOURS}} h.
 
 ## 4. Dev results by slice
 
@@ -73,7 +73,7 @@ The 60 and 30 sentence slices have wide intervals, so I draw conclusions from E1
 
 ## 5. Generalization gap
 
-Pre-specified (spec.md section 10): OLS of sentence chrF on length, repetition, source rarity, dialogue punctuation and a domain flag over E1 and E3 (n=2,940), HC3 errors. The `main` E1-to-E3 chrF gap is 12.67; the domain flag carries +12.88 (101.6%) and the four covariates net -0.21; R-squared 0.178 (`reports/final/main/seg_tuned/analysis.json`, `gap_decomposition`). What I could measure explains none of the gap. Reference noise is about 0.22 chrF on E3 (`metric_artifact_share`). E3 chrF [41.29, 43.27] lies inside the dev unseen interval [40.74, 48.39], so E3 is a fair proxy.
+Pre-specified (spec.md section 10): OLS of sentence chrF on length, repetition, source rarity, dialogue punctuation and a domain flag over E1 and E3 (n=2,940), HC3 errors. The `main` E1-to-E3 chrF gap is 12.67; the domain flag carries +12.88 (101.6%) and the four covariates net -0.21 (length -0.49, repetition +0.05, rarity +0.08, dialogue +0.16); R-squared 0.178 (`reports/final/main/seg_tuned/analysis.json`, `gap_decomposition`). The four pre-registered covariates explain none of the gap; the exploratory v2 below, with other features, puts the explained share anywhere from -7.5% to 40.5% depending on the model form. Reference noise is about 0.22 chrF on E3 (`metric_artifact_share`). E3 chrF [41.29, 43.27] lies inside the dev unseen interval [40.74, 48.39], so E3 is a fair proxy.
 
 Exploratory v2, post-hoc and not pre-registered (`reports/final/gap_v2/README.md`): Shapley shares of five heuristic feature groups. The explained share depends on the estimand, so I give a range: the five groups explain 8.7% in the primary model (OLS with a domain dummy, common slopes), 31.4% with pooled slopes and no dummy, 40.5% in an Oaxaca-Blinder split with E1 slopes and -7.5% with E3 slopes (`gap_shares.json`, `estimand_sensitivity_chrf_5groups`; point estimates, no CIs). In the primary model the residual (91.3% [82.7, 100.8]) includes the domain dummy and is not a measured domain effect; I do not interpret it. Target-side rarity contributes +2.34 chrF [+1.80, +2.99] and alignment -1.74 [-2.31, -1.23]; the other three groups are small. Caveats: heuristic features, linear common-slope form, one model, one reference per sentence; no causal claim.
 
