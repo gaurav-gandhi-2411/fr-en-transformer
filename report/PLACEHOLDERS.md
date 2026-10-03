@@ -2,7 +2,7 @@
 
 The drafts are `report/report.md`, `report/model_card.md` and `docs/WALKTHROUGH.md`. `python -m scripts.check_placeholders` lists every unresolved `{{NAME}}` and fails if one is missing from the table below. Add `--strict` once filling is done to fail on any that remain.
 
-Sources for the later results are proposals: the gap v2, production benchmark, `final_all` and extension outputs were still being produced when this was written, so the file and key names marked "confirm" must be checked against the real output before filling. Every filled value must be copied from the named file, with its path and key kept in the commit message.
+Resolved on 2026-10-03 and removed from the table: the gap v2 (`{{GAPV2_*}}`, from `reports/final/gap_v2/`), production benchmark (`{{PROD_*}}`, from `reports/final/production/`), extension (`{{EXT_*}}`, from `reports/extension/ext_val_loss_summary.json`, which is on PR #35 until it merges), the licence, the effort statement (`reports/final/effort_compute.json`, produced by `scripts/compute_effort.py`) and the three ablation wall times. The copy-source baseline rows come from `reports/final/baseline_copy_source/` (PR #37 until it merges). What remains depends on `final_all` (not yet run), COMET, the Colab hours and publication. The file and key names marked "confirm" must be checked against the real `final_all` output before filling. Every filled value must be copied from the named file, with its path and key kept in the commit message.
 
 ## 1. Placeholders
 
@@ -33,19 +33,6 @@ Sources for the later results are proposals: the gap v2, production benchmark, `
 | {{FINAL_E3_CHRF}} | report, model card | same | `sets.e3.official_chrf_ci` |
 | {{FINAL_COMET_SUMMARY}} | report, model card | COMET-22 system score and CI per set, or "not measured" | COMET column of the final report; `eval.json` `comet` once scored on GPU (confirm key). v1 has none: `reports/final/SUMMARY.md` says NOT MEASURED |
 | {{FINAL_COLAB_HOURS}} | report | Colab hours of the `final_all` session | `final_all` run summary or the Colab Summary cell (confirm); CU only if Colab's panel shows it |
-| RESOLVED ABL_WALL_S1 | report | Train wall seconds of `s1_sin_l4` | RESOLVED 2026-10-03: 1,785.1 s, `train_wall_seconds` in `reports/final/wandb_run_summaries.json` (W&B API, independently re-read by the PR #31 verifier). No longer a placeholder. |
-| RESOLVED ABL_WALL_S2 | report | Train wall seconds of `s2_rope_l4` | RESOLVED 2026-10-03: 1,976.2 s, `train_wall_seconds` in `reports/final/wandb_run_summaries.json` (W&B API, independently re-read by the PR #31 verifier). No longer a placeholder. |
-| RESOLVED ABL_WALL_S3 | report | Train wall seconds of `s3_rope_concat_l4` | RESOLVED 2026-10-03: 1,928.2 s, `train_wall_seconds` in `reports/final/wandb_run_summaries.json` (W&B API, independently re-read by the PR #31 verifier). No longer a placeholder. |
-| {{EXT_TRAIN_WALL_S}} | report | Total measured train wall seconds of the three extension runs | sum of `train_wall_seconds_summary` for `ext_stable_l4`, `ext_branch_a_l4`, `ext_branch_b_l4` (W&B group `extend_l4`) |
-| {{EXT_SUMMARY}} | report | Two sentences: did the longer runs help, any overfit flag | extension Summary cell output (per-run overfit-watch lines) and the stage-1 objectives of A and B against `main` in the `final_all` stage-1 file (confirm) |
-| {{GAPV2_SUMMARY}} | report, walkthrough | What the exploratory v2 analysis did, one sentence | `reports/final/gap_v2/` summary file (confirm name) |
-| {{GAPV2_FINDINGS}} | report | The findings, with numbers, labelled exploratory | same |
-| {{GAPV2_CAVEATS}} | report | What the v2 analysis cannot show | same |
-| {{PROD_SUMMARY}} | model card | CPU sentences per second, batch latency p50 and p95, peak memory, model size | `reports/final/production/` benchmark JSON (confirm key names) |
-| {{PROD_SETTINGS}} | model card | CPU model, threads, torch version, batch size, beam, alpha, precision | same file, hardware and settings block |
-| {{PROD_INT8_SUMMARY}} | model card | int8 speed and E1 chrF change, or "not run" | same file, int8 entry and the E1 delta |
-| {{GG_EFFORT_HOURS}} | report | Hours of human effort | Owner's own figure. Not derivable from any file. Do not estimate |
-| {{MODEL_LICENSE}} | model card | Licence of the model weights (also fills the YAML `license` field) | Owner decision, see open question 1 |
 | {{LINK_REPO}} | report | Public repository URL | After the owner approves publication |
 | {{LINK_HF_MODEL}} | report, model card | Hub model URL | After publication |
 | {{LINK_WANDB}} | report | Public W&B run URL | After publication; the project is private today |
@@ -64,28 +51,32 @@ Only papers already cited in `spec.md` or `PREREG.md` are listed. I checked bibl
 | 6 | Nguyen, Murray, Chiang 2021, Data Augmentation by Concatenation for Low-Resource Translation: A Mystery and a Solution, IWSLT 2021 | spec section 6 | ACL Anthology bib `2021.iwslt-1.33` (authors, IWSLT 2021 proceedings); Crossref DOI 10.18653/v1/2021.iwslt-1.33; arXiv API 2105.01691 |
 | 7 | Sennrich, Zhang 2019, Revisiting Low-Resource Neural Machine Translation: A Case Study, ACL 2019 | spec section 4 | ACL Anthology bib `P19-1021` (ACL 2019, Florence, pages 211-221, DOI 10.18653/v1/P19-1021); arXiv API 1905.11901 |
 | 8 | Koehn 2004, Statistical Significance Tests for Machine Translation Evaluation, EMNLP 2004 | spec section 8, PREREG section 1 | ACL Anthology bib `W04-3250` (EMNLP 2004, Barcelona, pages 388-395) |
+| 9 | Press, Smith, Lewis 2022, Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation, ICLR 2022, arXiv:2108.12409 | spec section 5 (named, no citation); report positional-encoding row | arXiv abs page `arxiv.org/abs/2108.12409` (citation meta: title, authors Press, Smith, Lewis; "Submitted on 27 Aug 2021, last revised 22 Apr 2022 (v2)"); OpenAlex API agrees on title and year 2021 (arXiv-only record); venue from the first-page header of the arXiv v2 PDF, "Published as a conference paper at ICLR 2022", read with pypdf. OpenReview and DBLP returned bot-check pages, and arXiv's API returned 503, so the ICLR proceedings listing itself was NOT checked |
 
 Not listed on purpose:
 
-- ALiBi is named in spec section 5 as a rejected alternative with no citation. If you want it, the matching paper is Press, Smith, Lewis, "Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation" (arXiv:2108.12409, posted 2021-08-27, checked with the arXiv API; ICLR 2022 venue not checked). Say so and I will add it.
 - Szegedy et al. (label smoothing, cited in `nmt/train.py` only) and Hewitt et al. 2022 (epsilon sampling, cited in `nmt/mbr.py` only) are not in the spec or PREREG, so I left them out.
 - Two arXiv ids I first guessed for Hägele and Nguyen were wrong and returned unrelated papers; the ids above come from title searches and the ACL Anthology, not from memory.
 
 ## 3. Open questions for the owner
 
-1. **Licence of the weights and of any released data.** The OPUS-100 card at revision `805090dc28bf78897da9641cdf08b61287580df9` has `license: unknown` in its metadata and "[More Information Needed]" under Licensing Information. The model card says: "not stated on the card; OPUS corpora carry mixed per-source licences; verify before any redistribution". Which licence do you want on the weights, and do you intend to release any data subset? Until you decide, `{{MODEL_LICENSE}}` stays open.
-2. **Effort hours.** `{{GG_EFFORT_HOURS}}` needs your own number.
-3. **Ablation wall times.** RESOLVED: filled from the W&B run summaries (`reports/final/wandb_run_summaries.json`); the numbers match the ones you quoted.
-4. **A floor number.** There is no naive baseline (for example copy-the-source) in any report. It is cheap with the official scorer and gives the tables a floor. Do you want it added?
-5. **Stacked PR wording.** `gh pr view`: PRs #25 and #26 merged into their stack bases at 18:33:40 and 18:33:57 UTC on 2026-10-02 (16 and 33 s after #24 reached main) and #27, a new PR whose head is the branch containing #25 and #26, merged into main at 18:38:41 UTC. I wrote only those facts; how it was caught is not in the repo, so add it if you want it in the report.
-6. **Report text.** RESOLVED: `report/report.md` is now in the PR, and the placeholder checker covers it.
+All six earlier questions are RESOLVED on 2026-10-03 by the owner's decisions:
+
+1. **Licence.** Code Apache-2.0; weights licence "other", research and evaluation use only; trained on OPUS-100 (licence not specified on its card); upstream corpus terms apply (model card, Licence section and YAML). Not done: there is no `LICENSE` file in the repository yet.
+2. **Effort hours.** "About 8-9 hours of my hands-on time" (the owner's figure), plus the elapsed span and GPU hours computed in `reports/final/effort_compute.json`.
+3. **Ablation wall times.** Filled from `reports/final/wandb_run_summaries.json`.
+4. **Floor number.** Added: the copy-the-source baseline (`reports/final/baseline_copy_source/`, PR #37) is in the report and the model card.
+5. **Stacked PR wording.** The report states only the facts the PR records show.
+6. **Sponsor name and ALiBi.** The sponsor is not named in the report, model card or README (the README now says "a take-home challenge"). ALiBi is the rejected alternative in the positional-encoding row and reference 9, stated as not run by me.
+
+Still open: `pyproject.toml` (`description`) and other tracked files outside this PR's scope may name the sponsor; `docs/internal/PUBLICATION_PLAN.md` (PR #36) covers the history rewrite.
 
 ## 4. UNVERIFIED statements
 
 - U1. What each cited paper concludes (about 2x faster decoding from a deep encoder and shallow decoder; pre-LN stable with short warmup; RoPE extrapolation; WSD robustness to cutoffs; BPE size for low-resource data; concatenation helping low-resource translation) comes from `spec.md`. I verified metadata only.
 - U2. "OPUS corpora carry mixed per-source licences" is from the brief. The dataset card does not say it.
 - U3. RESOLVED (the three ablation wall times now come from `reports/final/wandb_run_summaries.json`).
-- U4. The CU figures: 1.54 CU/h is the rate you reported (`reports/pilot_l4/pilot_summary.json`, `colab_pro_compute_units_per_hour`); 5.5 CU for `main` is `reports/main_l4/run_audit.json` `wall.cu_used_ESTIMATE`, an estimate; the extension 5.12 h and 7.88 CU are estimates (`RUNBOOK.md` section 4.7).
+- U4. The CU figures: 1.54 CU/h is the rate you reported (`reports/pilot_l4/pilot_summary.json`, `colab_pro_compute_units_per_hour`); 5.5 CU for `main` is `reports/main_l4/run_audit.json` `wall.cu_used_ESTIMATE`, an estimate; the new totals in `reports/final/effort_compute.json` are hours times 1.54 and are estimates, not a Colab ledger; they exclude Colab evaluation and `final_all` sessions, the two RTX 3070 pilots (no `train_wall_seconds`) and any time not logged to W&B. "First W&B run to last run" uses `heartbeat_at` of the latest run as the finish time (W&B has no `finished_at`). Elapsed git time is first to last author date reachable from `origin/main` at `0d6cce3` and will grow with later merges.
 - U5. COMET CPU projections of 2.2 h and 4.5 h are quoted from `HANDOFF.md`; the projecting run's log is not in the repo.
 - U6. That `tests/test_train_resume_memory.py` fails on the old code is taken from commit `dc6e7e8`'s message; I did not check out the old code to confirm.
 - U7. How the concat-padding bug was discovered. `PREREG.md` gives the evidence (the epoch-accounting replay before the fix); the report says only that.
@@ -94,3 +85,5 @@ Not listed on purpose:
 - U10. Loading the model by Hub repo id has not been run; nothing is published. Loading a local directory was run (model card, "How to use").
 - U11. The 80.6% padding and 131,584-token micro-batch figures are from `PREREG.md` (2026-10-02). The pre-fix replay file is no longer in the repo, so I could not recompute them. The post-fix figures (29.6%, 8,192) I recomputed from `reports/epoch_accounting.json`.
 - U12. Walkthrough claims about code behaviour were read from the code and the line ranges were checked by script; the behavioural claims (for example "a test scans the source") were not re-run as tests beyond the full suite passing.
+- U13. Gap v2 is exploratory and post-hoc; its figures are copied from `reports/final/gap_v2/` (README, `gap_shares.json`), with the "about 21%" NLL share taken from its README, not recomputed here. The production benchmark's p50 and throughput figures are copied from its README tables, which its README says are copied from `results.json`; I re-read the two p50 values (287.8 and 481.4 ms) in `results.json` only.
+- U14. The model card usage snippet was run on CPU on 2026-10-03 against a manifest-verified pull of `runs/main/model` (`verified: True`, `model_files_checked: True`) with two sentences of my own; loading by Hub repo id has not been run.
