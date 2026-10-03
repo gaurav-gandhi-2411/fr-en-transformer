@@ -1,6 +1,6 @@
 # French-to-English Transformer from scratch: decisions, results, generalization
 
-I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool. The submitted model ("v1") is run `main`, checkpoint `final`, decoded with beam 5, GNMT length penalty alpha 1.2, 3-gram block and segmentation above 192 source tokens. Every number comes from a file in the repository, named where it is used. Paths are relative to `reports/` unless noted.
+I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool. The submitted model ("v1") is run `main`, checkpoint `final`, decoded with beam 5, GNMT length penalty alpha 1.2, 3-gram block and segmentation above 192 source tokens. Every number comes from a file in the repository; paths are relative to `reports/`.
 
 ## 1. Architecture decisions and why
 
@@ -13,8 +13,8 @@ I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with
 | Concatenation augmentation [6], p=0.15 (2 to 4 pairs) | None | H2 not supported (Section 5). `main` was trained with it before that result |
 | Joint SentencePiece BPE, 16k, byte fallback | Separate vocabularies, Unigram, BPE-dropout | A small joint vocabulary suits 0.9M pairs [7], copies names and allows three-way tying. UNK and byte-fallback rate 0 on dev, test, E1, E2, E3 (`tokenizer_stats.json`). No vocabulary sweep |
 | WSD schedule: warmup 4,000, peak 7e-4, linear decay over the last 20% [5] | Cosine, inverse-sqrt | Any stable checkpoint can start a cooldown. Averaging the last 5 checkpoints (includes step 19,000, before decay) or the 4 decay-phase ones did not beat `final` (objective 48.66, 48.69 against 48.75; `final/main/selection.json`) |
-| bf16 autocast, label smoothing 0.1, dropout 0.1 | fp16 with loss scaling | The L4 supports bf16; no optimizer step was skipped in 24,645 (`main_l4/run_audit.json`). Regularisation not tuned |
-| Beam 5, GNMT alpha 1.2, 3-gram block; sources above 192 tokens split at sentence ends; output never empty (beam, then greedy, then source copy) | Greedy; T=64 | Alpha 1.2 was the top of the grid in all 6 tuning runs, so the optimum may be higher. Segmentation moved `main` by at most +0.07 chrF (`final/SUMMARY.md`) |
+| bf16 autocast, label smoothing 0.1, dropout 0.1 | fp16 with loss scaling | The L4 supports bf16; no skipped optimizer step in the 492 logged rows to step 24,600 (`main_l4/run_audit.json`). Regularisation not tuned |
+| Beam 5, GNMT alpha 1.2, 3-gram block; sources above 192 tokens split at sentence ends; output never empty (beam, then greedy, then source copy) | Greedy; T=64 | Alpha 1.2 was the top of the grid in all 6 tuning runs, so the optimum may be higher. Segmentation moved `main` by at most +0.07 chrF (`final/main/seg_*/eval.json`) |
 | Selection on 0.4 BLEU(E1+E2) + 0.4 chrF(E1+E2) + 0.2 chrF(E1) | Selecting on dev or E3 | `nmt/selection.py` loads only E1 and E2; v1 objective 48.7455 |
 
 ## 2. Paper references
@@ -23,8 +23,8 @@ I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with
 
 ## 3. Challenges and resolutions
 
-- **Concatenation padding:** padding was 80.6% of padded tokens with micro-batches up to 131,584 tokens against a budget of 8,192; drawing the concat plan before bucketing gave 29.6% and a maximum of 8,192 (`epoch_accounting.json`, commit `ecb1a85`).
-- **Scorer encoding:** `official/score.py` reads files in the platform encoding (cp1252 on Windows), so a reference-identical file scored BLEU 97.5; the scorer is byte-pinned, so my wrapper sets `PYTHONUTF8=1` and the same file scores 100.
+- **Concatenation padding:** padding was 80.6% of padded tokens with micro-batches up to 131,584 tokens against a budget of 8,192; drawing the concat plan before bucketing gave 29.6% and a maximum of 8,192 (before: `PREREG.md` 2026-10-02 entry; after: `epoch_accounting.json`; commit `ecb1a85`).
+- **Scorer encoding:** `official/score.py` reads files in the platform encoding (cp1252 on Windows), so the dev references used as predictions scored BLEU 97.50 (reproduced); the scorer is byte-pinned, so my wrapper sets `PYTHONUTF8=1` and the same file scores 100.
 - **Checkpoint-load OOM:** `torch.load` put a second copy of weights and optimizer state on the GPU; on the 8 GB RTX 3070 all 8 resumes of one run died at step 6. Checkpoints now load to CPU, with a regression test (commit `dc6e7e8`).
 - **Python 3.13 on Colab:** the first Colab tag failed on Colab's 3.13; the notebook now keeps Colab's own CUDA torch via a constraints file and CI runs 3.12 and 3.13, executing the notebook in smoke mode.
 - **GPU contention:** the shared 3070 stalled one ablation for 5.7 h before it was stopped at step 3, so all ablations moved to one Colab L4 session.
@@ -47,22 +47,22 @@ Official scorer, 1,000-resample bootstrap 95% CIs [8] (`final/main/seg_tuned/eva
 | E2-synth | 300 | 37.73 [36.31, 39.07] | 63.31 [62.31, 64.29] | 5.42 [4.46, 6.46] | 34.79 [34.22, 35.44] |
 | E3 | 1,000 | 19.45 [18.42, 20.52] | 42.31 [41.29, 43.27] | 1.25 [0.95, 1.54] | 20.47 [20.00, 20.98] |
 
-The 30 and 60 sentence slices have wide intervals, so I draw conclusions from E1, E2 and E3. E2 comes from the training pool and E2-synth is built from E2, so neither tests unseen content. The same checkpoint scores 42.31 chrF on E3, inside the dev-unseen interval, so E3 is a fair proxy for the unseen slice. COMET was not measured.
+The 30 and 60 sentence slices have wide intervals, so I draw conclusions from E1, E2 and E3. E2 comes from the training pool and E2-synth is built from E2, so neither tests unseen content. E3 chrF lies inside the dev-unseen interval, so E3 is a fair proxy for it. COMET was not measured.
 
-**Where it fails** (`final/main/seg_tuned/diagnostics.json`, `eval.json`). By source length, chrF is lowest for short inputs (48.16 at 10 words or fewer, 60.89 at 41 to 80, 60.32 above 80; E1+E2+E3 pooled) (my reading, untested: little context). By source rarity, chrF is 55.19 and 56.05 in the two most common quintiles and 50.45 in the rarest. Failure rates on E1: truncation (hypothesis under half the reference length) 2.2%, overlong (over 1.5x) 4.0%, repeated 3-gram 0.5%; on E2 the repeated-3-gram rate is 3.0% but the references have 14.7%, so repetition is mostly legitimate. A strict untranslated-copy rate is 0.0% in every set.
+**Where it fails** (`final/main/seg_tuned/diagnostics.json`, `eval.json`). By source length, chrF is lowest for short inputs (48.16 at 10 words or fewer, 60.89 at 41 to 80, 60.32 above 80; E1+E2+E3 pooled). By source rarity, chrF is 55.19 and 56.05 in the two most common quintiles and 50.45 in the rarest. Failure rates on E1: truncation (hypothesis under half the reference length) 2.2%, overlong (over 1.5x) 4.0%, repeated 3-gram 0.5%; on E2 the repeated-3-gram rate is 3.0% but the references have 14.7%, so repetition is mostly legitimate. A strict untranslated-copy rate is 0.0% in every set.
 
 ## 5. Generalization evidence
 
-Seen to unseen (dev): chrF 50.08 to 44.76 (-5.32) and BLEU 32.43 to 21.99 (-10.44), intervals overlapping. On the large proxies, E1 to E3 is -12.67 chrF and -16.53 BLEU, outside the intervals. Long inputs do not degrade: dev long 63.16 and E2 61.78 chrF, above their seen counterparts, though E2 is in-domain.
+Seen to unseen (dev): chrF 50.08 to 44.76 (-5.32) and BLEU 32.43 to 21.99 (-10.43), intervals overlapping. On the large proxies, E1 to E3 is -12.67 chrF and -16.52 BLEU, outside the intervals. Long inputs do not degrade: dev long 63.16 and E2 61.78 chrF, above their seen counterparts, though E2 is in-domain.
 
 - **H1 (RoPE over sinusoidal): supported**, Section 1.
 - **H2 (concatenation, S3 over S2): not supported.** E2 chrF +0.06 [-0.19, +0.29], p=0.313, so the pre-registered E2 criterion fails; E2-synth +1.09 [+0.59, +1.68]; E1 non-inferiority met (lower bound -0.22) (`final/compare/H2_*_seg_off.json`).
 
-**Gap decomposition.** The pre-registered OLS of sentence chrF on length, repetition, source rarity, dialogue punctuation and a domain flag (E1 and E3, n=2,940, HC3) leaves the E1-to-E3 chrF gap of 12.67 almost entirely with the domain flag (+12.88); the four covariates net -0.21 (`final/main/seg_tuned/analysis.json`). An exploratory, post-hoc v2 with five heuristic feature groups gives a share explained that depends on the estimand: 8.7% primary (common slopes with a domain dummy), 31.4% pooled slopes without a dummy, 40.5% Oaxaca-Blinder with E1 slopes and -7.5% with E3 slopes; point estimates without CIs (`final/gap_v2/gap_shares.json`). In the primary model the residual (91.3%) includes the dummy and is not a measured domain effect. **Untested hypotheses:** the gap reflects literary vocabulary and style absent from OPUS-100, and rare target-side words drive it (target-side rarity +2.34 chrF [+1.80, +2.99]); neither was tested by an intervention. Reference noise is about 0.22 chrF on E3 (`analysis.json`, `metric_artifact_share`).
+**Gap decomposition.** The pre-registered OLS of sentence chrF on length, repetition, source rarity, dialogue punctuation and a domain flag (E1 and E3, n=2,940, HC3) leaves the E1-to-E3 chrF gap of 12.67 almost entirely with the domain flag (+12.88); the four covariates net -0.21 (`final/main/seg_tuned/analysis.json`). An exploratory, post-hoc v2 with five heuristic feature groups gives a share explained that depends on the estimand: 8.7% primary (common slopes with a domain dummy), 31.4% pooled slopes without a dummy, 40.5% Oaxaca-Blinder with E1 slopes and -7.5% with E3 slopes; point estimates without CIs (`final/gap_v2/gap_shares.json`). In the primary model the residual (91.3%) includes the dummy and is not a measured domain effect. **Untested hypotheses:** the gap reflects literary vocabulary and style absent from OPUS-100, and rare target-side words drive it (target-side rarity +2.34 chrF [+1.80, +2.99]); neither was tested by an intervention. Reference noise is about 0.22 chrF on E3.
 
 ## 6. What I would do next
 
-Run `final_all`: the extension branches (E1 validation loss 2.904 for `main`, 2.875 and 2.870 for branches A and B; `extension/ext_val_loss_summary.json`), log-probability ensembles, MBR with a chrF utility and an extended alpha grid, since 1.2 was the grid edge. These are implemented and pre-registered in `PREREG.md` but not evaluated within the deadline, so no post-selection result exists and v1 stands. Then back-translation for the unseen domain, BPE-dropout and R-Drop, a larger model, and several seeds to put a variance on every comparison.
+Run `final_all`: the extension branches (E1 validation loss 2.904 for `main` (`main_l4/run_audit.json`), 2.875 and 2.870 for branches A and B (`extension/ext_val_loss_summary.json`)), log-probability ensembles, MBR with a chrF utility and an extended alpha grid, since 1.2 was the grid edge. These are implemented and pre-registered in `PREREG.md` but not evaluated within the deadline, so no post-selection result exists and v1 stands. Then back-translation, BPE-dropout and R-Drop, a larger model, and several seeds.
 
 ## 7. Data and constraints
 
@@ -70,7 +70,7 @@ OPUS-100 en-fr (revision `805090dc`): 1,000,000 raw pairs; 37,122 duplicates, 13
 
 ## 8. Effort and compute
 
-About 8 to 9 hours of my hands-on time. Elapsed: 67.0 h from the first to the last commit on `main` (to 2026-10-03). The eight Colab L4 runs trained for 36,440 s (10.12 h; about 15.6 compute units at the 1.54 CU/h rate I was quoted, an estimate): `main` 11,792 s, extension runs 17,975 s, ablations 5,690 s, pilot 984 s (`final/effort_compute.json`). Colab evaluation sessions are not logged and not counted. The RTX 3070 added 48 s.
+About 8 to 9 hours of my hands-on time. Elapsed: 67.0 h from the first commit to `0d6cce3` on 2026-10-03, the last commit used for this measurement; documentation commits followed. The eight Colab L4 runs trained for 36,440 s (10.12 h; about 15.6 compute units at the 1.54 CU/h rate I was quoted, an estimate): `main` 11,792 s, extension runs 17,975 s, ablations 5,689 s, pilot 984 s (`final/effort_compute.json`). Colab evaluation sessions are not logged and not counted. The RTX 3070 added 48 s (two 3070 pilots have no recorded training time).
 
 Built with AI coding assistance; design, experiments and analysis are mine.
 
