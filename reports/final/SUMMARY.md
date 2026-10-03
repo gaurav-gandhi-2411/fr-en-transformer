@@ -157,6 +157,44 @@ Length buckets (E1+E2+E3 pooled):
 Source: `s3_rope_concat_l4/seg_tuned/eval.json` (`length_buckets_e1_e2_e3`).
 
 
+## Copy-source baseline (floor)
+
+Output = the French source sentence verbatim, scored by the same code as the runs above (`scripts/copy_source_baseline.py`); every row of a model table above should be read against these floors.
+
+no model, no decoding (output = source); sacreBLEU BLEU `nrefs:1|case:mixed|eff:no|tok:13a|smooth:exp|version:2.6.0`, chrF `nrefs:1|case:mixed|eff:yes|nc:6|nw:0|space:no|version:2.6.0`
+
+| set / slice | n | official BLEU [95% CI] | official chrF [95% CI] | COMET-22 [95% CI] | sacreBLEU BLEU / chrF |
+|---|---|---|---|---|---|
+| official dev | 150 | 6.91 [3.53, 10.90] | 24.37 [21.84, 27.14] | - | 6.39 / 27.93 |
+| dev OVERALL (official 0.4 BLEU + 0.4 chrF + 0.2 chrF unseen) | 150 | 16.10 [13.96, 18.74] | - | - | - |
+| &nbsp;&nbsp;dev: long | 30 | 9.89 [3.20, 17.38] | 35.87 [30.40, 42.38] | - | - |
+| &nbsp;&nbsp;dev: seen | 60 | 6.41 [3.49, 9.47] | 25.05 [20.37, 30.86] | - | - |
+| &nbsp;&nbsp;dev: unseen_domain | 60 | 1.76 [0.45, 3.64] | 17.93 [15.77, 20.36] | - | - |
+| E1 seen-proxy | 1940 | 6.03 [5.10, 7.12] | 26.56 [25.83, 27.33] | - | 5.80 / 28.96 |
+| E2 long-proxy | 1000 | 5.19 [4.34, 6.12] | 31.98 [31.52, 32.52] | - | 4.91 / 31.78 |
+| E2-synth (synthetic) | 300 | 5.42 [4.46, 6.46] | 34.79 [34.22, 35.44] | - | 4.78 / 34.14 |
+| &nbsp;&nbsp;e2synth: e2synth_400_600 | 100 | 5.31 [3.88, 6.70] | 34.20 [33.21, 35.29] | - | - |
+| &nbsp;&nbsp;e2synth: e2synth_600_800 | 100 | 5.52 [3.80, 7.73] | 34.61 [33.55, 35.88] | - | - |
+| &nbsp;&nbsp;e2synth: e2synth_800_900 | 100 | 5.40 [3.95, 7.14] | 35.54 [34.79, 36.32] | - | - |
+| E3 books-proxy | 1000 | 1.25 [0.95, 1.54] | 20.47 [20.00, 20.98] | - | 0.94 / 22.17 |
+
+Source: `baseline_copy_source/eval.json`.
+
+Length buckets (E1+E2+E3 pooled):
+
+| source words | n | BLEU [95% CI] | chrF [95% CI] |
+|---|---|---|---|
+| <=10 | 1152 | 7.65 [6.12, 9.26] | 21.84 [20.73, 22.97] |
+| 11-20 | 685 | 5.07 [3.88, 6.49] | 23.69 [22.84, 24.59] |
+| 21-40 | 1230 | 4.14 [3.37, 4.95] | 28.44 [27.92, 28.90] |
+| 41-80 | 795 | 4.56 [3.72, 5.45] | 31.46 [30.92, 32.02] |
+| >80 | 78 | 6.40 [3.46, 9.79] | 33.17 [31.23, 35.46] |
+
+Source: `baseline_copy_source/eval.json` (`length_buckets_e1_e2_e3`).
+
+Selection objective of the baseline (0.4 BLEU(E1+E2) + 0.4 chrF(E1+E2) + 0.2 chrF(E1)): 18.8954. Source: `baseline_copy_source/objective.json`.
+
+
 ## Segmentation off vs tuned
 
 ### main (deep-enc/shallow-dec, 24,645 steps)
@@ -462,6 +500,24 @@ Shares of sentences (definitions in `<run>/seg_tuned/diagnostics.json`). Source:
 
 Caveats. (1) *Repetition* counts ANY repeated word 3-gram, including legitimate ones (references repeat 3-grams too); the reference-side share is printed next to the hypothesis share and a hypothesis rate at or below it is not a degeneration signal by itself. (2) *Untranslated copy (subword)* counts only hypothesis subwords that never occurred on the train target side, so it is 0.000 almost by construction and must NOT be read as 'no untranslated copies'. The *word-copy heuristic* column measures it directly but crudely: hypothesis words of length >= 4 identical to a source word and absent from the reference (a heuristic; names the reference spells differently, and legitimate cognates, are counted).
 
+### Word-copy heuristic calibration (main, tuned config)
+
+| group | n | main: sentences (word share) | copy-source ceiling: sentences (word share) | reference level: sentences (word share) |
+|---|---|---|---|---|
+| dev | 150 | 0.247 (0.033) | 0.973 (0.879) | 0.427 (0.125) |
+| dev:long | 30 | 0.500 (0.027) | 0.967 (0.839) | 0.833 (0.176) |
+| dev:seen | 60 | 0.217 (0.055) | 0.950 (0.883) | 0.333 (0.107) |
+| dev:unseen_domain | 60 | 0.150 (0.024) | 1.000 (0.944) | 0.317 (0.058) |
+| e1 | 1940 | 0.255 (0.041) | 0.968 (0.881) | 0.515 (0.127) |
+| e2 | 1000 | 0.503 (0.036) | 0.999 (0.884) | 0.829 (0.126) |
+| e2synth | 300 | 0.803 (0.037) | 1.000 (0.886) | 0.977 (0.124) |
+| e2synth:e2synth_400_600 | 100 | 0.770 (0.040) | 1.000 (0.885) | 0.930 (0.124) |
+| e2synth:e2synth_600_800 | 100 | 0.750 (0.036) | 1.000 (0.886) | 1.000 (0.123) |
+| e2synth:e2synth_800_900 | 100 | 0.890 (0.037) | 1.000 (0.886) | 1.000 (0.124) |
+| e3 | 1000 | 0.323 (0.124) | 0.989 (0.932) | 0.437 (0.069) |
+
+Calibration of the word-copy heuristic: main/seg_tuned vs the same heuristic on the copy-the-source baseline (the ceiling) vs the share of reference words of length >= 4 that equal a source word (what the reference itself keeps). Word share = flagged words / words of length >= 4. How to read it (and its limits) is in `baseline_copy_source/README.md`. Source: `baseline_copy_source/calibration.json`.
+
 ### Chrf by source-rarity bucket (tuned config)
 
 | model | bucket 1 | bucket 2 | bucket 3 | bucket 4 | bucket 5 |
@@ -487,7 +543,7 @@ Source: `sanity.json`.
 
 ## Provenance
 
-- Code: commit `5c33f9680fa79289e61141656d384063cb3c452b` (HEAD when the artifacts were generated), eval tag of the Colab decodes `v0.2.4-colab` (adb3c8c781dc70e204e0f48d1a48123b7bcd261f).
+- Code: commit `fee893ef55830f8b48f3ee402806280df3a795e0` (HEAD when the artifacts were generated), eval tag of the Colab decodes `v0.2.4-colab` (adb3c8c781dc70e204e0f48d1a48123b7bcd261f).
 - Bootstrap: 1,000 resamples, seed 1234, 95% percentile CIs; paired tests share resample indices.
 - HF repo `OWNER/fr-en-transformer-eval` (private), pinned revisions (each `pull_record.json` has `verified: true`):
   - `main`: `c3d8598252853fcd7df1ef4a00e8b0382b8f4351`
@@ -543,6 +599,10 @@ Files (sha256):
 | `s3_rope_concat_l4/seg_tuned/analysis.json` | `57dab66028596a7c025dcb4df20f64e307f56402abccb8ec46f0b5f91a9935d7` |
 | `s3_rope_concat_l4/seg_tuned/diagnostics.json` | `135180bb1a4df143d098328201f64e3c819e41a1289d08cf20e53cee1b3e9211` |
 | `s3_rope_concat_l4/seg_tuned/examples.json` | `66dfe19d8176c6496223de6551b4f1fc1842d0521168229c74d52e36d2551fe0` |
+| `baseline_copy_source/eval.json` | `7d5d55a96e857ca316bb9432933fde124e36d05d192a2e7419398402143b99a0` |
+| `baseline_copy_source/objective.json` | `8df00c57b5865e27a99bcc73c4f7f143672080d9e8ac6956f7bc5127acbd6389` |
+| `baseline_copy_source/diagnostics.json` | `14221f9b590fec2e33f42ba7b62bce658bb009a7f1617c4bb1fabb6ee4aae775` |
+| `baseline_copy_source/calibration.json` | `6dc1d4861932d025964f7c64e551400c919f345ff276724396b55d28072d130e` |
 | `compare/extras.json` | `e6b94d36a9a22f43dab53ab7ce68f7dfba6fe162e29235b43b830166de10177a` |
 | `compare/H1_s2_rope_l4_vs_s1_sin_l4_seg_off.json` | `e6aa88d3b56ad62414ab6e5442e7e3c9c99cf57dc08943176dcca7c20d30d375` |
 | `compare/H1_s2_rope_l4_vs_s1_sin_l4_seg_tuned.json` | `45522195325693fda07cfe80a67d63b316c77f8f6084f089c3a24b61757d377a` |
