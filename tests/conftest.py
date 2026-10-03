@@ -20,9 +20,11 @@ __all__ = ["TINY_VOCAB_SIZE"]
 # failure, including a hash mismatch on a file that IS present, still fails. Trade-off: a genuine
 # bug whose message names such a path in a missing-file shape would be masked, so the skip reason
 # is explicit and the skip summary is visible with `-rs`.
+# `[/\\]+`: a Windows path inside a repr()'d command line (CalledProcessError's message) has its
+# backslashes doubled.
 PACKAGE_PATH_RE = re.compile(
-    r"official[/\\]score\.py"
-    r"|data[/\\](?:dev|test)[/\\][\w.\-]*\.jsonl"
+    r"official[/\\]+score\.py"
+    r"|data[/\\]+(?:dev|test)[/\\]+[\w.\-]*\.jsonl"
     r"|sample_submission\.json"
     r"|test_predictions_v1\.json"
 )
@@ -30,8 +32,10 @@ _SHA_MISSING_MARKER = "missing file listed in SHA256SUMS"
 
 
 def _exception_text(exc: BaseException) -> str:
-    """The message of `exc` plus, for a CalledProcessError, its captured stderr/stdout."""
-    parts = [str(exc)]
+    """The text a missing-file check searches: the message of `exc`, except for a
+    CalledProcessError, whose message only echoes the command line (it always names the scorer,
+    present or not), so only its captured stderr/stdout count."""
+    parts = [] if isinstance(exc, subprocess.CalledProcessError) else [str(exc)]
     if isinstance(exc, FileNotFoundError):
         parts.append(str(exc.filename or ""))
     if isinstance(exc, subprocess.CalledProcessError):

@@ -43,6 +43,23 @@ def test_scorer_failure_not_naming_a_package_path_still_fails() -> None:
     assert not is_missing_package_failure(exc)
 
 
+def test_python_cant_open_file_stderr_has_doubled_backslashes_and_matches() -> None:
+    # python reports "can't open file %r", so a Windows path arrives with doubled backslashes
+    stderr = "python: can't open file 'C:\\\\repo\\\\official\\\\score.py': [Errno 2] No such file"
+    exc = subprocess.CalledProcessError(
+        2, ["python", "C:\\repo\\official\\score.py"], stderr=stderr
+    )
+    assert is_missing_package_failure(exc)
+
+
+def test_command_line_alone_does_not_count_for_a_scorer_failure() -> None:
+    # the scorer ran (it is present) and rejected its input: that is a real failure, not a skip
+    exc = subprocess.CalledProcessError(
+        1, ["python", "official/score.py", "--gold", "data/dev/labels.jsonl"], stderr="bad input"
+    )
+    assert not is_missing_package_failure(exc)
+
+
 @pytest.mark.parametrize("sep", ["/", "\\"])
 def test_both_path_separators_match(sep: str) -> None:
     assert is_missing_package_failure(FileNotFoundError(f"official{sep}score.py"))
