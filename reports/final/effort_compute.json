@@ -1,0 +1,189 @@
+{
+  "provenance": {
+    "script": "scripts/compute_effort.py",
+    "code_sha": "467817b4365e5da7bdd7c6e3400e9fbad0f996f2",
+    "retrieved_utc": "2026-10-03T04:09:58Z",
+    "wandb_project": "gauravgandhi429-gaurav-gandhi/fr-en-transformer (private)",
+    "wandb_access": "read-only Api().runs()",
+    "files": [
+      "reports/final/wandb_run_summaries.json",
+      "reports/extension/ext_val_loss_summary.json (from origin/fix/overfit-watch-report if absent)",
+      "reports/pilot_l4/pilot_summary.json"
+    ],
+    "note": "Human hands-on time ('about 8-9 hours') is the owner's figure, not computed here. Colab evaluation and final_all sessions are NOT included (not in W&B run summaries); that part stays {{FINAL_COLAB_HOURS}}. CU is hours x the owner's reported rate, an ESTIMATE."
+  },
+  "git_span": {
+    "ref": "origin/main",
+    "ref_sha": "0d6cce325e0ac77635600ceca70e11c50f56e082",
+    "n_commits": 161,
+    "first_commit_author_date": "2026-09-30T13:02:21+05:30",
+    "last_commit_author_date": "2026-10-03T08:01:55+05:30",
+    "span_hours": 66.99277777777777,
+    "span_days": 2.7913657407407406,
+    "command": "git log origin/main --format=%aI  (min and max author date)"
+  },
+  "wandb_span": {
+    "first_run_created_at": "2026-10-01T06:47:16Z",
+    "last_run_heartbeat_at": "2026-10-03T02:04:30Z",
+    "last_run_note": "heartbeat_at of the latest run, used as 'finished' (no finished_at)",
+    "span_hours": 43.28722222222222,
+    "n_runs": 11,
+    "all_finished": true
+  },
+  "gpu": {
+    "colab_l4": {
+      "runs_counted": [
+        "pilot",
+        "main",
+        "s1_sin_l4",
+        "s2_rope_l4",
+        "s3_rope_concat_l4",
+        "ext_stable_l4",
+        "ext_branch_a_l4",
+        "ext_branch_b_l4"
+      ],
+      "runs_without_train_wall_seconds": [],
+      "wandb_runtime_seconds_of_those": {},
+      "train_wall_seconds": 36440.43543107414,
+      "hours": 10.122343175298372,
+      "cu_ESTIMATE": 15.588408489959493,
+      "cu_per_hour_assumed": 1.54
+    },
+    "local_3070": {
+      "runs_counted": [
+        "s1_sin_3070"
+      ],
+      "runs_without_train_wall_seconds": [
+        "pilot_3070",
+        "pilot_3070"
+      ],
+      "wandb_runtime_seconds_of_those": {
+        "e5v95ti2": 2015.671779,
+        "fbwmjzx6": 903.3195599
+      },
+      "train_wall_seconds": 48.06100000000151,
+      "hours": 0.013350277777778198
+    }
+  },
+  "crosscheck_file_vs_live_wandb_abs_diff_seconds": {
+    "5d9fc85d": 0.0,
+    "a150f75a": 0.0,
+    "ba29d416": 0.0,
+    "f8200e87": 0.0,
+    "86e3ddfa": 0.0,
+    "ba8c6bf4": 0.0,
+    "1f7d5761": 0.0
+  },
+  "runs": [
+    {
+      "id": "e5v95ti2",
+      "name": "pilot_3070",
+      "group": "pilot_3070",
+      "state": "finished",
+      "created_at": "2026-10-01T06:47:16Z",
+      "heartbeat_at": "2026-10-01T07:20:55Z",
+      "train_wall_seconds": null,
+      "wandb_runtime_seconds": 2015.671779
+    },
+    {
+      "id": "fbwmjzx6",
+      "name": "pilot_3070",
+      "group": "pilot_3070",
+      "state": "finished",
+      "created_at": "2026-10-01T07:34:43Z",
+      "heartbeat_at": "2026-10-01T07:49:50Z",
+      "train_wall_seconds": null,
+      "wandb_runtime_seconds": 903.3195599
+    },
+    {
+      "id": "ed10147e",
+      "name": "s1_sin_3070",
+      "group": "ablation_3070",
+      "state": "finished",
+      "created_at": "2026-10-01T14:35:00Z",
+      "heartbeat_at": "2026-10-01T16:59:13Z",
+      "train_wall_seconds": 48.06100000000151,
+      "wandb_runtime_seconds": 6584946421
+    },
+    {
+      "id": "7793fd59",
+      "name": "pilot",
+      "group": "pilot",
+      "state": "finished",
+      "created_at": "2026-10-01T18:45:45Z",
+      "heartbeat_at": "2026-10-01T19:08:54Z",
+      "train_wall_seconds": 984.3878407559948,
+      "wandb_runtime_seconds": 5356280532.874998
+    },
+    {
+      "id": "5d9fc85d",
+      "name": "main",
+      "group": "main",
+      "state": "finished",
+      "created_at": "2026-10-02T03:50:33Z",
+      "heartbeat_at": "2026-10-02T07:24:45Z",
+      "train_wall_seconds": 11791.83147286308,
+      "wandb_runtime_seconds": 12850.502868708
+    },
+    {
+      "id": "a150f75a",
+      "name": "s1_sin_l4",
+      "group": "ablation_l4",
+      "state": "finished",
+      "created_at": "2026-10-02T08:47:05Z",
+      "heartbeat_at": "2026-10-02T09:18:07Z",
+      "train_wall_seconds": 1785.122518690999,
+      "wandb_runtime_seconds": 1859.65568021
+    },
+    {
+      "id": "ba29d416",
+      "name": "s2_rope_l4",
+      "group": "ablation_l4",
+      "state": "finished",
+      "created_at": "2026-10-02T09:18:20Z",
+      "heartbeat_at": "2026-10-02T09:53:07Z",
+      "train_wall_seconds": 1976.159870274966,
+      "wandb_runtime_seconds": 2084.243743523
+    },
+    {
+      "id": "f8200e87",
+      "name": "s3_rope_concat_l4",
+      "group": "ablation_l4",
+      "state": "finished",
+      "created_at": "2026-10-02T09:53:19Z",
+      "heartbeat_at": "2026-10-02T10:27:45Z",
+      "train_wall_seconds": 1928.1951829239931,
+      "wandb_runtime_seconds": 2063.775677874
+    },
+    {
+      "id": "86e3ddfa",
+      "name": "ext_stable_l4",
+      "group": "extend_l4",
+      "state": "finished",
+      "created_at": "2026-10-02T20:39:36Z",
+      "heartbeat_at": "2026-10-02T23:36:29Z",
+      "train_wall_seconds": 9798.180852716983,
+      "wandb_runtime_seconds": 10607.412444946
+    },
+    {
+      "id": "ba8c6bf4",
+      "name": "ext_branch_a_l4",
+      "group": "extend_l4",
+      "state": "finished",
+      "created_at": "2026-10-02T23:36:47Z",
+      "heartbeat_at": "2026-10-03T00:39:31Z",
+      "train_wall_seconds": 3481.183903647039,
+      "wandb_runtime_seconds": 3760.229754608
+    },
+    {
+      "id": "1f7d5761",
+      "name": "ext_branch_b_l4",
+      "group": "extend_l4",
+      "state": "finished",
+      "created_at": "2026-10-03T00:40:03Z",
+      "heartbeat_at": "2026-10-03T02:04:30Z",
+      "train_wall_seconds": 4695.373789201085,
+      "wandb_runtime_seconds": 5065.092554425
+    }
+  ]
+}
