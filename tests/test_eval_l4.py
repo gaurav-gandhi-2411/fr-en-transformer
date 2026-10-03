@@ -584,7 +584,8 @@ def test_read_only_token_fails_with_the_instruction_for_the_owner() -> None:
     with pytest.raises(ev.HFWriteTokenError) as err:
         ev.check_write_token(FakeApi(who=READ), REPO)
     msg = str(err.value)
-    assert "fine-grained" in msg and REPO in msg and "HF_TOKEN_WRITE" in msg and "create the PRIVATE" in msg
+    for needle in ("fine-grained", REPO, "HF_TOKEN_WRITE", "create the PRIVATE"):
+        assert needle in msg
     with pytest.raises(ev.HFWriteTokenError):
         ev.hf_check(FakeApi(who=_fine(["repo.content.read"])), REPO)
 
