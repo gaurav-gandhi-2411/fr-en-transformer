@@ -1474,12 +1474,23 @@ def train(
                                 "to GG, who decides whether to cut the run (training continues).",
                                 flush=True,
                             )
-                            if wandb_run is not None:
-                                with contextlib.suppress(Exception):
+                        if wandb_run is not None:
+                            # Reporting only. `overfit_flag` is the legacy sticky "ever flagged"
+                            # field (kept for continuity); `overfit_flag_current` follows the
+                            # latest evaluation, so a flagged stretch that recovers reads as such.
+                            with contextlib.suppress(Exception):
+                                ever = (
+                                    bool(wandb_run.summary.get("overfit_flagged_ever")) or flagged
+                                )
+                                wandb_run.summary["overfit_flag_current"] = flagged
+                                wandb_run.summary["overfit_flagged_ever"] = ever
+                                if ever:
                                     wandb_run.summary["overfit_flag"] = True
+                                if flagged:
                                     wandb_run.summary["overfit_flag_first_step"] = (
                                         wandb_run.summary.get("overfit_flag_first_step") or step
                                     )
+                                    wandb_run.summary["overfit_flag_last_step"] = step
                     metrics_file.write(json.dumps({"eval": eval_row}) + "\n")
                     metrics_file.flush()
                     if wandb_run is not None:

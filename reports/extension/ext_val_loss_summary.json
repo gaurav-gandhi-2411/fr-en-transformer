@@ -1,0 +1,400 @@
+{
+ "provenance": {
+  "source": "W&B API read-only (wandb 0.30.0 Api().run(...).scan_history + .summary)",
+  "entity_project": "gauravgandhi429-gaurav-gandhi/fr-en-transformer",
+  "group": "extend_l4",
+  "retrieved_utc": "2026-10-03T02:31:56Z",
+  "raw_dump_sha256": "232e80a01809b1dd26b305fb0ecb47ded28a1ca4ac7b13fdc72ca5250f3eafe4",
+  "raw_dump_note": "raw history dump kept outside the repo (scratchpad); this file is derived from it by the code in the 'rule' field",
+  "rule": "PREREG 2026-10-02 rule 4 re-computed with nmt.train.OverfitWatch from the eval/val_loss series, fresh minimum at the run's first evaluation"
+ },
+ "runs": {
+  "ext_stable_l4": {
+   "wandb_run_id": "86e3ddfa",
+   "state": "finished",
+   "init_from_config": "/content/drive/MyDrive/fr-en-transformer/runs/main/ckpt/step_00019000.pt",
+   "n_evals": 42,
+   "first_eval_step": 19500,
+   "last_eval_step": 40000,
+   "final_step_summary": 40000,
+   "train_wall_seconds_summary": 9798.180852716983,
+   "last_val_loss": 2.919246394397901,
+   "min_val_loss": 2.9121241750719435,
+   "min_val_loss_step": 38000,
+   "last_equals_min": false,
+   "logged_flag_steps": [
+    31500,
+    34500,
+    37000,
+    37500,
+    39000,
+    39500,
+    40000
+   ],
+   "logged_rises_at_final_eval": 4,
+   "recomputed_flag_matches_logged": true,
+   "recomputed_rises_matches_logged": true,
+   "summary_overfit_flag": true,
+   "summary_overfit_flag_first_step": 31500,
+   "val_loss_series": [
+    [
+     19500,
+     2.9840707772263566
+    ],
+    [
+     20000,
+     2.9899751049896874
+    ],
+    [
+     20500,
+     2.9827449351464517
+    ],
+    [
+     21000,
+     2.978316955471723
+    ],
+    [
+     21500,
+     2.9778823013569866
+    ],
+    [
+     22000,
+     2.9726421992480208
+    ],
+    [
+     22500,
+     2.9726432066519233
+    ],
+    [
+     23000,
+     2.969805315850457
+    ],
+    [
+     23500,
+     2.9668930404989555
+    ],
+    [
+     24000,
+     2.9603675690771443
+    ],
+    [
+     24500,
+     2.9629934530917033
+    ],
+    [
+     25000,
+     2.952915549870029
+    ],
+    [
+     25500,
+     2.9558155299220177
+    ],
+    [
+     26000,
+     2.9518528405318287
+    ],
+    [
+     26500,
+     2.94995278385562
+    ],
+    [
+     27000,
+     2.950454885460213
+    ],
+    [
+     27500,
+     2.9442674715512593
+    ],
+    [
+     28000,
+     2.9527412828562154
+    ],
+    [
+     28500,
+     2.9440539079862824
+    ],
+    [
+     29000,
+     2.947134999294868
+    ],
+    [
+     29500,
+     2.9399722573691585
+    ],
+    [
+     30000,
+     2.935287496502024
+    ],
+    [
+     30500,
+     2.9311649868963845
+    ],
+    [
+     31000,
+     2.9404331546656595
+    ],
+    [
+     31500,
+     2.936311380792539
+    ],
+    [
+     32000,
+     2.9300181533060723
+    ],
+    [
+     32500,
+     2.9281644671544877
+    ],
+    [
+     33000,
+     2.9315489682330313
+    ],
+    [
+     33500,
+     2.9279551191603463
+    ],
+    [
+     34000,
+     2.9322414595777246
+    ],
+    [
+     34500,
+     2.930275068119556
+    ],
+    [
+     35000,
+     2.9189389763108715
+    ],
+    [
+     35500,
+     2.922576612417461
+    ],
+    [
+     36000,
+     2.916265197626229
+    ],
+    [
+     36500,
+     2.9263831631180284
+    ],
+    [
+     37000,
+     2.9209144244190206
+    ],
+    [
+     37500,
+     2.9198455821193563
+    ],
+    [
+     38000,
+     2.9121241750719435
+    ],
+    [
+     38500,
+     2.913920048658921
+    ],
+    [
+     39000,
+     2.9126357340760483
+    ],
+    [
+     39500,
+     2.9229355872159344
+    ],
+    [
+     40000,
+     2.919246394397901
+    ]
+   ]
+  },
+  "ext_branch_a_l4": {
+   "wandb_run_id": "ba8c6bf4",
+   "state": "finished",
+   "init_from_config": "/content/drive/MyDrive/fr-en-transformer/runs/ext_stable_l4/ckpt/step_00030000.pt",
+   "n_evals": 15,
+   "first_eval_step": 30500,
+   "last_eval_step": 37500,
+   "final_step_summary": 37500,
+   "train_wall_seconds_summary": 3481.183903647039,
+   "last_val_loss": 2.875011977273698,
+   "min_val_loss": 2.875011977273698,
+   "min_val_loss_step": 37500,
+   "last_equals_min": true,
+   "logged_flag_steps": [],
+   "logged_rises_at_final_eval": 0,
+   "recomputed_flag_matches_logged": true,
+   "recomputed_rises_matches_logged": true,
+   "summary_overfit_flag": null,
+   "summary_overfit_flag_first_step": null,
+   "val_loss_series": [
+    [
+     30500,
+     2.9278790260084313
+    ],
+    [
+     31000,
+     2.932102594474635
+    ],
+    [
+     31500,
+     2.92234990099633
+    ],
+    [
+     32000,
+     2.9156510443027033
+    ],
+    [
+     32500,
+     2.910788940185868
+    ],
+    [
+     33000,
+     2.904109818008564
+    ],
+    [
+     33500,
+     2.8998992240487587
+    ],
+    [
+     34000,
+     2.8951020520905235
+    ],
+    [
+     34500,
+     2.8925641342054016
+    ],
+    [
+     35000,
+     2.885953459334801
+    ],
+    [
+     35500,
+     2.8815917263794675
+    ],
+    [
+     36000,
+     2.8783910673859707
+    ],
+    [
+     36500,
+     2.880073667980931
+    ],
+    [
+     37000,
+     2.8767194212179428
+    ],
+    [
+     37500,
+     2.875011977273698
+    ]
+   ]
+  },
+  "ext_branch_b_l4": {
+   "wandb_run_id": "1f7d5761",
+   "state": "finished",
+   "init_from_config": "/content/drive/MyDrive/fr-en-transformer/runs/ext_stable_l4/ckpt/step_00040000.pt",
+   "n_evals": 20,
+   "first_eval_step": 40500,
+   "last_eval_step": 50000,
+   "final_step_summary": 50000,
+   "train_wall_seconds_summary": 4695.373789201085,
+   "last_val_loss": 2.870287070859714,
+   "min_val_loss": 2.870287070859714,
+   "min_val_loss_step": 50000,
+   "last_equals_min": true,
+   "logged_flag_steps": [
+    45000,
+    45500,
+    46000,
+    48000
+   ],
+   "logged_rises_at_final_eval": 0,
+   "recomputed_flag_matches_logged": true,
+   "recomputed_rises_matches_logged": true,
+   "summary_overfit_flag": true,
+   "summary_overfit_flag_first_step": 45000,
+   "val_loss_series": [
+    [
+     40500,
+     2.9174618814916204
+    ],
+    [
+     41000,
+     2.9083221149884917
+    ],
+    [
+     41500,
+     2.9087604903112205
+    ],
+    [
+     42000,
+     2.9058881199431474
+    ],
+    [
+     42500,
+     2.8977848515055027
+    ],
+    [
+     43000,
+     2.8933481945956063
+    ],
+    [
+     43500,
+     2.898025363021513
+    ],
+    [
+     44000,
+     2.8834430843075505
+    ],
+    [
+     44500,
+     2.885855043653586
+    ],
+    [
+     45000,
+     2.889554214044436
+    ],
+    [
+     45500,
+     2.88683249542062
+    ],
+    [
+     46000,
+     2.8846555513216283
+    ],
+    [
+     46500,
+     2.8830578836462664
+    ],
+    [
+     47000,
+     2.8770171997489316
+    ],
+    [
+     47500,
+     2.8799844072196423
+    ],
+    [
+     48000,
+     2.879598596337863
+    ],
+    [
+     48500,
+     2.8755441463290023
+    ],
+    [
+     49000,
+     2.8729115127341363
+    ],
+    [
+     49500,
+     2.870987343117819
+    ],
+    [
+     50000,
+     2.870287070859714
+    ]
+   ]
+  }
+ }
+}
