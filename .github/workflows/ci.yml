@@ -142,14 +142,32 @@ jobs:
 
       # CONFIG="eval_l4" + RUN="final_all" (the STAGED final selection over main final + Branch A +
       # Branch B: exports, bench, 7 stage-1 tunes, stage1-select, 8 stage-2 tunes, select, report,
-      # decode, validation, private upload) executed end to end as a DRY RUN: the staged plan (stage-2
-      # steps marked as depending on the stage-1 top 2), the three checkpoint files (MISSING on this
-      # host, reported not fatal in a dry run) and the staged ESTIMATE are printed; nothing is run.
+      # decode, validation, private upload, then the NON-FATAL COMET-22 stage: install, 4 pulls of
+      # the existing runs, score, second private upload) executed end to end as a DRY RUN: the staged
+      # plan (stage-2 steps marked as depending on the stage-1 top 2), the three checkpoint files
+      # (MISSING on this host, reported not fatal in a dry run), the staged ESTIMATE and the COMET
+      # section (sets, distinct-triple counts, model, device, batch size, ASSUMED throughput
+      # ESTIMATE) are printed; nothing is run. The log is checked for the COMET section so that a
+      # refactor cannot silently drop it from the dry run.
       - name: Execute colab/train.ipynb in eval_l4 RUN=final_all DRY_RUN mode (Python 3.13)
         if: matrix.python-version == '3.13'
+        shell: bash
         run: |
+          set -eo pipefail
           PY="$RUNNER_TEMP/venv/bin/python"
-          "$PY" colab/execute_notebook.py colab/train.ipynb 1800             --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"final_all"'
+          "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
+            --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"final_all"' \
+            | tee "$RUNNER_TEMP/final_all_dry_run.log"
+          for needle in \
+            "COMET stage: after the upload, NON-FATAL" \
+            "[comet:install]" "[comet:pull:main]" "[comet:score]" "[comet:upload]" \
+            "61 sets" "Unbabel/wmt22-comet-da @" "batch size 64" \
+            "17294 distinct (exact" "4385 distinct (exact" \
+            "ASSUMED 50 triples/s" "ASSUMED 150 triples/s" \
+            "NO L4 COMET rate has been measured"; do
+            grep -qF -- "$needle" "$RUNNER_TEMP/final_all_dry_run.log" \
+              || { echo "final_all dry run lacks: $needle" >&2; exit 1; }
+          done
 
       # CONFIG="extend_l4" (PREREG rule 4: stable 19k -> 40k, Branch A, Branch B in one Colab
       # session) executed end to end as a DRY RUN: the input-checkpoint check (MISSING on this

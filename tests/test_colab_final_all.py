@@ -12,6 +12,7 @@ from typing import Any
 import nbformat
 import pytest
 
+import nmt.comet_stage as cs
 import nmt.eval_l4 as ev
 import nmt.final_all as fa
 from tests.test_colab_ablations_l4 import NOTEBOOK, REPO_ROOT, SUMMARY, _exec
@@ -26,7 +27,7 @@ from tests.test_colab_eval_l4 import (
     _run_ns,
 )
 
-PURE = {"plan", "estimate", "estimate-measured"}
+PURE = {"plan", "estimate", "estimate-measured", "comet-plan"}
 
 
 class Recorder(FakeRunStep):
@@ -50,7 +51,18 @@ class Recorder(FakeRunStep):
             if kwargs.get("stream"):
                 print(done.stdout, end="")
             return done.stdout.strip()
-        return super().__call__(step, argv, **kwargs)
+        out = super().__call__(step, argv, **kwargs)
+        if name == "upload-stage1" and "upload-stage1" not in self.outputs and self.roots:
+            (self.roots["final_all"] / "stage1_hf_upload.json").write_text(
+                json.dumps({"repo": "o/r", "revision": "e" * 40, "private": True}),
+                encoding="utf-8",
+            )
+        if name == "comet:upload" and "comet:upload" not in self.outputs and self.roots:
+            (self.roots["final_all"] / "comet_hf_upload.json").write_text(
+                json.dumps({"repo": "o/r", "revision": "d" * 40, "private": True}),
+                encoding="utf-8",
+            )
+        return out
 
 
 def _ns(
@@ -163,6 +175,19 @@ def test_dry_run_prints_the_staged_plan_the_checkpoint_check_and_the_estimate(
     assert "total (cheapest)" in out and "total (dearest)" in out and "beam 4 ASSUMED" in out
     assert "20.6 h" in out
     assert "[hf-verify]" in out and "skips it if so" in out
+    # the COMET stage: listed after the upload, with its own section and ESTIMATE
+    assert out.index("[upload]") < out.index("[comet:install]") < out.index("[comet:pull:main]")
+    assert out.index("[comet:pull:s3_rope_concat_l4]") < out.index("[comet:score]")
+    assert out.index("[comet:score]") < out.index("[comet:upload]")
+    assert out.count("COMET stage: non-fatal, after the upload") == 1
+    assert [n for n, _ in rec.pure] == ["plan", "estimate", "comet-plan"]
+    assert "COMET stage: after the upload, NON-FATAL" in out and "61 sets" in out
+    assert "Unbabel/wmt22-comet-da @ " in out and "batch size 64" in out
+    assert "device: cuda" in out and "precision fp32" in out
+    assert "distinct (exact, from the files here)" in out and "17294" in out and "4385" in out
+    assert "ASSUMED 50 triples/s" in out and "ASSUMED 150 triples/s" in out
+    assert "NO L4 COMET rate has been measured" in out
+    assert not (tmp_path / "eval" / "final_all" / "comet").exists()  # a dry run writes nothing
 
 
 def test_dry_run_with_all_checkpoints_present_reports_them_ok(
@@ -185,13 +210,23 @@ EXPECTED_STEPS = [
     "bench",
     *[f"tune:{c}" for c in fa.STAGE1_CANDIDATES],
     "stage1-select",
+    "decode-stage1-test",
+    "validate-stage1-test",
+    "upload-stage1",
     *[f"tune-stage2:rank{r}:{p}" for r in (1, 2) for p in fa.POOL_LABELS],
     "select",
     "report",
     "decode",
     "validate-test",
     "upload",
+    "comet:install",
+    *[f"comet:pull:{r}" for r in cs.PINNED_RUNS],
+    "comet:score",
+    "comet:upload",
 ]
+COMET_STEPS = [n for n in EXPECTED_STEPS if n.startswith("comet:")]
+MAIN_STEPS_ONLY = [n for n in EXPECTED_STEPS if not n.startswith("comet:")]
+COMET_DONE = {"status": "completed", "revision": "d" * 40}
 
 
 def test_run_cell_executes_the_whole_staged_plan_in_order(
@@ -204,11 +239,21 @@ def test_run_cell_executes_the_whole_staged_plan_in_order(
     assert _step_names(rec) == EXPECTED_STEPS
     names = _step_names(rec)
     assert names.index("hf-check") < names.index("export:main") < names.index("bench")
-    assert names[-1] == "upload" and names.index("hf-check") == 1  # before any GPU step
-    assert ns["eval_results"]["final_all"] == {"status": "completed", "revision": "b" * 40}
+    assert names.index("upload") == len(MAIN_STEPS_ONLY) - 1 and names.index("hf-check") == 1
+    assert names[names.index("upload") + 1 :] == COMET_STEPS  # COMET strictly after the upload
+    assert ns["eval_results"]["final_all"] == {
+        "status": "completed",
+        "revision": "b" * 40,
+        "comet": COMET_DONE,
+    }
     assert "eval overall: all 1 run(s) ok" in out
     assert "final_all: completed; HF revision " + "b" * 40 in out
-    assert f"eval: all {len(EXPECTED_STEPS) - 1} steps done" in out  # the plan minus hf-verify
+    assert "COMET: completed; HF COMET revision " + "d" * 40 in out
+    assert f"eval: all {len(MAIN_STEPS_ONLY) - 1} steps done" in out  # minus hf-verify and COMET
+    assert out.index("EVAL STEP: final_all:upload") < out.index("COMET STAGE")
+    assert out.index("COMET STAGE") < out.index("EVAL STEP: final_all:comet:install")
+    status = json.loads((tmp_path / "eval" / "final_all" / "comet_status.json").read_text("utf-8"))
+    assert status["status"] == "completed" and status["revision"] == "d" * 40
     # both estimates: the static one first, the measured-bench one after the bench
     assert [n for n, _ in rec.pure] == ["plan", "estimate", "estimate-measured"]
     assert out.index("MEASURED L4 beam-5 rate") < out.index("MEASURED rates from")
@@ -226,7 +271,11 @@ def test_the_notebook_argvs_are_the_real_cli_and_exports_use_the_existing_machin
     rec = Recorder(outputs=_bench(tmp_path))
     _exec(EVAL_RUN, _ns(tmp_path, rec))
     argv = dict(rec.calls)
-    parsers = {"nmt.eval_l4": ev._parser(), "nmt.final_all": fa._parser()}
+    parsers = {
+        "nmt.eval_l4": ev._parser(),
+        "nmt.final_all": fa._parser(),
+        "nmt.comet_stage": cs._parser(),
+    }
     for name, a in rec.calls:
         assert parsers[a[2]].parse_args(a[3:]).cmd == a[3], name
     exports = {n: a for n, a in rec.calls if n.startswith("export:")}
@@ -248,8 +297,14 @@ def test_a_run_complete_on_hf_is_skipped_on_hf_evidence_before_anything_else(
     ns = _ns(tmp_path, rec, with_ckpts=False)  # not even the checkpoints are needed
     _exec(EVAL_RUN, ns)
     out = capsys.readouterr().out
-    assert _step_names(rec) == ["hf-verify"]
-    assert ns["eval_results"]["final_all"] == {"status": "skipped", "revision": "c" * 40}
+    # the main upload is complete WITHOUT COMET: only the COMET steps run (a re-run executes
+    # only COMET); none of the selection / decode / upload steps does
+    assert _step_names(rec) == ["hf-verify", *COMET_STEPS]
+    assert ns["eval_results"]["final_all"] == {
+        "status": "skipped",
+        "revision": "c" * 40,
+        "comet": COMET_DONE,
+    }
     assert "final_all: skipped, already complete on HF (verified)" in out
     assert not (tmp_path / "eval" / "final_all" / "run_meta.json").exists()
 
@@ -303,6 +358,83 @@ def test_a_rerun_issues_the_same_steps_so_every_subprocess_can_skip_itself(tmp_p
     assert first.calls == second.calls
     meta = json.loads((tmp_path / "eval" / "final_all" / "run_meta.json").read_text("utf-8"))
     assert meta["first_started_utc"] <= meta["last_started_utc"]
+
+
+# --- the COMET stage: non-fatal, loud, re-runnable ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "failing", ["comet:install", "comet:pull:s2_rope_l4", "comet:score", "comet:upload"]
+)
+def test_a_comet_failure_is_loud_non_fatal_for_the_upload_and_fails_the_cell(
+    tmp_path: Path, failing: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorder(outputs=_bench(tmp_path), fail_at=f"final_all:{failing}")
+    ns = _ns(tmp_path, rec)
+    with pytest.raises(RuntimeError, match="COMET FAILED for final_all") as err:
+        _exec(EVAL_RUN, ns)
+    out = capsys.readouterr().out
+    assert "COMET FAILED: RuntimeError" in out and failing in out
+    assert "selection and upload are complete" in str(err.value)
+    # the selection and the main upload are reported as complete, and untouched
+    res = ns["eval_results"]["final_all"]
+    assert res["status"] == "completed" and res["revision"] == "b" * 40
+    assert res["comet"]["status"] == "FAILED" and failing in res["comet"]["error"]
+    assert "final_all: completed; HF revision " + "b" * 40 in out
+    assert "COMET FAILED for: final_all" in out and "(selection, decode, validation" in out
+    summary = json.loads((tmp_path / "eval" / "final_all" / "run_summary.json").read_text("utf-8"))
+    assert summary["status"] == "completed"  # written BEFORE the COMET stage
+    status = json.loads((tmp_path / "eval" / "final_all" / "comet_status.json").read_text("utf-8"))
+    assert status["status"] == "FAILED"
+    # the stage stops at the failing step (later COMET steps do not start)
+    names = _step_names(rec)
+    assert names[-1] == failing and names[: len(MAIN_STEPS_ONLY)] == MAIN_STEPS_ONLY
+
+
+def test_a_comet_upload_without_a_private_revision_is_a_comet_failure(tmp_path: Path) -> None:
+    rec = Recorder(outputs={**_bench(tmp_path), "comet:upload": lambda: None})
+    ns = _ns(tmp_path, rec)
+    with pytest.raises(RuntimeError, match="COMET FAILED"):
+        _exec(EVAL_RUN, ns)
+    assert "comet_hf_upload.json" in ns["eval_results"]["final_all"]["comet"]["error"]
+    assert ns["eval_results"]["final_all"]["status"] == "completed"
+
+
+def test_after_a_comet_failure_a_rerun_executes_only_comet(tmp_path: Path) -> None:
+    first = Recorder(outputs=_bench(tmp_path), fail_at="final_all:comet:score")
+    with pytest.raises(RuntimeError, match="COMET FAILED"):
+        _exec(EVAL_RUN, _ns(tmp_path, first))
+    # the main upload is on the HF repo now: hf-verify says complete, no selection step runs
+    second = Recorder(verify={"final_all": YES})
+    ns2 = _ns(tmp_path, second, with_ckpts=False)
+    _exec(EVAL_RUN, ns2)
+    assert _step_names(second) == ["hf-verify", *COMET_STEPS]
+    assert ns2["eval_results"]["final_all"]["comet"] == COMET_DONE
+
+
+def test_the_plan_splitter_refuses_a_comet_step_before_the_upload() -> None:
+    ns = _helpers("final_all")
+    plan = [("hf-check", ["x"]), ("comet:install", ["y"]), ("upload", ["z"])]
+    with pytest.raises(RuntimeError, match="comet:"):
+        ns["split_comet_steps"](plan)
+    main, comet = ns["split_comet_steps"]([("upload", ["z"]), ("comet:score", ["y"])])
+    assert [n for n, _ in main] == ["upload"] and [n for n, _ in comet] == ["comet:score"]
+
+
+def test_comet_parameters_are_validated() -> None:
+    ns = _eval_params(RUN='"final_all"')
+    assert (ns["COMET_BATCH_SIZE"], ns["COMET_PRECISION"]) == (64, "fp32")
+    assert ns["COMET_DEVICE"] == "cuda"  # refuses without CUDA unless "cpu" is set on purpose
+    with pytest.raises(ValueError, match="COMET_DEVICE"):
+        _eval_params(RUN='"final_all"', COMET_DEVICE='"tpu"')
+    assert _eval_params(RUN='"final_all"', COMET_DEVICE='"cpu"')["COMET_DEVICE"] == "cpu"
+    for edit in (
+        {"COMET_BATCH_SIZE": "0"},
+        {"COMET_BATCH_SIZE": '"64"'},
+        {"COMET_PRECISION": '"int8"'},
+    ):
+        with pytest.raises(ValueError, match="COMET_"):
+            _eval_params(RUN='"final_all"', **edit)
 
 
 def test_a_run_without_a_private_revision_is_a_failure(tmp_path: Path) -> None:
@@ -473,3 +605,58 @@ def test_ci_dry_runs_the_final_all_wiring_and_the_notebook_tag_is_the_final_eval
     runbook = (REPO_ROOT / "RUNBOOK.md").read_text(encoding="utf-8")
     assert '`RUN = "final_all"`' in runbook and "<FINAL_TAG>" in runbook
     assert "v0.3.1-colab" in runbook
+
+
+# --- the stage-1 interim result: a safety net BEFORE stage 2 --------------------------------------
+
+
+def test_the_interim_steps_run_before_any_stage2_step_and_the_revision_is_recorded(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorder(outputs=_bench(tmp_path))
+    ns = _ns(tmp_path, rec)
+    _exec(EVAL_RUN, ns)
+    names = _step_names(rec)
+    first_stage2 = next(i for i, n in enumerate(names) if n.startswith("tune-stage2"))
+    interim = ["decode-stage1-test", "validate-stage1-test", "upload-stage1"]
+    assert names[names.index("stage1-select") + 1 : first_stage2] == interim
+    out = capsys.readouterr().out
+    assert f"STAGE-1 INTERIM SAVED: HF_STAGE1_REVISION={'e' * 40} (private)" in out
+    assert out.index("STAGE-1 INTERIM SAVED") < out.index("EVAL STEP: final_all:tune-stage2")
+    root = tmp_path / "eval" / "final_all"
+    final = json.loads((root / "run_summary.json").read_text("utf-8"))
+    assert final["status"] == "completed" and final["hf_stage1_revision"] == "e" * 40
+
+
+@pytest.mark.parametrize("failing", ["decode-stage1-test", "validate-stage1-test", "upload-stage1"])
+def test_an_interim_failure_stops_the_session_loudly_before_stage_2(
+    tmp_path: Path, failing: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorder(outputs=_bench(tmp_path), fail_at=f"final_all:{failing}")
+    with pytest.raises(RuntimeError, match="FAILED for 1 of 1"):
+        _exec(EVAL_RUN, _ns(tmp_path, rec))
+    names = _step_names(rec)
+    assert names[-1] == failing and not any(n.startswith("tune-stage2") for n in names)
+    out = capsys.readouterr().out
+    assert f"STAGE-1 INTERIM FAILED at {failing}: STAGE 2 WAS NOT STARTED" in out
+    assert "comet:install" not in names  # nothing after it ran
+
+
+def test_an_interim_upload_without_a_private_revision_stops_before_stage_2(
+    tmp_path: Path,
+) -> None:
+    rec = Recorder(outputs={**_bench(tmp_path), "upload-stage1": lambda: None})
+    with pytest.raises(RuntimeError, match="stage 2 was NOT started"):
+        _exec(EVAL_RUN, _ns(tmp_path, rec))
+    assert not any(n.startswith("tune-stage2") for n in _step_names(rec))
+
+
+def test_the_dry_run_shows_the_three_interim_steps_before_stage_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _exec(EVAL_RUN, _ns(tmp_path, Recorder(), dry=True))
+    out = capsys.readouterr().out
+    pos = [out.index(f"[{n}]") for n in ("stage1-select", "decode-stage1-test")]
+    assert pos == sorted(pos)
+    assert out.index("[upload-stage1]") < out.index("[tune-stage2:rank1:mbr_beam8]")
+    assert out.count("stage-1 interim safety net: BEFORE stage 2") == 3

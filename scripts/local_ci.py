@@ -38,6 +38,11 @@ from __future__ import annotations
 #      verification, freeze hash); they never replace a ci.yml step.
 #   4. PYTEST_ADDOPTS=-rs is set on the `pytest -q` steps so skip reasons are recorded in the
 #      summary; it changes reporting only, not test selection.
+#  5a. The final_all DRY_RUN step (bash: `set -eo pipefail`, `... | tee log`, a `for needle in ...;
+#      grep -qF` loop over the COMET section) is translated to: run the notebook, capture its output
+#      (ctx.run) and assert every needle of FINAL_ALL_DRY_RUN_NEEDLES with Python; the needle list
+#      is compared with ci.yml's loop by tests/test_local_ci.py. A needle missing, or a non-zero
+#      notebook exit, fails the step exactly as the bash step does.
 #   5. Provider-token variables (HUGGINGFACEHUB_API_TOKEN, HF_TOKEN, ...) are removed from the
 #      step environment, as a GitHub runner has none, plus VIRTUAL_ENV / PYTHONPATH.
 #   6. Per-step timeout of STEP_TIMEOUT_S (the notebooks carry their own 1800 s timeout).
@@ -174,10 +179,40 @@ PY="$RUNNER_TEMP/venv/bin/python"
   --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"all"'
 """
 
+# The COMET section the final_all dry run must print (ci.yml's `for needle in` loop). ONE copy
+# here; tests/test_local_ci.py parses the loop out of ci.yml and compares it with this tuple.
+FINAL_ALL_DRY_RUN_NEEDLES: tuple[str, ...] = (
+    "COMET stage: after the upload, NON-FATAL",
+    "[comet:install]",
+    "[comet:pull:main]",
+    "[comet:score]",
+    "[comet:upload]",
+    "61 sets",
+    "Unbabel/wmt22-comet-da @",
+    "batch size 64",
+    "17294 distinct (exact",
+    "4385 distinct (exact",
+    "ASSUMED 50 triples/s",
+    "ASSUMED 150 triples/s",
+    "NO L4 COMET rate has been measured",
+)
+
 _RUN_FINAL_ALL = """\
+set -eo pipefail
 PY="$RUNNER_TEMP/venv/bin/python"
-"$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
-  --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"final_all"'
+"$PY" colab/execute_notebook.py colab/train.ipynb 1800 \\
+  --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"final_all"' \\
+  | tee "$RUNNER_TEMP/final_all_dry_run.log"
+for needle in \\
+  "COMET stage: after the upload, NON-FATAL" \\
+  "[comet:install]" "[comet:pull:main]" "[comet:score]" "[comet:upload]" \\
+  "61 sets" "Unbabel/wmt22-comet-da @" "batch size 64" \\
+  "17294 distinct (exact" "4385 distinct (exact" \\
+  "ASSUMED 50 triples/s" "ASSUMED 150 triples/s" \\
+  "NO L4 COMET rate has been measured"; do
+  grep -qF -- "$needle" "$RUNNER_TEMP/final_all_dry_run.log" \\
+    || { echo "final_all dry run lacks: $needle" >&2; exit 1; }
+done
 """
 
 _RUN_EXTEND = """\
@@ -250,6 +285,7 @@ STEPS: tuple[Step, ...] = (
         "Execute colab/train.ipynb in eval_l4 RUN=final_all DRY_RUN mode (Python 3.13)",
         "nb_final_all",
         ci_run=_RUN_FINAL_ALL,
+        ci_extra={"shell": "bash"},
     ),
     Step(
         "3.13",
@@ -1090,8 +1126,25 @@ def h_nb_eval_all(ctx: Ctx) -> tuple[int, dict[str, object]]:
     return _tail_step(ctx, _nb_argv(ctx, 'CONFIG="eval_l4"', "DRY_RUN=True", 'RUN="all"'))
 
 
+def check_needles(lines: Sequence[str], needles: Sequence[str]) -> list[str]:
+    """The needles NOT present (as substrings) in the captured output: Python for ci.yml's
+    `grep -qF` loop."""
+    text = "\n".join(lines)
+    return [n for n in needles if n not in text]
+
+
 def h_nb_final_all(ctx: Ctx) -> tuple[int, dict[str, object]]:
-    return _tail_step(ctx, _nb_argv(ctx, 'CONFIG="eval_l4"', "DRY_RUN=True", 'RUN="final_all"'))
+    """ci.yml: run the notebook, `tee` the log, then `grep -qF` every COMET needle. Here the output
+    is captured by ctx.run and the needles are asserted with Python (no bash/tee/grep)."""
+    rc, lines = ctx.run(
+        _nb_argv(ctx, 'CONFIG="eval_l4"', "DRY_RUN=True", 'RUN="final_all"'),
+    )
+    if rc != 0:
+        return rc, {"tail": lines[-25:]}
+    missing = check_needles(lines, FINAL_ALL_DRY_RUN_NEEDLES)
+    for n in missing:
+        ctx.say(f"final_all dry run lacks: {n}")
+    return (1 if missing else 0), {"tail": lines[-25:], "missing_needles": missing}
 
 
 def h_nb_extend(ctx: Ctx) -> tuple[int, dict[str, object]]:

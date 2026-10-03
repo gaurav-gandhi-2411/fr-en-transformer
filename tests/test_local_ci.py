@@ -582,3 +582,52 @@ def test_script_provenance_compares_normalised_bytes(tmp_path: Path) -> None:
     _git(repo, "commit", "-q", "-m", "remove tool")
     absent = local_ci.script_provenance(repo, _git(repo, "rev-parse", "HEAD"), f)
     assert absent["matches_committed_blob"] is None
+
+
+def _ci_final_all_needles() -> list[str]:
+    """The `for needle in ...; do` list of ci.yml's final_all DRY_RUN step."""
+    import re
+
+    steps = local_ci.workflow_steps(CI_YML.read_text(encoding="utf-8"))
+    run = next(
+        str(w["raw"]["run"])  # type: ignore[index]
+        for w in steps
+        if "RUN=final_all DRY_RUN" in str(w["name"])
+    )
+    loop = run.split("for needle in", 1)[1].split("; do", 1)[0]
+    return re.findall(r'"([^"]+)"', loop)
+
+
+def test_final_all_needles_are_the_ones_in_ci_yml() -> None:
+    assert list(local_ci.FINAL_ALL_DRY_RUN_NEEDLES) == _ci_final_all_needles()
+    assert len(local_ci.FINAL_ALL_DRY_RUN_NEEDLES) == 13
+
+
+def test_check_needles_reports_exactly_the_missing_ones() -> None:
+    lines = ["a COMET stage: after the upload, NON-FATAL b", "61 sets"]
+    missing = local_ci.check_needles(lines, local_ci.FINAL_ALL_DRY_RUN_NEEDLES)
+    assert "61 sets" not in missing and "[comet:score]" in missing
+    assert local_ci.check_needles(["x"], ("x",)) == []
+
+
+class _FakeCtx:
+    def __init__(self, rc: int, lines: list[str]) -> None:
+        self.rc, self.lines, self.said = rc, lines, []
+        self.venv_python = Path("py")
+
+    def run(self, argv, **_env):  # noqa: ANN001, ANN201
+        return self.rc, self.lines
+
+    def say(self, line: str) -> None:
+        self.said.append(line)
+
+
+def test_final_all_handler_fails_on_a_missing_needle_or_a_notebook_failure() -> None:
+    full = list(local_ci.FINAL_ALL_DRY_RUN_NEEDLES)
+    ok = _FakeCtx(0, full)
+    assert local_ci.h_nb_final_all(ok)[0] == 0  # type: ignore[arg-type]
+    short = _FakeCtx(0, full[:-1])
+    rc, info = local_ci.h_nb_final_all(short)  # type: ignore[arg-type]
+    assert rc == 1 and info["missing_needles"] == [full[-1]]
+    assert any("lacks" in s for s in short.said)
+    assert local_ci.h_nb_final_all(_FakeCtx(1, full))[0] == 1  # type: ignore[arg-type]
