@@ -277,3 +277,16 @@ ablation and main-run selection results exist and states what was already known)
   not as a loss of decay-phase files. This is inferred from the file spacing; a Drive listing was
   not available to confirm it.
 
+- **2026-10-03 — deadline fallback (made before any `final_all` result exists).**
+  - Submission is due Sunday 2026-10-04, 17:00 IST. The `final_all` run (staged selection, §6
+    amendments of 2026-10-02 and 2026-10-03) has not started when this is written; no
+    extension-branch, MBR, ensemble or stage-1 score exists.
+  - **Rule:** if `final_all` stage 2 has not completed by Sunday 2026-10-04 10:00 IST, the
+    stage-1 winner (beam search, its stage-1 tuned config) is the submission. If `final_all`
+    fails entirely, v1 (`main`, `final`, beam, the config recorded in the v1 submission) stands.
+  - **Interim safety net:** `final_all` decodes, validates (330 ids, 0 empty) and uploads the
+    stage-1 winner's test predictions to the private eval repo (`runs/final_all_stage1/`) BEFORE
+    stage 2 starts, so the stage-1 fallback exists even if the session is interrupted.
+  - Nothing else in the amendments changes: the §2 objective, selection on E1 + E2 only, and
+    dev, E2-synth and E3 report-only.
+
