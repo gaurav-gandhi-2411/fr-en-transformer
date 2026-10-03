@@ -8,7 +8,7 @@ device: auto
 precision: bf16  # 3070 (Ampere) supports bf16; no GradScaler
 label_smoothing: 0.1
 
-# Main architecture at small scale (spec §9 S3, optional: RoPE + concat augmentation on — does
+# Main architecture at small scale (S3, optional: RoPE + concat augmentation on — does
 # concatenation help long inputs without hurting seen, on top of s2_rope's RoPE-only baseline).
 model:
   vocab_size: 16000
@@ -30,7 +30,7 @@ data:
 batch:
   max_tokens: 8192  # probe (bf16, real label-smoothed loss, AdamW step, seq 256, 0.95 VRAM cap): 12288 peaks 7238 MB, inside the 15% margin; runs/pilot_3070/probe_seq256.json
   tokens_per_step: 25000
-  concat_prob: 0.15  # spec §6 default, s3/main only
+  concat_prob: 0.15  # default, s3/main only
   concat_max_len: 256
   chunk_size: 512
   num_workers: 0
@@ -54,7 +54,7 @@ ckpt:
   dir: runs/s3_rope_concat_3070/ckpt
   ckpt_minutes: 5  # bounds the redo after an OOM abort / contention stop to <= 5 min
   ckpt_steps: null
-  keep_last: 1  # PREREG compares final checkpoints only; disk-limited laptop (see tests/test_configs_3070.py)
+  keep_last: 1  # PREREG compares final checkpoints only; disk-limited 
   keep_decay_phase: false
 
 logging:

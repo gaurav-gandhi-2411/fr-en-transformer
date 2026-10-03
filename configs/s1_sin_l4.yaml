@@ -10,7 +10,7 @@ device: auto
 precision: bf16  # 3070 (Ampere) supports bf16; no GradScaler
 label_smoothing: 0.1
 
-# Main architecture at small scale (spec §9 S1: sinusoidal positions, no concat augmentation —
+# Main architecture at small scale (S1: sinusoidal positions, no concat augmentation —
 # the ablation baseline). Same data/seed as s2_rope/s3_rope_concat so the pair is comparable.
 model:
   vocab_size: 16000
@@ -61,7 +61,7 @@ ckpt:
   dir: runs/s1_sin_l4/ckpt
   ckpt_minutes: 5  # bounds the redo after an OOM abort / contention stop to <= 5 min
   ckpt_steps: null
-  keep_last: 1  # PREREG compares final checkpoints only; disk-limited laptop (see tests/test_configs_3070.py)
+  keep_last: 1  # PREREG compares final checkpoints only; disk-limited 
   keep_decay_phase: false
 
 logging:

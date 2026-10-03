@@ -8,7 +8,7 @@ device: auto
 precision: bf16  # 3070 (Ampere) supports bf16; no GradScaler
 label_smoothing: 0.1
 
-# Deep-encoder / shallow-decoder (spec §5): 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
+# Deep-encoder / shallow-decoder: 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
 # ~50.2M params (measured: 50,229,248).
 model:
   vocab_size: 16000
@@ -29,8 +29,8 @@ data:
 
 batch:
   max_tokens: 8192  # probe (bf16, real label-smoothed loss, AdamW step, seq 256, 0.95 VRAM cap): 12288 peaks 7238 MB, inside the 15% margin; runs/pilot_3070/probe_seq256.json
-  tokens_per_step: 25000  # spec §6: ~25k target tokens per optimizer step
-  concat_prob: 0.15  # spec §6 default, s3/main only
+  tokens_per_step: 25000  # ~25k target tokens per optimizer step
+  concat_prob: 0.15  # default, s3/main only
   concat_max_len: 256
   chunk_size: 512
   num_workers: 0
@@ -41,18 +41,18 @@ optim:
   eps: 1.0e-9
   weight_decay: 0.01
   grad_clip: 1.0
-  warmup_steps: 4000  # spec §6
-  # ~2x planned tokens of main.yaml (2 x 50000). Do NOT run without GG approval.
+  warmup_steps: 4000  # 
+  # ~2x planned tokens of main.yaml (2 x 50000). Not run.
   planned_steps: 100000
-  cooldown_frac: 0.2  # final 20% of planned_steps (spec §6)
+  cooldown_frac: 0.2  # final 20% of planned_steps
   max_minutes: 480  # 2x main's 240: wall-clock SAFETY cap only (must not truncate the decay)
 
 ckpt:
   dir: runs/main_ext_3070/ckpt  # Drive path on Colab; overridden via the colab notebook, not here (P5)
-  ckpt_minutes: 15  # spec §6
+  ckpt_minutes: 15  # 
   ckpt_steps: null
   keep_last: 5
-  keep_decay_phase: true  # needed for checkpoint averaging over the decay phase (spec §6, §9)
+  keep_decay_phase: true  # needed for checkpoint averaging over the decay phase
 
 logging:
   wandb_mode: offline
@@ -62,4 +62,4 @@ logging:
   run_dir: runs/main_ext_3070
 
 eval:
-  eval_every: 500  # spec §11: "about every 20 min"; revisit once real tok/s is known from pilot
+  eval_every: 500  # "about every 20 min"; revisit once real tok/s is known from pilot

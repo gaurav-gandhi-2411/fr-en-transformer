@@ -268,7 +268,7 @@ def compare_eval_dirs(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Paired bootstrap A/B comparison (spec §8).")
+    parser = argparse.ArgumentParser(description="Paired bootstrap A/B comparison.")
     parser.add_argument("--a", required=True, type=Path, help="Eval dir of system A.")
     parser.add_argument("--b", required=True, type=Path, help="Eval dir of system B.")
     parser.add_argument("--out", required=True, type=Path)

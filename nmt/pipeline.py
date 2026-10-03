@@ -275,7 +275,7 @@ def stage_analyze(
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="fr-en-transformer pipeline (spec §2).")
+    parser = argparse.ArgumentParser(description="fr-en-transformer pipeline.")
     parser.add_argument("--config", type=Path, default=Path("configs/main.yaml"))
     parser.add_argument("--stage", choices=STAGES, required=True)
     parser.add_argument("--seed", type=int, default=1234)

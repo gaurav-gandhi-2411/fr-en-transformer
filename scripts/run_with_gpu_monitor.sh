@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run a command while sampling nvidia-smi every N seconds into a CSV (spec §1 pilot telemetry:
+# Run a command while sampling nvidia-smi every N seconds into a CSV (pilot telemetry:
 # clocks, temperature, power, utilization, memory and clock-event (throttle) reasons). The
 # sampler is stopped when the command exits; the command's exit code is propagated.
 #

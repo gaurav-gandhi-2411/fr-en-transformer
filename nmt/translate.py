@@ -357,9 +357,7 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Translate inputs.jsonl with a trained model (spec §7)."
-    )
+    parser = argparse.ArgumentParser(description="Translate inputs.jsonl with a trained model.")
     parser.add_argument("--model", required=True, help="Local export dir or HF Hub repo id.")
     parser.add_argument("--input", required=True, type=Path, help="JSONL with {id, source} rows.")
     parser.add_argument(

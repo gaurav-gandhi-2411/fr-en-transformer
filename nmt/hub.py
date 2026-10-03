@@ -144,4 +144,4 @@ def load_pretrained(path_or_repo_id: str) -> tuple[NMTModel, Path]:
 
 def render_model_card(*_args: object, **_kwargs: object) -> str:
     """Stub: model-card rendering is not implemented."""
-    raise NotImplementedError("TODO(owner: final-eval phase): implement the spec §13 model card")
+    raise NotImplementedError("model card: see report/hf_model_card.md")

@@ -4,7 +4,7 @@ seed: 1234
 device: auto
 label_smoothing: 0.1
 
-# Main architecture at small scale (spec §9 S1: sinusoidal positions, no concat augmentation —
+# Main architecture at small scale (S1: sinusoidal positions, no concat augmentation —
 # the ablation baseline). Same data/seed as s2_rope/s3_rope_concat so the pair is comparable.
 model:
   vocab_size: 16000
@@ -24,7 +24,7 @@ data:
   eval_split: e1
 
 batch:
-  max_tokens: 4096  # TBD from pilot: replace with the pilot's measured safe micro-batch size
+  max_tokens: 4096  # overridden by the notebook with the pilot's measured value
   tokens_per_step: 25000
   concat_prob: 0.0
   chunk_size: 512
@@ -40,9 +40,9 @@ optim:
   # run, so a 4000-step warmup could consume most or all of the budget. Revisit once pilot
   # throughput gives a real planned_steps estimate.
   warmup_steps: 500
-  planned_steps: 3000  # TBD from pilot
+  planned_steps: 3000  # placeholder, set per run with --planned-steps
   cooldown_frac: 0.2
-  max_minutes: 40  # spec §1/§9: ablation budget
+  max_minutes: 40  # ablation budget
 
 ckpt:
   dir: runs/s1_sin/ckpt

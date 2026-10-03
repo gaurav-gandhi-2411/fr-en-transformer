@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# Read-only leakage audit (spec §3). Re-derives, by running `nmt.data.prepare.build_pipeline`
+# Read-only leakage audit. Re-derives, by running `nmt.data.prepare.build_pipeline`
 # itself (datasets read from the local HF cache at the revisions pinned in data_manifest.json,
 # never the network), the exact pool of train pairs entering the step-7 leakage guard and the
 # exact pairs the guard removes, then explains *what* was removed: by matched target set, by

@@ -149,9 +149,7 @@ def _is_numeric_scalar(value: Any) -> bool:
 
 def scalar_row(row: Mapping[str, Any]) -> dict[str, float | int]:
     """Keep only finite numeric scalar entries of a history row, dropping W&B bookkeeping keys."""
-    return {
-        k: v for k, v in row.items() if k not in _DROP_HISTORY_KEYS and _is_numeric_scalar(v)
-    }
+    return {k: v for k, v in row.items() if k not in _DROP_HISTORY_KEYS and _is_numeric_scalar(v)}
 
 
 def iter_mirror_rows(rows: Iterable[Mapping[str, Any]]) -> Iterator[tuple[int, dict[str, Any]]]:

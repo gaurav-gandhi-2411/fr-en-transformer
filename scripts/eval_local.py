@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# Local, score-only evaluation pipeline for the Colab `eval_l4` outputs (RUNBOOK §4.5, §4.6).
+# Local, score-only evaluation pipeline for the Colab `eval_l4` outputs.
 # Pulls ONE or more runs' artifacts from the PRIVATE HF results repo at a pinned revision
 # (a 40-hex commit sha, never a branch), then scores them:
 #   - the official scorer exactly as shipped (official/score.py CLI), with an in-process parity

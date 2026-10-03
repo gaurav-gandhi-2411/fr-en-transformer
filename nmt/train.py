@@ -14,7 +14,7 @@ from __future__ import annotations
 #   * cooperative stop: a file `<run_dir>/STOP_REQUESTED` is checked at every step boundary; when
 #     present the step-boundary state is checkpointed through the normal save path, then
 #     `STOPPED_ON_REQUEST step=N reason=...` is printed, the file removed and the process exits
-#     75 (EX_TEMPFAIL) -- the driver (scripts/ablation_3070.py) waits for the GPU and resumes.
+#     75 (EX_TEMPFAIL) -- an external driver can wait for the GPU and resume.
 #   * OOM: a `torch.OutOfMemoryError` inside a training step is NOT checkpointed (grads and the
 #     sampler cursor are partial; a mid-step save would shift the data order on resume). It prints
 #     `OOM_ABORT step=N last_ckpt_step=M` and exits 75; the resume restarts from the last periodic
@@ -1465,7 +1465,7 @@ def train(
                                 f"OVERFIT_WATCH FLAG step={step} val_loss={val_loss:.4f} "
                                 f"running_min={watch.min_loss:.4f} (step {watch.min_step}) "
                                 f"consecutive_rises={watch.rises}: E1 val loss is rising; report "
-                                "to GG, who decides whether to cut the run (training continues).",
+                                "to the owner, who decides whether to cut (training continues).",
                                 flush=True,
                             )
                         if wandb_run is not None:
@@ -1545,7 +1545,7 @@ def train(
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the FR->EN transformer (spec §6).")
+    parser = argparse.ArgumentParser(description="Train the FR->EN transformer.")
     parser.add_argument("--config", required=True, help="Path to a YAML config (configs/*.yaml).")
     parser.add_argument(
         "--resume", action="store_true", help="Resume from the latest checkpoint in ckpt.dir."

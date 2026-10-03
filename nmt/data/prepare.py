@@ -61,7 +61,7 @@ NORMALIZATION_DEFINITION = (
 )
 
 LENGTH_CAP_NOTE = (
-    "The 256-subword-token-per-side length cap (spec §3) is applied in P2 tokenize.py, not here; "
+    "The 256-subword-token-per-side length cap is applied in P2 tokenize.py, not here; "
     "train.jsonl rows produced by this module are unbounded by subword length."
 )
 
@@ -547,7 +547,7 @@ def prepare(
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build the fr-en-transformer data pipeline: prepare train.jsonl, "
-        "the E1/E2/E3 eval proxies and data_manifest.json (spec §3)."
+        "the E1/E2/E3 eval proxies and data_manifest.json."
     )
     parser.add_argument(
         "--out", type=Path, default=Path("data/processed"), help="Output dir for train.jsonl"

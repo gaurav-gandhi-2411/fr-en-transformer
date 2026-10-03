@@ -4,7 +4,7 @@ seed: 1234
 device: auto
 label_smoothing: 0.1
 
-# Main architecture at small scale (spec §9 S2: RoPE, no concat augmentation — isolates the
+# Main architecture at small scale (S2: RoPE, no concat augmentation — isolates the
 # positional-encoding effect vs s1_sin, e.g. length extrapolation on E2 / the >80-word bucket).
 model:
   vocab_size: 16000
@@ -24,7 +24,7 @@ data:
   eval_split: e1
 
 batch:
-  max_tokens: 4096  # TBD from pilot
+  max_tokens: 4096  # placeholder, set per run with --planned-steps
   tokens_per_step: 25000
   concat_prob: 0.0
   chunk_size: 512
@@ -37,7 +37,7 @@ optim:
   weight_decay: 0.01
   grad_clip: 1.0
   warmup_steps: 500  # see s1_sin.yaml: smaller than main's 4000 for a 40-min budget
-  planned_steps: 3000  # TBD from pilot
+  planned_steps: 3000  # placeholder, set per run with --planned-steps
   cooldown_frac: 0.2
   max_minutes: 40
 

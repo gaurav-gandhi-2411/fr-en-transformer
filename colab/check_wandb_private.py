@@ -60,7 +60,7 @@ def verify_project_is_private(
     if access.upper() != "PRIVATE":
         raise RuntimeError(
             f"W&B project {entity}/{project} has access={access!r}, not PRIVATE. Everything stays "
-            "private until GG approves (spec 13): set Project -> Settings -> Visibility to "
+            "private until the owner approves: set Project -> Settings -> Visibility to "
             "Private, then re-run."
         )
     return access

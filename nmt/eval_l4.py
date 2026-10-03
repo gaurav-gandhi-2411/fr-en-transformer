@@ -140,7 +140,7 @@ def write_scope_problem(whoami: dict[str, Any], repo_id: str) -> str | None:
 def write_token_message(repo_id: str, why: str) -> str:
     """The actionable text for a token that cannot write."""
     return (
-        f"HF token cannot write to {repo_id}: {why}. GG: create the PRIVATE model repo "
+        f"HF token cannot write to {repo_id}: {why}. create the PRIVATE model repo "
         f"{repo_id} on huggingface.co (New model, visibility Private), then create a "
         "fine-grained token at https://huggingface.co/settings/tokens with 'Write access to "
         f"contents/settings of selected repos' for exactly {repo_id}, store it as the Colab "
@@ -1156,7 +1156,7 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("--run", required=True, choices=ALL_RUNS)
     s.add_argument("--batch-size", type=int, default=EVAL_BATCH_SIZE)
 
-    s = sub.add_parser("tune", help="PREREG §1 decoding tuning on full E1+E2 for one candidate")
+    s = sub.add_parser("tune", help="decoding tuning on full E1+E2 for one candidate")
     s.add_argument("--model", required=True, type=Path)
     s.add_argument("--out", required=True, type=Path)
     s.add_argument("--batch-size", type=int, default=EVAL_BATCH_SIZE)

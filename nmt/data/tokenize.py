@@ -665,7 +665,7 @@ def _print_stats_summary(tokenizer_stats: dict[str, Any]) -> None:
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train the SentencePiece tokenizer and build pre-tokenized shards (spec §4)."
+        description="Train the SentencePiece tokenizer and build pre-tokenized shards."
     )
     parser.add_argument("--processed", type=Path, default=Path("data/processed"))
     parser.add_argument("--eval", type=Path, default=Path("data/eval"))

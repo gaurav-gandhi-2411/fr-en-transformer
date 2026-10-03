@@ -4,7 +4,7 @@ seed: 1234
 device: auto
 label_smoothing: 0.1
 
-# Deep-encoder / shallow-decoder (spec §5): 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
+# Deep-encoder / shallow-decoder: 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
 # ~50.2M params (measured: 50,229,248).
 model:
   vocab_size: 16000
@@ -24,9 +24,9 @@ data:
   eval_split: e1
 
 batch:
-  max_tokens: 4096  # TBD from pilot: replace with the pilot's measured safe micro-batch size
-  tokens_per_step: 25000  # spec §6: ~25k target tokens per optimizer step
-  concat_prob: 0.15  # spec §6 default, s3/main only
+  max_tokens: 4096  # overridden by the notebook with the pilot's measured value
+  tokens_per_step: 25000  # ~25k target tokens per optimizer step
+  concat_prob: 0.15  # default, s3/main only
   concat_max_len: 256
   chunk_size: 512
   num_workers: 0
@@ -37,17 +37,17 @@ optim:
   eps: 1.0e-9
   weight_decay: 0.01
   grad_clip: 1.0
-  warmup_steps: 4000  # spec §6
-  planned_steps: 50000  # TBD from pilot — pilot throughput x §1's ~4h budget sets the real value
-  cooldown_frac: 0.2  # final 20% of planned_steps (spec §6)
-  max_minutes: 240  # spec §1: ~4h main-run budget, as a wall-clock safety cap alongside planned_steps
+  warmup_steps: 4000  # 
+  planned_steps: 50000  # placeholder; the real runs set it with --planned-steps (main: 24645)
+  cooldown_frac: 0.2  # final 20% of planned_steps
+  max_minutes: 240  # ~4h main-run budget, as a wall-clock safety cap alongside planned_steps
 
 ckpt:
   dir: runs/main/ckpt  # Drive path on Colab; overridden via the colab notebook, not here (P5)
-  ckpt_minutes: 15  # spec §6
+  ckpt_minutes: 15  # 
   ckpt_steps: null
   keep_last: 5
-  keep_decay_phase: true  # needed for checkpoint averaging over the decay phase (spec §6, §9)
+  keep_decay_phase: true  # needed for checkpoint averaging over the decay phase
 
 logging:
   wandb_mode: offline
@@ -57,4 +57,4 @@ logging:
   run_dir: runs/main
 
 eval:
-  eval_every: 500  # spec §11: "about every 20 min"; revisit once real tok/s is known from pilot
+  eval_every: 500  # "about every 20 min"; revisit once real tok/s is known from pilot

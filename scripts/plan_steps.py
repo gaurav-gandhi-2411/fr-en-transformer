@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-# Pilot post-processing (spec §14 P5): reads a pilot run's metrics.jsonl, derives steady-state
+# Pilot post-processing: reads a pilot run's metrics.jsonl, derives steady-state
 # throughput (median tokens/s, seconds/optimizer-step over warmed-up steps) and peak GPU memory,
-# then recommends `planned_steps` for each later run (S1/S2/S3: 40 min; main: ~4h; spec §1) with a
+# then recommends `planned_steps` for each later run (S1/S2/S3: 40 min; main: ~4h) with a
 # safety margin reserved for periodic eval/checkpoint overhead -- which the pilot itself never
 # pays, since configs/pilot.yaml sets `eval_every` high enough that it never fires. Writes
 # `<metrics_dir>/plan.json` (or --out) and prints the exact PLANNED_STEPS to paste into the Colab
@@ -17,7 +17,7 @@ import statistics
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-DEFAULT_TOKENS_PER_STEP = 25000  # spec §6: ~25k target tokens per optimizer step, shared by every
+DEFAULT_TOKENS_PER_STEP = 25000  # ~25k target tokens per optimizer step, shared by every
 # ablation/main config (configs/{s1_sin,s2_rope,s3_rope_concat,main}.yaml all set this exactly).
 DEFAULT_WARMUP_STEPS = 20  # excluded from the steady-state throughput measurement: the first few
 # steps pay for cuDNN/kernel autotune, cold caches and (on Colab) Drive-mount contention, and are
@@ -25,7 +25,7 @@ DEFAULT_WARMUP_STEPS = 20  # excluded from the steady-state throughput measureme
 DEFAULT_SAFETY_MARGIN = 0.85  # reserves 15% of the wall-clock budget for periodic eval/checkpoint
 # I/O that the pilot itself does not pay for (see module docstring).
 
-# Wall-clock budget (minutes) per later run, spec §1.
+# Wall-clock budget (minutes) per later run.
 BUDGETS_MINUTES: dict[str, float] = {
     "s1_sin": 40.0,
     "s2_rope": 40.0,
@@ -36,7 +36,7 @@ BUDGETS_MINUTES: dict[str, float] = {
 # Local RTX 3070 profile (`--profile 3070`): same 40-min ablation budget, planned from the
 # pilot_3070 run's throughput, so s1/s2/s3_3070 all get one identical planned_steps and complete
 # their WSD decay (their max_minutes is only a safety cap). main_ext_3070 is "~2x planned tokens"
-# of main, i.e. 2x main's 240-minute budget. Do NOT run main_ext without GG approval.
+# of main, i.e. 2x main's 240-minute budget. Not run.
 BUDGETS_MINUTES_3070: dict[str, float] = {
     "s1_sin_3070": 40.0,
     "s2_rope_3070": 40.0,
@@ -84,7 +84,7 @@ def compute_plan(
     budgets_minutes: dict[str, float] | None = None,
 ) -> PlanResult:
     """Steady-state median tokens/s over `rows[warmup_steps:]`, converted to seconds/optimizer-step
-    via the *target* `tokens_per_step` (the same knob every later config shares, spec §6) -- not
+    via the *target* `tokens_per_step` (the same knob every later config shares) -- not
     each row's own token count, which metrics.jsonl does not log directly. Then
     `planned_steps[label] = floor(budget_minutes * 60 * safety_margin / seconds_per_step)` for each
     entry in `budgets_minutes`.
@@ -137,8 +137,7 @@ def write_plan(result: PlanResult, out_path: str | Path) -> Path:
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Derive planned_steps for S1/S2/S3/main from a pilot run's metrics.jsonl "
-        "(spec §14 P5)."
+        description="Derive planned_steps for S1/S2/S3/main from a pilot run's metrics.jsonl ."
     )
     parser.add_argument(
         "--metrics", required=True, type=Path, help="Path to the pilot run's metrics.jsonl."

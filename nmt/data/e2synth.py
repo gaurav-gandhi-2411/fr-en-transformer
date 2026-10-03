@@ -50,7 +50,7 @@ LABEL = "E2-synth (synthetic)"
 
 REUSE_NOTE = (
     "E2-synth is SYNTHETIC: every item concatenates 2-4 sentences of E2, the decoding-tuning "
-    "set (spec section 3). It therefore reuses the very sentences the decoding configuration was "
+    "set. It therefore reuses the very sentences the decoding configuration was "
     "tuned on and measures length generalization, not held-out content. Evaluation/reporting "
     "only; never used for checkpoint or decoding selection."
 )

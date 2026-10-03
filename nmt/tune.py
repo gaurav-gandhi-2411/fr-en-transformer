@@ -301,7 +301,7 @@ def run_tune(
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Decoding-tuning grid: alpha x beam, then segmentation threshold, on E1/E2 "
-        "only (spec section 7)."
+        "only."
     )
     parser.add_argument("--model", required=True, type=Path, help="Exported model directory.")
     parser.add_argument("--out", required=True, type=Path, help="Where to write the grid report.")
