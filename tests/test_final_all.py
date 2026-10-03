@@ -595,16 +595,18 @@ def test_plan_is_staged_gates_first_and_private_upload_last() -> None:
     assert names[:3] == ["hf-verify", "hf-check", "bench"]  # hf-check before any GPU work
     assert names[3:10] == [f"tune:{c}" for c in S1]  # stage 1: exactly the 7 beam candidates
     assert names[10] == "stage1-select"
-    stage2 = names[11:19]
+    # the stage-1 INTERIM result: saved, validated, uploaded BEFORE any stage-2 step
+    assert names[11:14] == ["decode-stage1-test", "validate-stage1-test", "upload-stage1"]
+    stage2 = names[14:22]
     assert stage2 == [f"tune-stage2:rank{r}:{p}" for r in (1, 2) for p in fa.POOL_LABELS]
-    assert names[19:24] == ["select", "report", "decode", "validate-test", "upload"]
-    assert names[24:] == [  # the non-fatal COMET stage, strictly after the private upload
+    assert names[22:27] == ["select", "report", "decode", "validate-test", "upload"]
+    assert names[27:] == [  # the non-fatal COMET stage, strictly after the private upload
         "comet:install",
         *[f"comet:pull:{r}" for r in ev.RUNS],
         "comet:score",
         "comet:upload",
     ]
-    assert len(names) == 31
+    assert len(names) == 34
 
 
 def test_plan_stage2_steps_read_the_top_two_at_run_time() -> None:
@@ -1112,7 +1114,7 @@ def test_plan_with_checkpoints_adds_the_three_exports_right_after_hf_check() -> 
     )
     names = [n for n, _ in plan]
     assert names[:6] == ["hf-verify", "hf-check", "export:main", "export:A", "export:B", "bench"]
-    assert len(names) == 34
+    assert len(names) == 37
     exports = dict(plan)
     for name, (run, step, cfg) in fa.FINAL_ALL_CHECKPOINTS.items():
         argv = exports[f"export:{name}"]
@@ -1123,7 +1125,7 @@ def test_plan_with_checkpoints_adds_the_three_exports_right_after_hf_check() -> 
         assert Path(argv[argv.index("--out-dir") + 1]) == Path("/d/eval/final_all/models")
         assert ev._parser().parse_args(argv[3:]).cmd == "candidates"
     # without checkpoints: the 24 steps up to the upload + the 7 COMET steps
-    assert len(_plan()) == 31
+    assert len(_plan()) == 34
 
 
 def test_describe_plan_marks_only_the_stage2_steps() -> None:

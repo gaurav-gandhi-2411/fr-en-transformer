@@ -37,7 +37,7 @@ def test_plan_has_the_comet_steps_after_the_upload_in_order() -> None:
         "comet:score",
         "comet:upload",
     ]
-    assert len(names) == 24 + 7  # the 24 steps up to the upload + 7 COMET steps
+    assert len(names) == 27 + 7  # the 27 steps up to the upload + 7 COMET steps
     assert names.index("upload") < min(i for i, n in enumerate(names) if n.startswith("comet:"))
     assert all(n.startswith("comet:") for n in names[names.index("upload") + 1 :])
     argv = dict(plan)

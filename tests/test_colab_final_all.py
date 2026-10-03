@@ -52,6 +52,11 @@ class Recorder(FakeRunStep):
                 print(done.stdout, end="")
             return done.stdout.strip()
         out = super().__call__(step, argv, **kwargs)
+        if name == "upload-stage1" and "upload-stage1" not in self.outputs and self.roots:
+            (self.roots["final_all"] / "stage1_hf_upload.json").write_text(
+                json.dumps({"repo": "o/r", "revision": "e" * 40, "private": True}),
+                encoding="utf-8",
+            )
         if name == "comet:upload" and "comet:upload" not in self.outputs and self.roots:
             (self.roots["final_all"] / "comet_hf_upload.json").write_text(
                 json.dumps({"repo": "o/r", "revision": "d" * 40, "private": True}),
@@ -205,6 +210,9 @@ EXPECTED_STEPS = [
     "bench",
     *[f"tune:{c}" for c in fa.STAGE1_CANDIDATES],
     "stage1-select",
+    "decode-stage1-test",
+    "validate-stage1-test",
+    "upload-stage1",
     *[f"tune-stage2:rank{r}:{p}" for r in (1, 2) for p in fa.POOL_LABELS],
     "select",
     "report",
@@ -597,3 +605,58 @@ def test_ci_dry_runs_the_final_all_wiring_and_the_notebook_tag_is_the_final_eval
     runbook = (REPO_ROOT / "RUNBOOK.md").read_text(encoding="utf-8")
     assert '`RUN = "final_all"`' in runbook and "<FINAL_TAG>" in runbook
     assert "v0.3.1-colab" in runbook
+
+
+# --- the stage-1 interim result: a safety net BEFORE stage 2 --------------------------------------
+
+
+def test_the_interim_steps_run_before_any_stage2_step_and_the_revision_is_recorded(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorder(outputs=_bench(tmp_path))
+    ns = _ns(tmp_path, rec)
+    _exec(EVAL_RUN, ns)
+    names = _step_names(rec)
+    first_stage2 = next(i for i, n in enumerate(names) if n.startswith("tune-stage2"))
+    interim = ["decode-stage1-test", "validate-stage1-test", "upload-stage1"]
+    assert names[names.index("stage1-select") + 1 : first_stage2] == interim
+    out = capsys.readouterr().out
+    assert f"STAGE-1 INTERIM SAVED: HF_STAGE1_REVISION={'e' * 40} (private)" in out
+    assert out.index("STAGE-1 INTERIM SAVED") < out.index("EVAL STEP: final_all:tune-stage2")
+    root = tmp_path / "eval" / "final_all"
+    final = json.loads((root / "run_summary.json").read_text("utf-8"))
+    assert final["status"] == "completed" and final["hf_stage1_revision"] == "e" * 40
+
+
+@pytest.mark.parametrize("failing", ["decode-stage1-test", "validate-stage1-test", "upload-stage1"])
+def test_an_interim_failure_stops_the_session_loudly_before_stage_2(
+    tmp_path: Path, failing: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorder(outputs=_bench(tmp_path), fail_at=f"final_all:{failing}")
+    with pytest.raises(RuntimeError, match="FAILED for 1 of 1"):
+        _exec(EVAL_RUN, _ns(tmp_path, rec))
+    names = _step_names(rec)
+    assert names[-1] == failing and not any(n.startswith("tune-stage2") for n in names)
+    out = capsys.readouterr().out
+    assert f"STAGE-1 INTERIM FAILED at {failing}: STAGE 2 WAS NOT STARTED" in out
+    assert "comet:install" not in names  # nothing after it ran
+
+
+def test_an_interim_upload_without_a_private_revision_stops_before_stage_2(
+    tmp_path: Path,
+) -> None:
+    rec = Recorder(outputs={**_bench(tmp_path), "upload-stage1": lambda: None})
+    with pytest.raises(RuntimeError, match="stage 2 was NOT started"):
+        _exec(EVAL_RUN, _ns(tmp_path, rec))
+    assert not any(n.startswith("tune-stage2") for n in _step_names(rec))
+
+
+def test_the_dry_run_shows_the_three_interim_steps_before_stage_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _exec(EVAL_RUN, _ns(tmp_path, Recorder(), dry=True))
+    out = capsys.readouterr().out
+    pos = [out.index(f"[{n}]") for n in ("stage1-select", "decode-stage1-test")]
+    assert pos == sorted(pos)
+    assert out.index("[upload-stage1]") < out.index("[tune-stage2:rank1:mbr_beam8]")
+    assert out.count("stage-1 interim safety net: BEFORE stage 2") == 3
