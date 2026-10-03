@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # SentencePiece BPE tokenizer training (joint 16k vocab, byte fallback) and pre-tokenized
 # uint16 numpy shard generation plus a manifest with sha256 hashes, counts, length histograms
-# and a vocab/OOV report. Spec §4, §3 (256-token cap), §12.
+# and a vocab/OOV report.
 #
 # CLI: `python -m nmt.data.tokenize --processed data/processed --eval data/eval
 # --out-shards data/shards --tokenizer-dir tokenizer --seed 1234 [--vocab-size 16000]
@@ -12,7 +12,7 @@ from __future__ import annotations
 # Ordering/design notes:
 # - `data/processed/train.jsonl` rows are already normalized (prepare.py); eval/dev/test raw
 #   text is normalized here with the same `normalize_text` the translator applies at inference
-#   (PLAN.md decision: normalization lives in one function, never re-implemented).
+#   (normalization lives in one function, never re-implemented).
 # - Tokenizer-training sentences are sampled with a single `random.Random(seed)` instance, fr
 #   first then en (documented call order, mirrors prepare.py's pattern) — with 922,748 train
 #   pairs and a default request of 1,000,000 per language, both languages' full population is
@@ -25,7 +25,7 @@ from __future__ import annotations
 #   training itself is deterministic) is what makes the sha256 determinism check meaningful:
 #   train twice in place to the exact same path and compare.
 # - The 256-subword cap (excl. BOS/EOS) is applied to TRAIN only; eval/dev/test sentences over
-#   the cap are counted, never dropped (PLAN.md interface contract).
+#   the cap are counted, never dropped.
 import argparse
 import hashlib
 import json
@@ -56,7 +56,7 @@ PAD_ID = 0
 UNK_ID = 1
 BOS_ID = 2
 EOS_ID = 3
-LENGTH_CAP = 256  # subword tokens per side, excluding BOS/EOS (spec §3)
+LENGTH_CAP = 256  # subword tokens per side, excluding BOS/EOS
 
 _BYTE_FALLBACK_RE = re.compile(r"^<0x[0-9A-Fa-f]{2}>$")
 _WORD_INITIAL_MARK = "▁"  # "▁"

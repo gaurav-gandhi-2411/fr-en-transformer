@@ -3,9 +3,9 @@ from __future__ import annotations
 # Data pipeline: download opus-100 (en-fr) and opus_books (en-fr), normalize, filter,
 # dedupe, build the held-out eval proxies E1/E2/E3, run the leakage guard against
 # dev/test/E1/E3, and hold out E2. Writes `train.jsonl`, `data/eval/{e1,e2,e3}/*.jsonl`
-# and `data_manifest.json`. Spec §3.
+# and `data_manifest.json`.
 #
-# Ordering (binding, see PLAN.md and spec §3): the protected set P (normalized dev
+# Ordering: the protected set P (normalized dev
 # sources, test sources, dev references) is built first. E1 (opus-100 validation) and
 # E3 (opus_books train) are built next, filtered against P only. The train leakage
 # guard (step 7) then runs against the union of P, E1 and E3 -- *not* E2, which does
@@ -44,7 +44,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 logger = logging.getLogger(__name__)
 
-# opus-100's `test` split is never requested (spec §3). This is the code-level guard:
+# opus-100's `test` split is never requested. This is the code-level guard:
 # any call site that ever passed "test" here would raise immediately. Caveat, also
 # recorded in the manifest: the `datasets` library's opus-100 loading script is an
 # old-style builder that regenerates all three splits' local Arrow cache files as a
@@ -92,7 +92,7 @@ class PipelineOutput:
 
 def _to_rows(pairs: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
     """Attach normalized fr/en fields to raw (fr, en) pairs, keeping the raw text too
-    (eval sets are written with raw, un-normalized text; spec §3)."""
+    (eval sets are written with raw, un-normalized text)."""
     rows = []
     for p in pairs:
         fr_raw, en_raw = p["fr"], p["en"]
@@ -178,7 +178,7 @@ def _build_eval_candidates(
 ) -> tuple[list[dict[str, str]], dict[str, int]]:
     """Normalize `pairs`, drop empty sides, then drop any pair matching the protected
     index `p_index` (exact or near-dup, either side). Used identically for E1 and E3
-    (both are filtered against P only, spec §3)."""
+    (both are filtered against P only)."""
     rows = _to_rows(pairs)
     raw_count = len(rows)
     rows = [r for r in rows if r["fr"] and r["en"]]
@@ -203,8 +203,8 @@ def build_pipeline(
     dev_references: Sequence[str],
     seed: int,
 ) -> PipelineOutput:
-    """Core, network-free data pipeline (spec §3; ordering documented in the module
-    docstring). `train_pairs`/`val_pairs` are opus-100 (en-fr) train/validation rows;
+    """Core, network-free data pipeline (ordering documented at the top of this module).
+    `train_pairs`/`val_pairs` are opus-100 (en-fr) train/validation rows;
     `books_pairs` are opus_books (en-fr) train rows. Each pair is a mapping with raw
     "fr"/"en" text. `dev_sources`/`test_sources`/`dev_references` are the raw text of
     the provided dev/test files.
@@ -240,7 +240,7 @@ def build_pipeline(
     _log("drop_high_non_letter_fraction", removed, len(rows))
 
     # --- E1 (opus-100 validation) and E3 (opus_books train): built vs P only, BEFORE
-    # the train leakage guard (spec §3 ordering note). rng call #1 is E3's sample. ---
+    # the train leakage guard. rng call #1 is E3's sample. ---
     e1_rows, e1_stats = _build_eval_candidates(val_pairs, p_index)
     e1_stats["sampled"] = len(e1_rows)  # E1 is not subsampled: all survivors are kept
 
@@ -466,7 +466,7 @@ def prepare(
 ) -> dict[str, Any]:
     """Load the real datasets, run `build_pipeline`, write `train.jsonl`, the eval
     sets and the manifest to disk, and return the manifest dict (so a future training
-    pipeline can log it to W&B without re-reading it from disk; spec §3)."""
+    pipeline can log it to W&B without re-reading it from disk)."""
     start = time.monotonic()
     out_dir = Path(out_dir)
     eval_dir = repo_root / "data" / "eval"
@@ -512,7 +512,7 @@ def prepare(
         output_files[_rel_or_str(inputs_path, repo_root)] = _sha256_of(inputs_path)
         output_files[_rel_or_str(labels_path, repo_root)] = _sha256_of(labels_path)
 
-    # Independently re-read train.jsonl from disk and verify zero overlap (spec §12).
+    # Independently re-read train.jsonl from disk and verify zero overlap.
     post_check = check_overlap(train_path, output.protected_strings)
 
     raw_opus100_train_count = raw.dataset_info["opus100"]["raw_train_count"]

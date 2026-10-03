@@ -5,10 +5,10 @@ from __future__ import annotations
 # Provides `normalize_text`: NFKC normalization, apostrophe/quote unification
 # (`' ' ʼ` -> `'`, `« » " "` -> `"`), whitespace collapse and strip, casing preserved.
 # Used by prepare.py, tokenize.py, translate.py and evaluate.py -- never re-implemented
-# elsewhere (see PLAN.md decisions). Spec §3.
+# elsewhere.
 #
 # Also provides `near_dup_key`, the lowercase-alphanumeric-only key used for
-# near-duplicate / leakage matching throughout the data pipeline (PLAN.md decisions).
+# near-duplicate / leakage matching throughout the data pipeline.
 import re
 import unicodedata
 
@@ -22,7 +22,7 @@ _WHITESPACE_RE = re.compile(r"\s+")
 
 
 def normalize_text(s: str) -> str:
-    """Normalize `s` identically at train and inference time (spec §3).
+    """Normalize `s` identically at train and inference time.
 
     Steps, in order: NFKC normalization; unify apostrophe variants to `'` and quote
     variants to `"`; collapse any run of whitespace to a single space; strip leading/
@@ -46,7 +46,7 @@ def normalize_text(s: str) -> str:
 def near_dup_key(s: str) -> str:
     """Return the near-duplicate key for `s`: lowercase, alphanumeric characters only.
 
-    Used for near-duplicate leakage matching (PLAN.md decisions). An empty key (e.g.
+    Used for near-duplicate leakage matching. An empty key (e.g.
     from a string with no alphanumeric characters) never matches anything -- callers
     must treat an empty key as "no key", not as a wildcard.
     """

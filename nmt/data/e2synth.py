@@ -7,7 +7,7 @@ from __future__ import annotations
 # grows from 400 to 900 characters.
 #
 # It is EVALUATION ONLY and reporting-only. It reuses E2's sentences -- E2 being the
-# decoding-tuning set (spec §3) -- so it measures *length generalization*, not held-out content,
+# decoding-tuning set -- so it measures *length generalization*, not held-out content,
 # and must never be reachable from checkpoint/decoding selection: nmt/selection.py and
 # nmt/tune.py do not know it exists (tests/test_selection.py scans both for any `synth` reference).
 #

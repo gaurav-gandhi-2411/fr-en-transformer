@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-# Push/pull of the P2 tokenizer + shard artifacts to/from the private Hugging Face dataset repo
-# (spec §1: "CPU work runs locally ... artifacts are pushed to a private HF dataset repo, and
-# Colab only pulls shards and trains"). `push_to_hub` is used once locally after `tokenize.py`
-# finishes; `pull_from_hub` is the function the Colab notebook (P5) calls, and it re-verifies
-# every shard's sha256 against the downloaded `manifest.json` before returning, so a corrupted or
-# truncated download fails loudly instead of silently training on bad data.
+# Push/pull of the tokenizer + shard artifacts to/from a private Hugging Face dataset repo.
+# Data prep runs locally and pushes once after `tokenize.py`; the Colab notebook calls
+# `pull_from_hub`, which re-verifies every shard's sha256 against the downloaded `manifest.json`
+# so a corrupted or truncated download fails loudly instead of silently training on bad data.
 import hashlib
 import json
 import logging
@@ -134,9 +132,8 @@ def verify_shards_against_manifest(local_dir: Path) -> dict[str, Any]:
 def pull_from_hub(repo_id: str, local_dir: Path, revision: str | None = None) -> Path:
     """Download `repo_id` (an HF dataset repo) into `local_dir`, then re-verify every shard
     file's sha256 against the downloaded `data/shards/manifest.json` (`verify_shards_against_
-    manifest`) — failing loudly on any mismatch or missing file. This is the function the Colab
-    notebook (P5) calls before training ever starts, so a truncated/corrupted download is caught
-    before it can silently produce a bad run.
+    manifest`) — failing loudly on any mismatch or missing file. The Colab notebook calls this
+    before training, so a truncated/corrupted download cannot silently produce a bad run.
     """
     local_dir = Path(local_dir)
     snapshot_download(
