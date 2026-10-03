@@ -959,12 +959,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--reuse-sanity",
         action="store_true",
-        help="keep the committed selection.json copies and sanity.json instead of rebuilding them "
-        "(they need the gitignored HF `source/` pulls)",
+        help="keep the committed index.json, selection.json copies and sanity.json instead of "
+        "refreshing them (they need the gitignored HF `source/` pulls)",
     )
     args = p.parse_args(argv)
     root: Path = args.out_root
-    print(f"normalized line endings of {normalize_and_reindex(root)} files")
+    if not args.reuse_sanity:
+        print(f"normalized line endings of {normalize_and_reindex(root)} files")
     for run in RUNS if not args.reuse_sanity else ():  # winner record: tiny, `source/` gitignored
         shutil.copyfile(
             root / run / "source" / "runs" / run / "selection.json", root / run / "selection.json"
