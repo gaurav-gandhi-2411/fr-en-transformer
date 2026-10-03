@@ -87,7 +87,7 @@ def test_label_text() -> None:
         ("C:\\Users\\x", "windows_user_path"),
         ("host Legion", "host_name"),
         ("/content/drive/MyDrive", "drive_path"),
-        ("dev_12345", "dev_test_id"),
+        ("dev_" + "12345", "dev_test_id"),
     ],
 )
 def test_scan_text_detects_each_pattern(text: str, key: str) -> None:
