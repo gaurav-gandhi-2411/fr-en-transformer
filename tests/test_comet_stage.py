@@ -475,6 +475,26 @@ def test_cli_exits_non_zero_with_a_failed_line_and_leaves_no_partial_outputs(
     assert not (root / "comet" / cs.SUMMARY_NAME).exists()
 
 
+def test_the_worker_never_receives_a_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    env = {"PATH": "p", "HF_TOKEN": "s1", "HF_TOKEN_WRITE": "s2", "HUGGINGFACEHUB_API_TOKEN": "s3"}
+    assert cs.worker_env({**env, "GH_TOKEN": "s4", "WANDB_API_KEY": "s5"}) == {"PATH": "p"}
+    seen: dict[str, Any] = {}
+
+    class Done:
+        returncode = 0
+
+    def fake_run(cmd: Any, **kw: Any) -> Done:
+        seen.update(kw)
+        return Done()
+
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(cs.subprocess, "run", fake_run)
+    cs.run_worker_subprocess(["x"])
+    assert "HF_TOKEN" not in seen["env"] and "HUGGINGFACEHUB_API_TOKEN" not in seen["env"]
+    assert seen["cwd"] == ev.REPO_ROOT and seen["env"]["PATH"] == "p"
+
+
 def test_a_worker_failure_is_a_comet_stage_error_naming_the_exit_code(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

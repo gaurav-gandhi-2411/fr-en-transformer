@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -440,9 +441,26 @@ def worker_command(
     ]
 
 
+# The worker downloads two PUBLIC models and needs no credential: it never sees the write token
+# (least privilege), and a stale HUGGINGFACEHUB_API_TOKEN cannot make a public download fail.
+WORKER_ENV_DROP = (
+    "HF_TOKEN",
+    "HF_TOKEN_WRITE",
+    "HUGGINGFACEHUB_API_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
+    "GH_TOKEN",
+    "WANDB_API_KEY",
+)
+
+
+def worker_env(environ: Mapping[str, str]) -> dict[str, str]:
+    """`environ` minus every credential variable."""
+    return {k: v for k, v in environ.items() if k not in WORKER_ENV_DROP}
+
+
 def run_worker_subprocess(cmd: Sequence[str]) -> None:
     """Run the worker with its output passing straight through (the notebook streams and scrubs)."""
-    done = subprocess.run(list(cmd), cwd=ev.REPO_ROOT, check=False)
+    done = subprocess.run(list(cmd), cwd=ev.REPO_ROOT, env=worker_env(os.environ), check=False)
     if done.returncode != 0:
         raise CometStageError(f"the COMET worker failed (exit {done.returncode}); see its output")
 
