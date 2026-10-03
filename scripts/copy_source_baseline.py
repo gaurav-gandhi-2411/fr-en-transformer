@@ -53,6 +53,7 @@ from scripts.build_final_report import (
 )
 from scripts.eval_local import SPLITS, _write_json, official_cli_parity
 
+CRLF, LF = bytes([13, 10]), bytes([10])  # official/score.py writes CRLF on Windows; git stores LF
 RUN = "baseline_copy_source"
 DEFAULT_OUT_DIR = REPO_ROOT / "reports" / "final" / RUN
 MODEL_DIR = REPO_ROOT / "reports" / "final" / "main" / "seg_tuned"
@@ -360,6 +361,9 @@ def run(out_dir: Path, n_bootstrap: int = N_BOOTSTRAP, seed: int = SEED) -> dict
         )
         entry = score_split_predictions(split, inputs, labels, pred, n_bootstrap, seed)
         entry["official_cli"] = official_cli_parity(split, pred_path, out_dir, entry)
+        # official/score.py writes with the platform newline (CRLF on Windows); git stores LF
+        report = out_dir / f"official_{split}.json"
+        report.write_bytes(report.read_bytes().replace(CRLF, LF))
         result["sets"][split] = entry
         ref_by_id = {r["id"]: r["reference"] for r in labels}
         all_pred.update(pred)
