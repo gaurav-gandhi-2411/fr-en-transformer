@@ -4,13 +4,13 @@ Gaurav Gandhi · 4 October 2026
 
 **Summary.** The model scores 42.29 [38.72, 45.82] OVERALL on dev, against 16.10 for copying the source. It is strong on long inputs (dev long chrF 63.16), and its open problem is literature, where it sits 12.67 chrF below in-domain text.
 
-I built a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool. I pre-registered my design and selection decisions, made every choice on held-out proxies only, and had every reported number re-derived by an independent check; apart from my own hours, each one comes from a file in the repository (mostly under `reports/`). The submitted model ("v1") is the final checkpoint of the main run, decoded with beam 5, a GNMT length penalty of 1.2, a 3-gram repeat block, and sentence splitting above 192 tokens.
+I built a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool. I pre-registered my design and selection decisions, selected checkpoints and decoding settings on held-out proxies only, and ran an automated verification pass that re-derived every reported number; apart from my own hours, each one comes from a file in the repository (mostly under `reports/`). The submitted model ("v1") is the final checkpoint of the main run, decoded with beam 5, a GNMT length penalty of 1.2, a 3-gram repeat block, and sentence splitting above 192 tokens.
 
 ## 1. Architecture and Design Decisions
 
 | Decision | Alternative considered | Rationale and evidence |
 |---|---|---|
-| Encoder-decoder [1] | Decoder-only (prefix LM) | Translation is conditional: a bidirectional encoder plus explicit cross-attention is the natural fit at 0.9M pairs. This is a design prior; a decoder-only comparison is on my next-steps list. |
+| Encoder-decoder [1] | Decoder-only (prefix LM) | Translation is conditional: a bidirectional encoder plus explicit cross-attention is the natural fit at 0.9M pairs. This is a design prior; a decoder-only comparison is in my next steps (Section 5). |
 | 8 encoder / 4 decoder layers, d=512, 8 heads, FFN 2048, pre-LN [3], GELU, tied embeddings: 50,229,248 parameters | Transformer-big; symmetric 6/6 | The decoder runs once per output token, so I kept it shallow to cut decoding cost [4]; a 6/6 comparison comes next. I sized the model to the budget: 24,645 steps (8.86 epochs), 3.3 h on one L4. |
 | Attention written by hand on PyTorch's `scaled_dot_product_attention`, with a KV cache | `torch.nn.Transformer` | I needed RoPE on queries and keys and an incremental cache for beam search; `nn.Transformer` supports neither. |
 | RoPE [2] | Sinusoidal; ALiBi [9] | Measured gain: +0.89 chrF [+0.66, +1.14] on long sentences (E2) and +3.11 [+2.40, +3.85] on very long synthetic inputs. The ablation ran 1.8 epochs, so I treat transfer to the full run as an assumption. |
@@ -48,7 +48,7 @@ Official scorer, 95% bootstrap intervals from 1,000 resamples [8]. "Copy" is a f
 
 The dev slices hold only 30 to 60 sentences, so I base conclusions on the larger sets. E2 shares the training distribution and E2-synth is built from E2, so both measure length handling rather than new content. E3 chrF (42.31) falls inside the dev-unseen interval [40.74, 48.39], which supports using it as a proxy. COMET scoring is a next step.
 
-**Failure analysis.** The failure modes are narrow and well understood. Long inputs are a strength (chrF 60.89 at 41 to 80 words, 60.32 above 80); very short inputs are the hardest (48.16 at 10 words or fewer), partly because sentence-level chrF penalises one wrong word more in a short sentence. The rarest fifth of sentences scores 50.45, against 55.19 and 56.05 for the two most common fifths. Output errors are rare on E1: 2.2% truncated (under half the reference length), 4.0% overlong (over 1.5x), and 0.5% with a repeated 3-gram. Repetition on E2 (3.0%) sits well below the references' own 14.7%, and a strict untranslated-copy check found none.
+**Failure analysis.** The failure modes are narrow and well understood. Long inputs are a strength (chrF 60.89 at 41 to 80 words, 60.32 above 80); very short inputs are the hardest (48.16 at 10 words or fewer), likely because sentence-level chrF penalises one wrong word more in a short sentence. The rarest fifth of sentences scores 50.45, against 55.19 and 56.05 for the two most common fifths. Output errors are rare on E1: 2.2% truncated (under half the reference length), 4.0% overlong (over 1.5x), and 0.5% with a repeated 3-gram. Repetition on E2 (3.0%) sits well below the references' own 14.7%, and a strict untranslated-copy check found none.
 
 ## 4. Generalization and the Domain Gap
 
@@ -61,7 +61,7 @@ On dev, moving from seen to unseen-domain text costs 5.32 chrF (50.08 to 44.76) 
 
 ## 5. Next Steps
 
-First, I would run the final selection I have already implemented and pre-registered: the longer-trained branches (validation loss 2.904 for v1, then 2.875 and 2.870), ensembles, MBR decoding with a chrF utility, and an alpha grid beyond 1.2. After that: back-translation, BPE-dropout or R-Drop, a larger model, and several seeds per experiment.
+First, I would run the final selection I have already implemented and pre-registered: the longer-trained branches (validation loss 2.904 for v1, then 2.875 and 2.870), ensembles, MBR decoding with a chrF utility, and an alpha grid beyond 1.2. Next, the comparisons I deferred to stay within budget: a decoder-only model, a symmetric 6/6 encoder-decoder, and a vocabulary-size sweep. After that: back-translation, BPE-dropout or R-Drop, a larger model, and several seeds per experiment.
 
 ## 6. Data and Constraints
 
