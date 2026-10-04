@@ -168,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             "note": (
                 "Human hands-on time ('about 8-9 hours') is the owner's figure, not computed here. "
                 "Colab evaluation and final_all sessions are NOT included (not in W&B run "
-                "summaries); that part stays {{FINAL_COLAB_HOURS}}. CU is hours x the owner's "
+                "summaries); that part is not measured. CU is hours x the owner's "
                 "reported rate, an ESTIMATE."
             ),
         },
