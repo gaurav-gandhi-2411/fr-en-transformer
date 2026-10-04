@@ -18,7 +18,7 @@ I built a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with n
 | Joint SentencePiece BPE, 16k, byte fallback | Separate vocabularies, Unigram, BPE-dropout | A small shared vocabulary suits 0.9M pairs [7], copies names across languages and allows three-way tying. Zero unknown tokens on dev, test, E1, E2 and E3. A vocabulary sweep comes next. |
 | WSD schedule: warmup 4,000, peak 7e-4, linear decay over the last 20% [5] | Cosine, inverse-sqrt | Any checkpoint can start its own cooldown, which suits preemptible Colab. The final checkpoint beat both averaged candidates (48.75 against 48.66 and 48.69 on the selection objective). |
 | bf16, label smoothing 0.1, dropout 0.1 | fp16 with loss scaling | Native on the L4, and no optimizer step was skipped in the logged training history. Regularisation is at standard values. |
-| Beam 5, alpha 1.2, 3-gram block, split above 192 tokens, output never empty (beam, then greedy, then a copy of the source) | Greedy; splitting at 64 tokens | Alpha 1.2 was the top of my grid in all 6 tuning runs, so extending the grid is an easy next win. Splitting moved the main model by at most +0.07 chrF. |
+| Beam 5, alpha 1.2, 3-gram block, split above 192 tokens, output never empty (beam, then greedy, then a copy of the source) | Greedy; splitting at 64 tokens | Alpha 1.2 was the top of my grid in all 6 tuning runs, so extending the grid is a cheap next step. Splitting moved the main model by at most +0.07 chrF. |
 | Selection on 0.4 BLEU + 0.4 chrF (E1+E2) + 0.2 chrF(E1) | Selecting on dev or books | The selection code can only load E1 and E2; v1 scores 48.7455. |
 
 ## 2. Engineering Challenges and Resolutions
@@ -48,7 +48,7 @@ Official scorer, 95% bootstrap intervals from 1,000 resamples [8]. "Copy" is a f
 
 The dev slices hold only 30 to 60 sentences, so I base conclusions on the larger sets. E2 shares the training distribution and E2-synth is built from E2, so both measure length handling rather than new content. E3 chrF (42.31) falls inside the dev-unseen interval [40.74, 48.39], which supports using it as a proxy. COMET scoring is a next step.
 
-**Failure analysis.** The failure modes are narrow and well understood. Long inputs are a strength (chrF 60.89 at 41 to 80 words, 60.32 above 80); very short inputs are the hardest (48.16 at 10 words or fewer), likely because sentence-level chrF penalises one wrong word more in a short sentence. The rarest fifth of sentences scores 50.45, against 55.19 and 56.05 for the two most common fifths. Output errors are rare on E1: 2.2% truncated (under half the reference length), 4.0% overlong (over 1.5x), and 0.5% with a repeated 3-gram. Repetition on E2 (3.0%) sits well below the references' own 14.7%, and a strict untranslated-copy check found none.
+**Failure analysis.** The failure modes are narrow and measurable. Long inputs are a strength (chrF 60.89 at 41 to 80 words, 60.32 above 80); very short inputs are the hardest (48.16 at 10 words or fewer), likely because sentence-level chrF penalises one wrong word more in a short sentence. The rarest fifth of sentences scores 50.45, against 55.19 and 56.05 for the two most common fifths. Output errors are rare on E1: 2.2% truncated (under half the reference length), 4.0% overlong (over 1.5x), and 0.5% with a repeated 3-gram. Repetition on E2 (3.0%) sits well below the references' own 14.7%, and a strict untranslated-copy check found none.
 
 ## 4. Generalization and the Domain Gap
 
