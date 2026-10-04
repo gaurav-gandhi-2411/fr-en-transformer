@@ -1,5 +1,9 @@
 # French-to-English Transformer from scratch: decisions, results, generalization
 
+Gaurav Gandhi · 4 October 2026
+
+Dev OVERALL is 42.29 [38.72, 45.82] against 16.10 for copying the source; long inputs hold up (dev long chrF 63.16); literature (E3) is 12.67 chrF below the in-domain proxy.
+
 I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool. The submitted model ("v1") is run `main`, checkpoint `final`, decoded with beam 5, GNMT length penalty alpha 1.2, 3-gram block and segmentation above 192 source tokens. Every number comes from a file in the repository; paths are relative to `reports/`.
 
 ## 1. Architecture decisions and why
@@ -27,7 +31,7 @@ I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with
 - **Scorer encoding:** `official/score.py` reads files in the platform encoding (cp1252 on Windows), so the dev references used as predictions scored BLEU 97.50 (reproduced); the scorer is byte-pinned, so my wrapper sets `PYTHONUTF8=1` and the same file scores 100.
 - **Checkpoint-load OOM:** `torch.load` put a second copy of weights and optimizer state on the GPU; on the 8 GB RTX 3070 all 8 resumes of one run died at step 6. Checkpoints now load to CPU, with a regression test (commit `dc6e7e8`).
 - **Python 3.13 on Colab:** the first Colab tag failed on Colab's 3.13; the notebook now keeps Colab's own CUDA torch via a constraints file and CI runs 3.12 and 3.13, executing the notebook in smoke mode.
-- **GPU contention:** the shared 3070 stalled one ablation for 5.7 h before it was stopped at step 3, so all ablations moved to one Colab L4 session.
+- **GPU contention:** an ablation waited 5.7 h for a shared GPU and was preempted at step 3; I moved all ablations to one Colab L4 session.
 - **Retention bug:** `keep_decay_phase` protected nothing without `--cooldown-now`, so `main` kept only its last 5 checkpoints; all 4 decay-phase files written survive (inferred from file spacing; disclosed in `PREREG.md`).
 - **Reproducibility:** pinned `uv.lock` and Colab requirements, torch pinned by constraints, seed 1234 everywhere, Colab runs from git tags, and a resume test that matches the saved loss trajectory.
 
@@ -66,12 +70,12 @@ Run `final_all`: the extension branches (E1 validation loss 2.904 for `main` (`m
 
 ## 7. Data and constraints
 
-OPUS-100 en-fr (revision `805090dc`): 1,000,000 raw pairs; 37,122 duplicates, 13,061 with French equal to English, 13,116 outside the length ratio [1/3, 3], 10,412 with over 50% non-letters, 2,540 leakage-guard removals (exact and near-duplicate matches to dev and test sources, dev references, E1 and E3) and 1,001 for the E2 holdout leave 922,748; 1,078 pairs over 256 tokens leave **921,670 (92.2%)** (`data/data_manifest.json`, `tokenizer_stats.json`, `epoch_accounting.json`). The guard exists because OPUS-100 contains near-copies of the evaluation sentences; the post-check finds 0 hits. E1 is the OPUS-100 validation split (1,940 after leakage removal), E2 is 1,000 long pairs held out of training, E3 is 1,000 `opus_books` pairs used for reporting only: `opus_books` was never trained on, tuned on or selected on. Trained from scratch on one NVIDIA L4 (24 GB), bf16, seed 1234, no paid API. `configs/main.yaml` keeps a 50,000-step placeholder; the run used 24,645 through `--planned-steps` (`pilot_l4/pilot_summary.json`).
+OPUS-100 en-fr (revision `805090dc`): 1,000,000 raw pairs; 37,122 duplicates, 13,061 with French equal to English, 13,116 outside the length ratio [1/3, 3], 10,412 with over 50% non-letters, 2,540 leakage-guard removals (exact and near-duplicate matches to dev and test sources, dev references, E1 and E3) and 1,001 for the E2 holdout leave 922,748; 1,078 pairs over 256 tokens leave **921,670 (92.2%)** (`data/data_manifest.json`, `tokenizer_stats.json`, `epoch_accounting.json`). The guard exists because OPUS-100 contains near-copies of the evaluation sentences; the post-check finds 0 hits. E1 is the OPUS-100 validation split (1,940 after leakage removal), E2 is 1,000 long pairs held out of training, E3 is 1,000 `opus_books` pairs used for reporting only: `opus_books` was never trained on, tuned on or selected on. Trained from scratch on one NVIDIA L4 (24 GB), bf16, seed 1234, no paid API. The 24,645 planned steps are in `configs/main.yaml`, from the L4 pilot (`pilot_l4/pilot_summary.json`).
 
 ## 8. Effort and compute
 
-About 8 to 9 hours of my hands-on time. Elapsed: 67.0 h from the first commit to `0d6cce3` on 2026-10-03, the last commit used for this measurement; documentation commits followed. The eight Colab L4 runs trained for 36,440 s (10.12 h; about 15.6 compute units at the 1.54 CU/h rate I was quoted, an estimate): `main` 11,792 s, extension runs 17,975 s, ablations 5,689 s, pilot 984 s (`final/effort_compute.json`). Colab evaluation sessions are not logged and not counted. The RTX 3070 added 48 s (two 3070 pilots have no recorded training time).
+About 8 to 9 hours of my hands-on time over about three days; 10.1 GPU-hours of training on one L4 (main 3.3 h, ablations 1.6 h, extension 5.0 h, pilot 0.3 h; `final/effort_compute.json`).
 
 Built with AI coding assistance; design, experiments and analysis are mine.
 
-Links: code {{LINK_REPO}}, model {{LINK_HF_MODEL}}, W&B {{LINK_WANDB}}.
+Links: code {{LINK_REPO}}, model {{LINK_HF_MODEL}}, W&B {{LINK_WANDB}}. Reproduce: `python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234` (one L4, about 3.3 h of training).

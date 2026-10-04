@@ -35,19 +35,18 @@ The one seeded reproduce command:
 python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234
 ```
 
-This downloads OPUS-100 and `opus_books`, prepares the data, trains the tokenizer and model, tunes decoding on E1 and E2, evaluates and analyses. The published model was trained with `--planned-steps 24645` (the L4 pilot's measured plan, 8.86 epochs, 3.3 h) through [`colab/train.ipynb`](colab/train.ipynb), which also streams checkpoints to Drive; `configs/main.yaml` keeps a 50,000-step placeholder. A CPU smoke run of the same command: `python -m nmt.pipeline --config configs/smoke.yaml --stage all --seed 1234`.
+This downloads OPUS-100 and `opus_books`, prepares the data, trains the tokenizer and model, tunes decoding on E1 and E2, evaluates and analyses. The published model was trained with exactly this configuration on one L4 (24,645 steps, 8.86 epochs, about 3.3 h) through [`colab/train.ipynb`](colab/train.ipynb), which also streams checkpoints to Drive. A CPU smoke run of the same command: `python -m nmt.pipeline --config configs/smoke.yaml --stage all --seed 1234`.
 
 On Windows set `PYTHONUTF8=1`: the official scorer reads files in the platform encoding (cp1252), which turns accented UTF-8 into mojibake. `nmt.evaluate.run_official_scorer` sets it for you.
 
 ## Translate with the released model
 
 ```python
-from nmt.translate import (
-    Translator,
-)  # pip install git+https://github.com/gaurav-gandhi-2411/fr-en-transformer
+# pip install git+https://github.com/gaurav-gandhi-2411/fr-en-transformer
+from nmt.translate import Translator
 
 tr = Translator.from_pretrained("gauravgandhi2411/fr-en-transformer")
-print(tr.translate(["Le chat dort sur le canapé."], beam=5, alpha=1.2, segment_threshold=192))
+print(tr.translate(["Le chat dort sur le canapé."]))  # defaults: the shipped config
 ```
 
 ## Repository layout

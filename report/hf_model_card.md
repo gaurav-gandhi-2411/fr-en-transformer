@@ -29,15 +29,11 @@ pip install git+https://github.com/gaurav-gandhi-2411/fr-en-transformer
 ```python
 from nmt.translate import Translator
 
-tr = Translator.from_pretrained("gauravgandhi2411/fr-en-transformer", device="cpu")
-print(
-    tr.translate(
-        ["La bibliothèque ferme plus tôt le dimanche."], beam=5, alpha=1.2, segment_threshold=192
-    )[0]
-)
+tr = Translator.from_pretrained("gauravgandhi2411/fr-en-transformer")
+print(tr.translate(["La bibliothèque ferme plus tôt le dimanche."])[0])
 ```
 
-This is not a `transformers` model; it needs the code in the GitHub repository above. Pass the decoding values shown, because the API defaults are alpha 0.6 and no segmentation.
+This is not a `transformers` model; it needs the code in the GitHub repository above. The defaults of `translate` (beam 5, length penalty alpha 1.2, segmentation above 192 subword tokens) are the shipped configuration.
 
 ## Model
 
@@ -94,7 +90,7 @@ BLEU and chrF come from the challenge's scoring script, which is not redistribut
 | E2-synth | 300 | 37.73 [36.31, 39.07] | 63.31 [62.31, 64.29] | 5.42 [4.46, 6.46] | 34.79 [34.22, 35.44] |
 | E3 | 1,000 | 19.45 [18.42, 20.52] | 42.31 [41.29, 43.27] | 1.25 [0.95, 1.54] | 20.47 [20.00, 20.98] |
 
-DEV OVERALL is the task's selection score: 0.4 BLEU + 0.4 chrF over all 150 dev sentences, plus 0.2 chrF on the unseen-domain slice. No smaller-model baseline was measured.
+Dev OVERALL is the task's official score: 0.4 BLEU + 0.4 chrF over all 150 dev sentences, plus 0.2 chrF on the unseen-domain slice. The copy-source floor is the only baseline here; same-size ablation runs at 1/6 of the training steps are in the report (`report/report.md` in the GitHub repository).
 
 What each slice is, and which ones are proxies:
 
