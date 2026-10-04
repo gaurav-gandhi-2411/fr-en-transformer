@@ -17,7 +17,7 @@ I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with
 | Concatenation augmentation [6], p=0.15 (2 to 4 pairs) | None | It failed my pre-registered test (Section 5). The main model had already been trained with it. |
 | Joint SentencePiece BPE, 16k, byte fallback | Separate vocabularies, Unigram, BPE-dropout | A small shared vocabulary suits 0.9M pairs [7], copies names across languages, and lets source, target and output share one embedding. Zero unknown tokens on dev, test, E1, E2 and E3. I didn't sweep the size. |
 | WSD schedule: warmup 4,000, peak 7e-4, linear decay over the last 20% [5] | Cosine, inverse-sqrt | Any checkpoint can start its own cooldown, which suits preemptible Colab. Averaging checkpoints didn't beat the final one (48.66 and 48.69 against 48.75 on my selection objective). |
-| bf16, label smoothing 0.1, dropout 0.1 | fp16 with loss scaling | The L4 supports bf16, and no optimizer step was skipped. I didn't tune the regularisation. |
+| bf16, label smoothing 0.1, dropout 0.1 | fp16 with loss scaling | The L4 supports bf16, and no optimizer step was skipped in the logged training history. I didn't tune the regularisation. |
 | Beam 5, alpha 1.2, 3-gram block, split above 192 tokens, output never empty (beam, then greedy, then a copy of the source) | Greedy; splitting at 64 tokens | Alpha 1.2 sat at the top of my grid in all 6 tuning runs, so the true optimum is probably higher. Splitting moved the main model by at most +0.07 chrF. |
 | Choose everything on E1+E2 with 0.4 BLEU + 0.4 chrF + 0.2 chrF(E1) | Choosing on dev or on books | The selection code can only load E1 and E2. v1 scores 48.7455 on this objective. |
 
