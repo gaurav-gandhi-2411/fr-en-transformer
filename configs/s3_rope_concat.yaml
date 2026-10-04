@@ -4,7 +4,7 @@ seed: 1234
 device: auto
 label_smoothing: 0.1
 
-# Main architecture at small scale (spec §9 S3, optional: RoPE + concat augmentation on — does
+# Main architecture at small scale (S3, optional: RoPE + concat augmentation on — does
 # concatenation help long inputs without hurting seen, on top of s2_rope's RoPE-only baseline).
 model:
   vocab_size: 16000
@@ -24,9 +24,9 @@ data:
   eval_split: e1
 
 batch:
-  max_tokens: 4096  # TBD from pilot
+  max_tokens: 4096  # placeholder, set per run with --planned-steps
   tokens_per_step: 25000
-  concat_prob: 0.15  # spec §6 default, s3/main only
+  concat_prob: 0.15  # default, s3/main only
   concat_max_len: 256
   chunk_size: 512
   num_workers: 0
@@ -38,7 +38,7 @@ optim:
   weight_decay: 0.01
   grad_clip: 1.0
   warmup_steps: 500  # see s1_sin.yaml: smaller than main's 4000 for a 40-min budget
-  planned_steps: 3000  # TBD from pilot
+  planned_steps: 3000  # placeholder, set per run with --planned-steps
   cooldown_frac: 0.2
   max_minutes: 40
 

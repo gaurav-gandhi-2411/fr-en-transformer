@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-# Leakage-guard primitives shared by prepare.py's train-vs-eval-sets guard (spec §3,
-# step 7) and by `check_overlap`, which independently re-reads `train.jsonl` from disk
-# to verify zero overlap against dev/test/E1/E2/E3 (spec §12, PLAN.md interface note).
+# Leakage-guard primitives shared by prepare.py's train-vs-eval-sets guard and by
+# `check_overlap`, which independently re-reads `train.jsonl` from disk to verify zero overlap
+# against dev/test/E1/E2/E3.
 #
 # A pair "hits" a protected source if its normalized fr OR en string either exactly
 # equals one of the source's strings, or its near-duplicate key (see normalize.py)
@@ -74,7 +74,7 @@ def scan_and_filter(
     `stats` = {"exact_hits", "near_dup_only_hits", "total_removed",
     "per_source_hits"} where `per_source_hits` counts, for each name in `indices`,
     how many *removed* rows hit that specific source -- a row hitting several sources
-    increments each of their counters (spec §3 leakage-guard reporting).
+    increments each of their counters.
     """
     union = EMPTY_INDEX
     for idx in indices.values():

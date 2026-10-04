@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 # Hugging Face Hub export/load via PyTorchModelHubMixin (safetensors, config.json, tokenizer)
-# and a model-card render stub. Spec §13.
+# and a model-card render stub.
 #
 # `NMTModel` wraps `nmt.model.transformer.Transformer` so `save_pretrained(dir)` writes
-# `model.safetensors` + `config.json` (the mixin's default local-file behavior; no network call
-# unless `push_to_hub=True`, which nothing in this phase ever passes) and `from_pretrained(dir)`
-# reconstructs the exact `ModelConfig` from `config.json` before loading weights. The tokenizer's
-# `spm.model` is copied alongside on export/load since a translation model is useless without its
-# tokenizer and the spec's "three-line loading snippet" deliverable expects both to travel
+# `model.safetensors` + `config.json` (no network call unless `push_to_hub=True`) and
+# `from_pretrained(dir)` reconstructs the exact `ModelConfig` from `config.json` before loading
+# weights. The tokenizer's `spm.model` is copied alongside on export/load so both travel
 # together as one directory/repo.
 import shutil
 from collections.abc import Sequence
@@ -92,10 +90,10 @@ def export_checkpoint(
     """Build an `NMTModel` from one or more `nmt.train.save_checkpoint` files and `save_pretrained`
     it to `out_dir`, with the tokenizer copied alongside.
 
-    `average=True` (default, spec §6/§9): element-wise mean of every checkpoint's weights via
+    `average=True` (default): element-wise mean of every checkpoint's weights via
     `nmt.checkpoint.average_checkpoints` -- with a single-element `ckpt_paths` this is just that
     checkpoint's own weights (mean of one). `average=False`: only `ckpt_paths[-1]`'s raw weights
-    are used, so callers comparing "averaged vs single" (spec §6) pass the same checkpoint list
+    are used, so callers comparing "averaged vs single" pass the same checkpoint list
     both ways and vary only this flag.
     """
     if average:
@@ -145,11 +143,5 @@ def load_pretrained(path_or_repo_id: str) -> tuple[NMTModel, Path]:
 
 
 def render_model_card(*_args: object, **_kwargs: object) -> str:
-    """Stub. TODO(owner: final-eval phase): render the full spec §13 model card (architecture,
-    exact filtered pair count + share of opus-100 used, tokenizer, per-slice metrics with CIs,
-    latency, limitations -- literature/long-inputs/rare-words/reference-noise -- and an opus-100
-    licensing note) from `eval.json` + `data_manifest.json` + the training run config, once a
-    final-eval-phase champion checkpoint and its eval.json exist. No push/publish code runs in
-    this phase (P4 scope; the standing "do not push to Hugging Face" instruction for this task).
-    """
-    raise NotImplementedError("TODO(owner: final-eval phase): implement the spec §13 model card")
+    """Stub: model-card rendering is not implemented."""
+    raise NotImplementedError("model card: see report/hf_model_card.md")

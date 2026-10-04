@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-# Verifies the W&B project is PRIVATE before any online run (nothing is public until GG approves,
-# spec §13). Reads `access` straight from the W&B GraphQL API; exits 1 if the project is missing
+# Verifies the W&B project is PRIVATE before any online run (nothing is public until approved,
+# Reads `access` straight from the W&B GraphQL API; exits 1 if the project is missing
 # or not PRIVATE. `--out` records the answer for provenance.
 #
 # CLI: `python scripts/check_wandb_project.py [--entity E] [--project P] [--out FILE]`

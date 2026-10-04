@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# Minimum-Bayes-risk (MBR) decoding (PREREG post-selection amendment, rule 2).
+# Minimum-Bayes-risk (MBR) decoding, as pre-registered (see PREREG.md).
 #
 # Utility: sentence-level chrF EXACTLY as `official/score.py::chrf_sentence` computes it (lowercase,
 # all whitespace removed, character n-grams n=1..6, beta=2, F averaged over the orders for which
@@ -9,7 +9,7 @@ from __future__ import annotations
 # order) with the n-gram statistics of every candidate computed ONCE per sentence, and
 # `tests/test_mbr.py` asserts equality with the official function on 600+ random pairs.
 #
-# Rule: pseudo-references = the candidate pool. For each candidate i the expected utility is the
+# Pseudo-references = the candidate pool. For each candidate i the expected utility is the
 # mean of chrF(hyp=candidate i, ref=candidate j) over every OTHER pool member j != i (self-
 # exclusion: a candidate never votes for itself; a duplicate of it does, so repeated samples act as
 # frequency weights, the standard MBR estimate). The output is the argmax; ties (within TIE_EPS)
@@ -43,8 +43,8 @@ CHRF_MAX_N = 6  # official/score.py chrf_sentence default
 CHRF_BETA = 2.0  # official/score.py chrf_sentence default
 TIE_EPS = 1e-12  # utilities within this of the best are tied (float noise, not a tolerance on BLEU)
 POOL_KINDS = ("beam", "sample")
-DEFAULT_SAMPLING_SEED = 1234  # PREREG rule 2
-DEFAULT_EPSILON = 0.02  # PREREG rule 2
+DEFAULT_SAMPLING_SEED = 1234  # fixed by PREREG.md
+DEFAULT_EPSILON = 0.02  # fixed by PREREG.md
 
 
 @dataclass(frozen=True)

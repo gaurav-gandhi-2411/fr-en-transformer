@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-# Ensemble decoding (PREREG post-selection amendment, rule 3): average the per-step
-# log-probabilities of several models that share one SentencePiece tokenizer. `Ensemble` exposes
-# the same decoder-step interface as `nmt.hub.NMTModel` (encode / init_decode_cache / decode_step /
-# config), so `nmt.decode.beam_search_decode`, `greedy_decode` and `nmt.mbr.sample_pool` and the
-# `nmt.translate.Translator` use it unchanged apart from two tiny hooks in nmt/decode.py (the
-# step returns log-probs, and the encoder memory / cache are per member).
+# Ensemble decoding: average the per-step log-probabilities of several models that share one
+# SentencePiece tokenizer. `Ensemble` exposes the same decoder-step interface as
+# `nmt.hub.NMTModel`, so the decoders and `nmt.translate.Translator` use it unchanged (the
+# encoder memory and cache are kept per member).
 #
-# The combination is the arithmetic mean of the members' log-softmax outputs (a log-linear /
-# geometric-mean ensemble), NOT renormalized: PREREG says "average per-step log-probabilities",
-# and a renormalized (probability-space) mean would be a different rule. For beam search the
-# constant per-step offset a missing renormalization introduces is common to all tokens of a beam
-# at a step, but not across beams, so it is part of the rule, not a bug. Samplers that need a
-# proper distribution renormalize (nmt.mbr.sample_pool does, via log_softmax).
+# The combination is the arithmetic mean of the members' log-softmax outputs (a geometric-mean
+# ensemble), deliberately NOT renormalized, as in the pre-registered rule (see PREREG.md). The
+# resulting per-step offset differs across beams, so it is part of the rule, not a bug. Samplers
+# that need a proper distribution renormalize (`nmt.mbr.sample_pool` does).
 import hashlib
 from collections.abc import Sequence
 from pathlib import Path

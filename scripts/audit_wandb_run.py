@@ -21,7 +21,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-# GG's Colab Pro rate for the L4 (compute units per hour). An ESTIMATE, not a billed figure.
+# the Colab Pro rate for the L4 (compute units per hour). An ESTIMATE, not a billed figure.
 CU_PER_HOUR_L4 = 1.54
 PCTS = (0.10, 0.25, 0.50, 0.75, 0.90, 1.00)
 PROVENANCE_KEYS = ("git_sha", "git_dirty", "precision", "precision_requested", "gpu_name")
@@ -229,7 +229,7 @@ def wall_report(
         "metadata_startedAt": metadata.get("startedAt"),
         "cu_used_ESTIMATE": {
             "cu": hours * CU_PER_HOUR_L4 if hours is not None else None,
-            "formula": f"runtime_hours x {CU_PER_HOUR_L4} CU/h (GG's Colab Pro L4 rate)",
+            "formula": f"runtime_hours x {CU_PER_HOUR_L4} CU/h (Colab Pro L4 rate)",
             "is_estimate": True,
         },
     }

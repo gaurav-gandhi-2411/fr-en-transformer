@@ -1,4 +1,4 @@
-# Extension step (iii) (PREREG 2026-10-02 post-selection amendment, rule 4), Branch B: linear decay
+# Extension step (iii), Branch B: linear decay
 # from the ext_stable_l4 step-40,000 stable checkpoint to 50,000 (10,000 steps, to LR 0 exactly like
 # main's WSD decay: tests/test_train_extension.py compares it with wsd_lr_scale(planned=50000, 0.2)).
 # Started with `--init-from <Drive>/runs/ext_stable_l4/ckpt/step_00040000.pt`; a NEW run directory,
@@ -53,7 +53,7 @@ ckpt:
   ckpt_minutes: 10
   ckpt_steps: null
   keep_last: 2
-  keep_decay_phase: false  # PREREG rule 5 uses the branch's final checkpoint only (disk-limited Drive)
+  keep_decay_phase: false  # uses the branch's final checkpoint only (disk-limited Drive)
   milestone_steps: [50000]
 
 logging:

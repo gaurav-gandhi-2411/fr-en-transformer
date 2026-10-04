@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 # Token-bucketed batching over pre-tokenized shards, concatenation augmentation,
-# and a resumable sampler whose position and RNG state are checkpointed. Spec §6.
+# and a resumable sampler whose position and RNG state are checkpointed.
 #
-# Single-process by design (`num_workers=0` default, configurable): Colab's free tier gives only
-# 2 vCPUs, so a multi-worker torch DataLoader would spend a meaningful share of those 2 cores on
-# IPC/pickling overhead for a dataset that is just numpy slicing (already fast, no PIL/IO-bound
-# work per item) — the crossover point where multiprocessing pays for itself needs more cores
-# than are available here. `num_workers` is still a constructor parameter so this can be
-# revisited if the deploy target changes; anything > 0 is explicitly rejected for now rather than
-# silently ignored.
+# Single-process by design: Colab gives only 2 vCPUs, and the per-item work is plain numpy
+# slicing, so worker processes would cost more in IPC than they save. `num_workers` stays a
+# constructor parameter, but anything > 0 is rejected rather than silently ignored.
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,13 +14,13 @@ import numpy as np
 import torch
 from torch import Tensor
 
-MAX_CONCAT_PAIRS = 4  # spec §6: 2-4 pairs joined
+MAX_CONCAT_PAIRS = 4  # 2-4 pairs joined
 CONCAT_STREAM = 1  # third seed word: keeps the concat RNG stream apart from the batch-order RNG
 
 
 class ShardDataset:
-    """In-memory view over every `shard_*.npz` file for one split, matching the PLAN.md shard
-    contract: `src`/`tgt` uint16 flat token arrays (no BOS/EOS), `src_off`/`tgt_off` int64
+    """In-memory view over every `shard_*.npz` file for one split, matching the shard
+    format: `src`/`tgt` uint16 flat token arrays (no BOS/EOS), `src_off`/`tgt_off` int64
     offsets of length n+1, `ids` a unicode array. `tgt`/`tgt_off` are absent for the `test` split.
     """
 
@@ -96,8 +92,8 @@ class Batch:
 
 
 def batch_token_count(batch: Batch) -> int:
-    """Padded token count for grad-accumulation bookkeeping (spec §6: "~25k target tokens per
-    optimizer step") and for the max_tokens bucketing budget: batch_size * max(len), counting
+    """Padded token count for grad-accumulation bookkeeping (~25k target tokens per
+    optimizer step) and for the max_tokens bucketing budget: batch_size * max(len), counting
     padding as real tokens since that's what actually costs compute/memory.
     """
     n = batch.src.numel()
@@ -110,29 +106,25 @@ class BucketedSampler:
     """Token-bucketed batching with length-sorted chunks, a shuffled batch order, concatenation
     augmentation, and a resumable (epoch, batch_cursor, rng_state) sampler state.
 
-    Design notes (spec §6 leaves the exact bucketing/resume mechanics unspecified):
+    Design notes:
     - Per-example length = max(src_len_with_eos, tgt_len_with_bos) (0 if no target side). This
-      is the single scalar the spec's "batch_size * max(len)" budget formula refers to; src and
-      tgt are padded independently but bucketing on their max keeps both sides' padding waste low
-      simultaneously without needing two separate token budgets.
+      is the single scalar the "batch_size * max(len)" budget formula uses; src and tgt are
+      padded independently, but bucketing on their max keeps padding waste low on both sides
+      without two separate token budgets.
     - Each epoch's batch order (which examples group into which batch, and the shuffled order of
       batches) is a **pure function of (seed, epoch)**: it is rebuilt deterministically by
       `_build_epoch_batches`, never itself persisted. Only `epoch` and `batch_cursor` need to be
       saved to reconstruct "which batch comes next" exactly.
-    - Concatenation augmentation is part of the epoch PLAN, decided before bucketing. A
-      dedicated RNG keyed on (seed, epoch, CONCAT_STREAM) draws, per example, whether it is
-      joined (prob `concat_prob`), how many pairs k in {2,3,4} and the k-1 random partner indices.
-      Bucketing then uses the joined length (each side truncated to `concat_max_len`, then the same
-      max(src+1, tgt+1) scalar as without concat), so every padded batch obeys the same
-      `max_tokens` rule as the no-concat case. (Previously pairs were joined at materialization,
-      after bucketing on the unjoined lengths, and `_pad_batch` padded the whole batch to its
-      longest joined row: padded micro-batches reached 131k-170k tokens against a 4k-8k budget.)
-      With `concat_prob == 0` nothing is drawn and the batches are identical to the pre-plan
-      implementation for the same seed.
-    - The plan is therefore a pure function of (seed, epoch) like the batch order, so resume needs
-      only `epoch` and `batch_cursor`. Old states carrying `aug_rng_state` still load (the key is
-      ignored); a pre-plan checkpoint resumed with concat_prob > 0 continues with the new plan
-      rather than bit-exactly (only smoke artifacts exist).
+    - Concatenation augmentation is decided per epoch, before bucketing. A dedicated RNG keyed
+      on (seed, epoch, CONCAT_STREAM) draws, per example, whether it is joined (prob
+      `concat_prob`), how many pairs k in {2,3,4} and the k-1 random partner indices. Bucketing
+      then uses the joined length (each side truncated to `concat_max_len`), so every padded
+      batch obeys the same `max_tokens` rule as without concatenation. Joining after bucketing
+      would pad whole batches to their longest joined row and blow far past the token budget.
+      With `concat_prob == 0` nothing is drawn.
+    - The concat plan is a pure function of (seed, epoch) like the batch order, so resume needs
+      only `epoch` and `batch_cursor`. States carrying an old `aug_rng_state` key still load (the
+      key is ignored).
     """
 
     def __init__(
@@ -184,7 +176,7 @@ class BucketedSampler:
         if self.concat_prob > 0.0:
             rng = np.random.default_rng((self.seed, self.epoch, CONCAT_STREAM))
             joined = rng.random(n) < self.concat_prob
-            k = rng.integers(2, MAX_CONCAT_PAIRS + 1, size=n)  # 2..4 pairs joined (spec §6)
+            k = rng.integers(2, MAX_CONCAT_PAIRS + 1, size=n)  # 2..4 pairs joined
             self._partners = rng.integers(0, n, size=(n, MAX_CONCAT_PAIRS - 1))
             self._concat_k = np.where(joined, k, 0)
             for col in range(MAX_CONCAT_PAIRS - 1):

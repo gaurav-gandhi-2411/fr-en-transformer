@@ -3,18 +3,18 @@ from __future__ import annotations
 # Training loop: autocast (bf16 / fp16 + GradScaler / fp32, config key `precision`), AdamW, WSD
 # (warmup-stable-decay) schedule, label-smoothed cross-entropy, gradient accumulation, resumable
 # checkpointing (model/optimizer/scaler/scheduler/dataloader/RNG state), checkpoint
-# averaging and W&B logging. Spec §6.
+# averaging and W&B logging.
 #
 # CLI: `python -m nmt.train --config configs/X.yaml [--resume] [--seed 1234] [--max-steps N]
 # [--wandb offline|online|disabled] [--cooldown-now] [--synthetic] [--precision P] [--device D]
 # [--ckpt-steps N] [--stop-after-first-ckpt] [--resume-count K] [--wait-seconds S]
 # [--debug-raise-oom-at-step N]`.
 #
-# Contention/OOM robustness (RTX 3070 ablation queue; the GPU is shared with other workloads):
+# Contention/OOM robustness (the GPU may be shared with other workloads):
 #   * cooperative stop: a file `<run_dir>/STOP_REQUESTED` is checked at every step boundary; when
 #     present the step-boundary state is checkpointed through the normal save path, then
 #     `STOPPED_ON_REQUEST step=N reason=...` is printed, the file removed and the process exits
-#     75 (EX_TEMPFAIL) -- the driver (scripts/ablation_3070.py) waits for the GPU and resumes.
+#     75 (EX_TEMPFAIL) -- an external driver can wait for the GPU and resume.
 #   * OOM: a `torch.OutOfMemoryError` inside a training step is NOT checkpointed (grads and the
 #     sampler cursor are partial; a mid-step save would shift the data order on resume). It prints
 #     `OOM_ABORT step=N last_ckpt_step=M` and exits 75; the resume restarts from the last periodic
@@ -23,7 +23,7 @@ from __future__ import annotations
 #     to run_info.json and the W&B config + summary at the end of every invocation, and the W&B
 #     run id is persisted in `<run_dir>/wandb_run_id.txt` so one ablation is one W&B run.
 #
-# Precision (spec §6 said fp16-only because the Colab T4 has no bf16): `auto` picks bf16 on CUDA
+# Precision: `auto` picks bf16 on CUDA
 # when the GPU supports it (no GradScaler needed), else fp16 + GradScaler, and fp32 on CPU. TF32
 # is enabled for CUDA fp32 matmuls/convs. torch.compile is deliberately NOT used anywhere
 # (`TORCH_COMPILE = False`; enforced by tests/test_train_precision.py): the Windows/3070 setup has
@@ -36,11 +36,7 @@ from __future__ import annotations
 # tok/s already includes it). Ops lacking a deterministic CUDA kernel only warn, and that warning
 # is deduplicated to once per process.
 #
-# Config is plain dataclasses, not pydantic: pydantic is not a pinned dependency in this repo
-# (pyproject.toml/uv.lock) and the standing rule is "no new dependencies without asking" — adding
-# one mid-task would stall P3 on an approval round-trip for a YAML shape that plain dataclasses
-# validate perfectly well by hand. Flagged in the P3 report as a deviation from the general
-# pydantic-for-config-boundaries preference.
+# Config is plain dataclasses, not pydantic, which is not a dependency of this repo.
 import argparse
 import contextlib
 import dataclasses
@@ -112,7 +108,7 @@ class DataSection:
 @dataclass
 class BatchSection:
     max_tokens: int = 4096
-    tokens_per_step: int = 25000  # target tokens per optimizer step (grad accumulation, spec §6)
+    tokens_per_step: int = 25000  # target tokens per optimizer step (grad accumulation)
     concat_prob: float = 0.0
     concat_max_len: int = 256
     chunk_size: int = 512
@@ -127,9 +123,9 @@ class OptimSection:
     weight_decay: float = 0.01
     grad_clip: float = 1.0
     warmup_steps: int = 4000
-    planned_steps: int = 300  # TBD from pilot for pilot/ablation/main configs; see configs/*.yaml
+    planned_steps: int = 300  # set per run in configs/*.yaml (main: 24,645)
     cooldown_frac: float = 0.2  # final fraction of planned_steps spent decaying to 0
-    # Explicit WSD decay window (extension runs, PREREG 2026-10-02 rule 4): LR is stable until
+    # Explicit WSD decay window (extension runs, pre-registered in PREREG.md): LR is stable until
     # `decay_start`, then decays linearly to 0 at `decay_end`; `cooldown_frac` is then unused.
     # `planned_steps` stays "the step this run stops at", so a stable-phase run that stops at
     # 40,000 declares the decay it would take afterwards (40,000 -> 50,000) and never enters it.
@@ -165,14 +161,13 @@ class LoggingSection:
 @dataclass
 class EvalSection:
     eval_every: int = 500
-    # Fixed seeded subset sizes for the periodic eval hook (spec §11: "E1[500], E2[300]" for the
-    # main run; "keep it cheap and configurable ... smoke uses small subsets"). The official dev
-    # set is always evaluated whole (150 sentences), never subset, so it has no size field here.
+    # Fixed seeded subset sizes for the periodic eval hook (kept small so it stays cheap). The
+    # official dev set is always evaluated whole (150 sentences), so it has no size field here.
     e1_n: int = 500
     e2_n: int = 300
     e3_n: int = 300
     n_samples_table: int = 20
-    # Overfitting watch (PREREG rule 4): flag two consecutive E1 val-loss rises above the running
+    # Overfitting watch (see PREREG.md): flag two consecutive E1 val-loss rises above the running
     # minimum. Reports only (print + W&B summary + eval row); it never stops training.
     overfit_watch: bool = False
 
@@ -180,7 +175,7 @@ class EvalSection:
 @dataclass
 class TrainConfig:
     name: str
-    group: str = "main"  # pilot | ablation | main | smoke (spec §11 W&B run groups)
+    group: str = "main"  # pilot | ablation | main | smoke (W&B run group)
     seed: int = 1234
     label_smoothing: float = 0.1
     device: str = "auto"  # "auto" | "cpu" | "cuda"
@@ -443,7 +438,7 @@ def probe_sdpa_kernel(
 
 
 def _git_sha() -> str | None:
-    """Best-effort git SHA for run provenance; tolerates failure (spec §11)."""
+    """Best-effort git SHA for run provenance; tolerates failure."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -504,7 +499,7 @@ def collect_run_provenance(
     model: Transformer,
     shard_dir: Path,
 ) -> dict[str, Any]:
-    """Provenance recorded in the W&B run config and `run_info.json` (spec §11): code state, the
+    """Provenance recorded in the W&B run config and `run_info.json`: code state, the
     numeric setup that produced the run, hardware/software versions and the hashes of the data
     manifests. The platform string is `platform.platform()` (OS + version, no hostname).
     """
@@ -574,8 +569,8 @@ def wsd_lr_scale(
     Linear warmup to 1.0 over `warmup_steps`, stable at 1.0, then linear decay to 0 over
     `cooldown_frac * planned_steps` steps. By default the decay window ends exactly at
     `planned_steps`; `--cooldown-now` instead passes an explicit `decay_start_step` (the step at
-    which cooldown was triggered), letting a run stop and cool down from any checkpoint (spec §6:
-    "robust to Colab cutoffs"). `decay_end_step` fixes the window's end explicitly (see
+    which cooldown was triggered), letting a run stop and cool down from any checkpoint
+    (robust to Colab cutoffs). `decay_end_step` fixes the window's end explicitly (see
     `wsd_decay_window`); the decay is then linear from 1.0 at `decay_start_step` to 0.0 there.
     """
     if warmup_steps > 0 and step < warmup_steps:
@@ -610,7 +605,7 @@ def label_smoothed_nll_loss(logits: Tensor, target: Tensor, pad_id: int, epsilon
 
 
 def build_param_groups(model: nn.Module, weight_decay: float) -> list[dict[str, Any]]:
-    """AdamW weight decay excludes norms and biases (spec §6), not embeddings — embedding
+    """AdamW weight decay excludes norms and biases, not embeddings — embedding
     weight is 2-D so it lands in the decay group same as any other Linear weight.
     """
     decay, no_decay = [], []
@@ -691,7 +686,7 @@ def save_checkpoint(
 ) -> Path:
     """Atomic checkpoint write (tmp file + os.replace), so a crash mid-write never leaves a
     corrupt file that `load_latest_checkpoint` could pick up. Includes model, optimizer, scaler,
-    sampler state and ALL RNG states (python/numpy/torch CPU/torch CUDA), per spec §6.
+    sampler state and ALL RNG states (python/numpy/torch CPU/torch CUDA).
     """
     payload = {
         "step": step,
@@ -733,7 +728,7 @@ def prune_checkpoints(
 ) -> None:
     """Delete old checkpoints, but always keep the newest `keep_last`, every step in
     `keep_steps` (milestones), and, when `keep_decay_phase` is set, everything at/after
-    `decay_start_step` -- checkpoint averaging (spec §6, §9) needs the decay-phase checkpoints to
+    `decay_start_step` -- checkpoint averaging needs the decay-phase checkpoints to
     still be on disk regardless of how many steps have passed. Callers pass the WSD decay start
     whether or not `--cooldown-now` was used (see `train`); `None` disables that protection.
     """
@@ -749,7 +744,7 @@ def prune_checkpoints(
 
 @dataclass
 class OverfitWatch:
-    """PREREG rule 4 overfitting watch: E1 validation loss is read at every evaluation; a value
+    """Overfitting watch (see PREREG.md): E1 validation loss is read at every evaluation; a value
     above the running minimum is a rise, two consecutive rises flag the run. Reporting only: the
     caller prints and records the flag, nothing here (or in `train`) ever stops training. A value
     at or below the running minimum resets the streak and becomes the new minimum.
@@ -957,11 +952,11 @@ def _record_invocation_summary(
 
 
 # ---------------------------------------------------------------------------------------------
-# Eval hook (P4: nmt.evaluate.build_train_eval_fn builds the real one)
+# Eval hook (nmt.evaluate.build_train_eval_fn builds the real one)
 # ---------------------------------------------------------------------------------------------
 
 # The third parameter is the active W&B run (or None) -- a hook that logs a W&B Table (e.g. the
-# spec §11 sample-translations table) needs the run object directly, since a Table isn't
+# sample-translations table) needs the run object directly, since a Table isn't
 # JSON-serializable and so can't travel through the returned dict (which IS written verbatim to
 # metrics.jsonl via json.dumps below).
 EvalFn = Callable[[nn.Module, int, Any], dict[str, float]]
@@ -969,7 +964,7 @@ EvalFn = Callable[[nn.Module, int, Any], dict[str, float]]
 
 def default_eval_fn(model: nn.Module, step: int, wandb_run: Any = None) -> dict[str, float]:
     """No-op eval hook placeholder (used when the caller doesn't pass one, e.g. most tests).
-    `nmt.evaluate.build_train_eval_fn` builds the real spec §8/§11 greedy BLEU/chrF hook.
+    `nmt.evaluate.build_train_eval_fn` builds the real greedy BLEU/chrF hook.
     Validation loss on E1 is computed directly in the train loop below (`_eval_val_loss`), not
     through this hook, since it's needed for checkpoint-selection sanity independent of it.
     """
@@ -1007,7 +1002,7 @@ def _eval_val_loss(
         # Same autocast as the train step, so val loss is comparable with the train loss.
         with autocast_context(device, precision):
             logits = model(src, tgt_in)
-            # pad_id=0 is the fixed contract (PLAN.md interface contracts), not config-driven.
+            # pad_id=0 is fixed by the tokenizer, not config-driven.
             loss = label_smoothed_nll_loss(logits, tgt_out, 0, cfg.label_smoothing)
         ntokens = int((tgt_out != 0).sum().item())
         total_loss += loss.item() * ntokens
@@ -1218,8 +1213,8 @@ def train(
             raise ValueError("--cooldown-now cannot be combined with optim.decay_start/decay_end")
         decay_start_step, decay_end_step = cfg.optim.decay_start, cfg.optim.decay_end
     # Where the decay phase begins, for checkpoint retention only (the LR schedule keeps using
-    # `decay_start_step`, which stays None unless --cooldown-now). Before this was derived from
-    # the schedule, `keep_decay_phase` protected nothing in a normal run (main run, 2026-10-02).
+    # `decay_start_step`, which stays None unless --cooldown-now). It must come from the
+    # schedule, otherwise `keep_decay_phase` would protect nothing in a normal run.
     retention_decay_start, _ = wsd_decay_window(
         cfg.optim.warmup_steps,
         cfg.optim.planned_steps,
@@ -1251,9 +1246,8 @@ def train(
     try:
         eval_dataset = ShardDataset(shard_dir, cfg.data.eval_split)
     except FileNotFoundError as exc:
-        # Non-fatal (a missing eval split must not abort training), but silent-suppression here
-        # previously hid validation entirely with no trace anywhere it ran — loud print plus a
-        # durable record in both metrics.jsonl and the W&B run config, so absence is visible.
+        # Non-fatal (a missing eval split must not abort training), but never silent: a loud
+        # print plus a record in both metrics.jsonl and the W&B run config.
         eval_disabled_reason = (
             f"eval split {cfg.data.eval_split!r} not found under {shard_dir}: {exc}"
         )
@@ -1471,13 +1465,13 @@ def train(
                                 f"OVERFIT_WATCH FLAG step={step} val_loss={val_loss:.4f} "
                                 f"running_min={watch.min_loss:.4f} (step {watch.min_step}) "
                                 f"consecutive_rises={watch.rises}: E1 val loss is rising; report "
-                                "to GG, who decides whether to cut the run (training continues).",
+                                "to the owner, who decides whether to cut (training continues).",
                                 flush=True,
                             )
                         if wandb_run is not None:
-                            # Reporting only. `overfit_flag` is the legacy sticky "ever flagged"
-                            # field (kept for continuity); `overfit_flag_current` follows the
-                            # latest evaluation, so a flagged stretch that recovers reads as such.
+                            # Reporting only. `overfit_flag` is the sticky "ever flagged" field;
+                            # `overfit_flag_current` follows the latest evaluation, so a flagged
+                            # stretch that recovers reads as such.
                             with contextlib.suppress(Exception):
                                 ever = (
                                     bool(wandb_run.summary.get("overfit_flagged_ever")) or flagged
@@ -1551,7 +1545,7 @@ def train(
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the FR->EN transformer (spec §6).")
+    parser = argparse.ArgumentParser(description="Train the FR->EN transformer.")
     parser.add_argument("--config", required=True, help="Path to a YAML config (configs/*.yaml).")
     parser.add_argument(
         "--resume", action="store_true", help="Resume from the latest checkpoint in ckpt.dir."
@@ -1640,7 +1634,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def build_eval_fn(cfg: TrainConfig, seed: int) -> EvalFn:
-    """The real spec §11 periodic eval hook (greedy BLEU/chrF + W&B sample table), or the no-op
+    """The real periodic eval hook (greedy BLEU/chrF + W&B sample table), or the no-op
     placeholder when the committed tokenizer is absent. Lives here, not only in nmt.pipeline,
     so `python -m nmt.train` (what the Colab notebook runs) logs the BLEU/chrF curves too.
 

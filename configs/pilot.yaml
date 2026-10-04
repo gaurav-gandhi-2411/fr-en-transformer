@@ -4,7 +4,7 @@ seed: 1234
 device: auto
 label_smoothing: 0.1
 
-# Main architecture (spec §5): 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
+# Main architecture: 8 enc / 4 dec, d=512, 8 heads, FFN 2048, vocab 16000.
 # ~50.2M params (measured: 50,229,248).
 model:
   vocab_size: 16000
@@ -37,9 +37,9 @@ optim:
   weight_decay: 0.01
   grad_clip: 1.0
   warmup_steps: 4000
-  planned_steps: 100000  # TBD from pilot — placeholder; the pilot's own run is wall-clock bounded
+  planned_steps: 100000  # placeholder; the pilot is bounded by max_minutes
   cooldown_frac: 0.2
-  max_minutes: 15  # spec §1: pilot budget
+  max_minutes: 15  # pilot budget
 
 ckpt:
   dir: runs/pilot/ckpt

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # CLI entry point wiring every phase together: prepare|tokenize|train|evaluate|predict|analyze|
 # export|all. Reproduce command:
-# `python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234`. Spec §2.
+# `python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234`.
 #
 # Each stage delegates to the already-tested module it wires up (nmt.data.prepare, nmt.data.
 # tokenize, nmt.train, nmt.hub, nmt.evaluate, nmt.translate, nmt.analysis, nmt.submission) rather
@@ -19,7 +19,12 @@ from nmt import tune as tune_mod
 from nmt.analysis import run_analysis
 from nmt.hub import export_checkpoint
 from nmt.train import _build_model_config, build_eval_fn, default_eval_fn, load_config, train
-from nmt.translate import Translator
+from nmt.translate import (
+    DEFAULT_ALPHA,
+    DEFAULT_BEAM,
+    DEFAULT_SEGMENT_THRESHOLD,
+    Translator,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STAGES = (
@@ -175,9 +180,9 @@ def stage_evaluate(
     run_name: str,
     ckpt_name: str,
     seed: int,
-    beam: int = 5,
-    alpha: float = 0.6,
-    segment_threshold: int | None = None,
+    beam: int = DEFAULT_BEAM,
+    alpha: float = DEFAULT_ALPHA,
+    segment_threshold: int | None = DEFAULT_SEGMENT_THRESHOLD,
     batch_size: int = 16,
     n_bootstrap: int = 1000,
     comet: bool = False,
@@ -214,10 +219,10 @@ def stage_predict(
     model_dir: Path,
     input_path: Path,
     output_path: Path,
-    beam: int = 5,
-    alpha: float = 0.6,
+    beam: int = DEFAULT_BEAM,
+    alpha: float = DEFAULT_ALPHA,
     batch_size: int = 32,
-    segment_threshold: int | None = None,
+    segment_threshold: int | None = DEFAULT_SEGMENT_THRESHOLD,
     validate: bool = True,
 ) -> dict[str, Any]:
     translator = Translator.from_pretrained(str(model_dir))
@@ -250,7 +255,7 @@ def stage_analyze(
     other_eval_json_paths: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     """Reads `{e1,e3,dev}_predictions.json` written by `stage_evaluate`/`run_evaluation` under
-    `eval_dir`, then runs the full spec §10 analysis. `other_eval_json_paths` (optional, `{label:
+    `eval_dir`, then runs the full analysis. `other_eval_json_paths` (optional, `{label:
     path}`) lets the length-bucket figure overlay multiple runs (e.g. S1 vs S2, once those
     exist)."""
     e1_pred = json.loads((eval_dir / "e1_predictions.json").read_text(encoding="utf-8"))
@@ -275,7 +280,7 @@ def stage_analyze(
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="fr-en-transformer pipeline (spec §2).")
+    parser = argparse.ArgumentParser(description="fr-en-transformer pipeline.")
     parser.add_argument("--config", type=Path, default=Path("configs/main.yaml"))
     parser.add_argument("--stage", choices=STAGES, required=True)
     parser.add_argument("--seed", type=int, default=1234)
@@ -289,10 +294,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", type=Path, default=None, help="Export dir for evaluate/predict.")
     parser.add_argument("--input", type=Path, default=REPO_ROOT / "data" / "test" / "inputs.jsonl")
     parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--beam", type=int, default=5)
-    parser.add_argument("--alpha", type=float, default=0.6)
+    parser.add_argument("--beam", type=int, default=DEFAULT_BEAM)
+    parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--segment-threshold", type=int, default=None)
+    parser.add_argument("--segment-threshold", type=int, default=DEFAULT_SEGMENT_THRESHOLD)
     parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--comet", action="store_true")
     parser.add_argument("--eval-dir", type=Path, default=None, help="For --stage analyze.")
@@ -341,11 +346,9 @@ def main(argv: list[str] | None = None) -> int:
         model_dir = export_dir or args.model
         if model_dir is None:
             raise ValueError("--stage evaluate requires --model (or run --stage export/all first)")
-        # `all` runs `tune` (spec section 7's E1/E2-only search) right before this, final
-        # `evaluate` -- its winning alpha/beam/segment_threshold replace the CLI defaults so the
-        # reported dev/E1/E2/E3 numbers are for the config tuning actually chose, not a fixed
-        # default. A standalone `--stage evaluate` run (no `tune` beforehand) keeps using the CLI
-        # flags, exactly as before.
+        # `all` runs `tune` (the E1/E2-only search) right before this, so its winning
+        # alpha/beam/segment_threshold replace the CLI defaults and the reported numbers are for
+        # the tuned config. A standalone `--stage evaluate` run keeps using the CLI flags.
         beam, alpha, segment_threshold = args.beam, args.alpha, args.segment_threshold
         if tune_result is not None:
             w = tune_result["winner"]
@@ -370,14 +373,18 @@ def main(argv: list[str] | None = None) -> int:
         if model_dir is None:
             raise ValueError("--stage predict requires --model (or run --stage export/all first)")
         out_path = args.output or (report_root / "test_predictions.json")
+        beam, alpha, segment_threshold = args.beam, args.alpha, args.segment_threshold
+        if tune_result is not None:  # as for `evaluate`: predict at the config tuning chose
+            w = tune_result["winner"]
+            beam, alpha, segment_threshold = w["beam"], w["alpha"], w["segment_threshold"]
         info = stage_predict(
             model_dir,
             args.input,
             out_path,
-            beam=args.beam,
-            alpha=args.alpha,
+            beam=beam,
+            alpha=alpha,
             batch_size=args.batch_size,
-            segment_threshold=args.segment_threshold,
+            segment_threshold=segment_threshold,
         )
         print(f"predict: wrote {out_path} ({info['n_ids']} ids), validated OK")
     if args.stage in ("analyze", "all"):

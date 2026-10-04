@@ -84,7 +84,8 @@ def test_ablation_and_pilot_and_main_ext_specifics() -> None:
     # Time-based only, like pilot.yaml: step checkpoints would pollute the throughput measurement.
     assert load_config(CONFIGS / "pilot_3070.yaml").ckpt.ckpt_steps is None
     main_ext, main = load_config(CONFIGS / "main_ext_3070.yaml"), load_config(CONFIGS / "main.yaml")
-    assert main_ext.optim.planned_steps == 2 * main.optim.planned_steps
+    assert main_ext.optim.planned_steps == 100000  # twice the original 50,000-step plan
+    assert main.optim.planned_steps == 24645  # the plan main was actually trained with
 
 
 def test_ablation_configs_agree_on_everything_that_must_be_identical() -> None:

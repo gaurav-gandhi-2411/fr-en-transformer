@@ -1,8 +1,0 @@
-CKPT_SAVED step=10 rng_fingerprint=c917be362b34 path=<work>\cuda\ckpt\step_00000010.pt
-OOM_ABORT step=17 last_ckpt_step=10
-RESUMED step=10 rng_fingerprint=c917be362b34 matches_saved=True
-RESUME_CONTEXT last_losses=[10.339033, 10.364298, 10.233318]
-POST_RESUME losses=[10.290013, 10.24109, 10.282877]
-CKPT_SAVED step=20 rng_fingerprint=7fbd8e5e0b5a path=<work>\cuda\ckpt\step_00000020.pt
-CKPT_SAVED step=30 rng_fingerprint=c297652e9260 path=<work>\cuda\ckpt\step_00000030.pt
-CKPT_SAVED step=40 rng_fingerprint=5aaa946ae320 path=<work>\cuda\ckpt\step_00000040.pt

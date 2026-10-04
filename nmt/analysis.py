@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Automatic error taxonomy + generalization-gap decomposition: per-sentence features, OLS gap
 # decomposition with HC3 robust SEs, metric-artifact share, figures, and 6 auto-selected worst-
-# chrF examples. No manual labeling, no LLM judges. Spec §10.
+# chrF examples. No manual labeling, no LLM judges.
 import json
 import re
 from collections import defaultdict
@@ -42,7 +42,7 @@ def _ngrams(tokens: list[str], n: int) -> list[tuple[str, ...]]:
 
 
 # -------------------------------------------------------------------------------------------
-# Per-sentence features (spec §10)
+# Per-sentence features
 # -------------------------------------------------------------------------------------------
 
 
@@ -68,7 +68,7 @@ def repetition_rate(hyp: str, n: int = 3) -> float:
 
 
 def is_truncated(hyp: str, ref: str) -> bool:
-    """spec §10: hyp/ref length < 0.5."""
+    """True when hyp/ref length ratio is below 0.5."""
     h, r = len(_words(hyp)), len(_words(ref))
     return r > 0 and h < 0.5 * r
 
@@ -121,7 +121,7 @@ def proper_noun_copy_accuracy(source: str, hyp: str) -> float | None:
 
 def dialogue_punct_density(source: str) -> float:
     """Punctuation characters per source character (dashes/quotes are the dominant dialogue
-    markers in literary French, so this doubles as a dialogue-density proxy per spec §10)."""
+    markers in literary French, so this doubles as a dialogue-density proxy)."""
     if not source:
         return 0.0
     return len(_PUNCT_RE.findall(source)) / len(source)
@@ -177,14 +177,14 @@ def build_sentence_features(
 
 
 # -------------------------------------------------------------------------------------------
-# Gap decomposition (spec §10)
+# Gap decomposition
 # -------------------------------------------------------------------------------------------
 
 
 def gap_decomposition(features: list[SentenceFeatures]) -> dict[str, Any]:
     """OLS of sentence chrF on [|length_ratio - 1|, repetition_rate, -log1p(src_rarity_mean),
     dialogue_punct_density, domain_indicator] over E1 (domain="e1") union E3 (domain="e3"), HC3
-    robust SEs (spec §10).
+    robust SEs.
 
     Gap share attributable to each covariate = its OLS coefficient * (E1 mean - E3 mean) of that
     covariate -- a single-regression linear decomposition (not a full two-group Oaxaca-Blinder
@@ -238,14 +238,14 @@ def gap_decomposition(features: list[SentenceFeatures]) -> dict[str, Any]:
 
 
 # -------------------------------------------------------------------------------------------
-# Metric-artifact share (spec §10)
+# Metric-artifact share
 # -------------------------------------------------------------------------------------------
 
 
 def normalize_reference_for_artifact_check(ref: str) -> str:
     """Unify apostrophes/quotes (`nmt.data.normalize.normalize_text`) and additionally strip a
-    stray trailing quote character (spec §10). References only -- outputs are never tuned to
-    match this."""
+    stray trailing quote character. References only -- outputs are never tuned to match
+    this."""
     r = normalize_text(ref).rstrip()
     while r and r[-1] in "\"'":
         r = r[:-1].rstrip()
@@ -255,7 +255,7 @@ def normalize_reference_for_artifact_check(ref: str) -> str:
 def metric_artifact_share(rows: list[dict[str, str]]) -> dict[str, Any]:
     """`rows`: `[{"id", "hyp", "reference"}, ...]`. Rescores after normalizing references only;
     the delta is the part of the seen/unseen gap attributable to reference noise rather than the
-    model (spec §10, a diagnostic -- never used to tune outputs)."""
+    model (a diagnostic -- never used to tune outputs)."""
     module = load_official_module()
     hyps = [r["hyp"] for r in rows]
     refs = [r["reference"] for r in rows]
@@ -273,7 +273,7 @@ def metric_artifact_share(rows: list[dict[str, str]]) -> dict[str, Any]:
 
 
 # -------------------------------------------------------------------------------------------
-# Figures (spec §10)
+# Figures
 # -------------------------------------------------------------------------------------------
 
 _LENGTH_BUCKET_ORDER = ("<=10", "11-20", "21-40", "41-80", ">80")
@@ -288,7 +288,7 @@ def _e2synth_chrf_by_bucket(ev: dict[str, Any]) -> dict[str, dict[str, float]]:
 
 
 def figure_chrf_vs_length_bucket(eval_jsons: dict[str, dict[str, Any]], out_path: Path) -> Path:
-    """One line per run (accepts multiple `eval.json`s so S1 vs S2 can be overlaid, spec §10),
+    """One line per run (accepts multiple `eval.json`s so S1 vs S2 can be overlaid),
     reading each run's `length_buckets_e1_e2_e3` view. If any run carries an E2-synth entry, a
     second, separately labelled panel plots E2-synth (synthetic; reuses E2 sentences) chrF by
     French char bucket with bootstrap CIs -- never mixed into the E1+E2+E3 word-bucket panel."""
@@ -451,7 +451,7 @@ def rarity_bucket_chrf(
 
 
 # -------------------------------------------------------------------------------------------
-# Example selection (spec §10)
+# Example selection
 # -------------------------------------------------------------------------------------------
 
 
@@ -471,7 +471,7 @@ def select_worst_examples(
     n_per_slice: int = 2,
 ) -> list[dict[str, Any]]:
     """6 examples (2 per dev slice), the worst-chrF sentences in each slice, auto-tagged with a
-    failure type (spec §10)."""
+    failure type."""
     by_slice: dict[str, list[SentenceFeatures]] = defaultdict(list)
     for f in dev_features:
         by_slice[dev_rows_by_id[f.id]["slice"]].append(f)
@@ -535,7 +535,7 @@ def run_analysis(
     cfg: AnalysisConfig | None = None,
 ) -> dict[str, Any]:
     """Build features over E1 union E3, fit the gap-decomposition OLS, compute the metric-
-    artifact share (dev's unseen_domain slice, and E3), render the three spec §10 figures, select
+    artifact share (dev's unseen_domain slice, and E3), render the three figures, select
     6 worst-chrF dev examples, and write `analysis.json` + `examples.json` + `figures/*.png`
     under `out_dir`.
     """

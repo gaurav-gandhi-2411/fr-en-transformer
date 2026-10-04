@@ -15,6 +15,7 @@ import pytest
 import nmt.comet_stage as cs
 import nmt.eval_l4 as ev
 import nmt.final_all as fa
+from tests.conftest import is_missing_package_failure
 from tests.test_colab_ablations_l4 import NOTEBOOK, REPO_ROOT, SUMMARY, _exec
 from tests.test_colab_eval_l4 import (
     EVAL_HELPERS,
@@ -30,6 +31,19 @@ from tests.test_colab_eval_l4 import (
 PURE = {"plan", "estimate", "estimate-measured", "comet-plan"}
 
 
+def _run_pure(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run a pure `nmt.final_all` subcommand for real; skip (not fail) when it stops because a
+    file of the non-redistributed evaluation package (data/dev/inputs.jsonl) is absent. The skip
+    happens in the fake runner, before the notebook cell wraps the error into a RuntimeError the
+    conftest guard could no longer classify."""
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, cwd=REPO_ROOT, check=True)
+    except subprocess.CalledProcessError as exc:
+        if is_missing_package_failure(exc):
+            pytest.skip(f"evaluation package file absent: {argv[-1]} needs data/dev/inputs.jsonl")
+        raise
+
+
 class Recorder(FakeRunStep):
     """FakeRunStep that runs the three pure `nmt.final_all` subcommands for real (they only read
     files and print) and records every call. `calls` holds only the other steps."""
@@ -41,13 +55,13 @@ class Recorder(FakeRunStep):
     def __call__(self, step: str, argv: list[str], **kwargs: Any) -> str:
         if step.startswith("summary["):
             self.pure.append(("summary", list(argv)))
-            done = subprocess.run(argv, capture_output=True, text=True, cwd=REPO_ROOT, check=True)
+            done = _run_pure(argv)
             print(done.stdout, end="")
             return done.stdout
         name = step.removeprefix("eval[").removesuffix("]").partition(":")[2]
         if name in PURE:
             self.pure.append((name, list(argv)))
-            done = subprocess.run(argv, capture_output=True, text=True, cwd=REPO_ROOT, check=True)
+            done = _run_pure(argv)
             if kwargs.get("stream"):
                 print(done.stdout, end="")
             return done.stdout.strip()
@@ -602,7 +616,10 @@ def test_ci_dry_runs_the_final_all_wiring_and_the_notebook_tag_is_the_final_eval
     nb = nbformat.read(NOTEBOOK, as_version=4)
     params = next(c.source for c in nb.cells if c.id == "c5459372")
     assert 'GIT_REF = "v0.3.1-colab"' in params and "ALLOW_BRANCH = False" in params
-    runbook = (REPO_ROOT / "RUNBOOK.md").read_text(encoding="utf-8")
+    runbook_path = REPO_ROOT / "RUNBOOK.md"
+    if not runbook_path.exists():  # the runbook is not part of the public repository
+        pytest.skip("RUNBOOK.md absent")
+    runbook = runbook_path.read_text(encoding="utf-8")
     assert '`RUN = "final_all"`' in runbook and "<FINAL_TAG>" in runbook
     assert "v0.3.1-colab" in runbook
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-# Launcher for `python -m nmt.train` that merges a preflight YAML into the W&B run config
-# WITHOUT touching nmt/. Why a launcher and not the env var: with wandb 0.30 the documented
+# Launcher for `python -m nmt.train` that merges a preflight YAML into the W&B run config.
+# Why a launcher and not the env var: with wandb 0.30 the documented
 # `WANDB_CONFIG_PATHS` env var is NOT split into a list, pydantic rejects the bare string
 # ("'str' instances are not allowed as a Sequence value") and nmt.train then silently continues
 # WITHOUT W&B logging -- so the notebook must never set it. `wandb.setup(settings=Settings(

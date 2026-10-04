@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-# The STAGE-1 INTERIM RESULT of the final_all session (GG requirement): right after `stage1-select`
-# and BEFORE any stage-2 step, the session saves, validates and uploads the test predictions of the
-# stage-1 WINNER (rank 1 model set at its stage-1 tuned beam config), so a usable submission exists
-# if the session is interrupted later. Steps (names in the plan):
+# The stage-1 interim result of the final_all session: right after `stage1-select` and before
+# any stage-2 step, the session saves, validates and uploads the test predictions of the stage-1
+# winner (rank 1 model set at its tuned beam config), so a usable submission exists if the
+# session is interrupted later. Steps:
 #   decode-stage1-test    decode ONLY the 330 test sentences -> <eval>/stage1_interim/
 #                         test_predictions.json (+ decode_meta.json naming candidate and config)
 #   validate-stage1-test  nmt.eval_l4 validate-test on that file -> stage1_interim/validation.json

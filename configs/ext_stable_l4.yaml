@@ -1,4 +1,4 @@
-# Extension step (i) (PREREG 2026-10-02 post-selection amendment, rule 4): continue the main run's
+# Extension step (i): continue the main run's
 # STABLE phase from runs/main/ckpt/step_00019000.pt (main's decay starts at 19,716) at the stable
 # LR to 40,000 steps, in a NEW run directory, W&B group extend_l4. Started with
 # `--init-from <Drive>/runs/main/ckpt/step_00019000.pt` (colab/train.ipynb CONFIG="extend_l4").
@@ -60,7 +60,7 @@ ckpt:
   ckpt_steps: null
   keep_last: 2  # the rolling resume checkpoints; the two milestones below are kept on top
   keep_decay_phase: false  # nothing is decayed in this run
-  milestone_steps: [30000, 40000]  # PREREG rule 4: the stable checkpoints Branch A / B start from
+  milestone_steps: [30000, 40000]  # the stable checkpoints Branch A / B start from
 
 logging:
   wandb_mode: offline
@@ -71,4 +71,4 @@ logging:
 
 eval:
   eval_every: 500  # same as main
-  overfit_watch: true  # PREREG rule 4: flag 2 consecutive E1 val-loss rises above the running min
+  overfit_watch: true  # flag 2 consecutive E1 val-loss rises above the running min

@@ -6,11 +6,19 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from nmt.submission import DEFAULT_SAMPLE_PATH, validate_submission
 
 SUBMISSION = Path(__file__).resolve().parents[1] / "submission" / "test_predictions_v1.json"
 # sha256 of main's test_predictions.json at HF revision c3d8598 (= validation.json pred_sha256).
 EXPECTED_SHA256 = "a7078d9a07dd9daad2ffd84197446fe3687bcd9efd6565375b19ceec4f61f361"
+
+# The public repo does not carry the submission (nor the sample it is validated against).
+pytestmark = pytest.mark.skipif(
+    not (SUBMISSION.is_file() and DEFAULT_SAMPLE_PATH.is_file()),
+    reason="submission/test_predictions_v1.json or the sample submission is not in this checkout",
+)
 
 
 def test_submission_v1_validates_against_sample() -> None:

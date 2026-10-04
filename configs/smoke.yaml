@@ -1,12 +1,12 @@
 name: smoke
 group: smoke
 seed: 1234
-device: cpu  # spec §14 P3 gate: smoke runs on CPU regardless of what's locally available
+device: cpu  # P3 gate: smoke runs on CPU regardless of what's locally available
 label_smoothing: 0.1
 
 # ~2.7M params (measured: `Transformer(ModelConfig(**model)).param_count()` == 2,709,632).
-# vocab=16000 alone makes the tied embedding 2.05M (spec §5 fixes vocab at 16k), so "about 2M"
-# from spec §14's P3 gate is read as "as small as sensible above that floor" — d=128/2 enc/1 dec
+# vocab=16000 alone makes the tied embedding 2.05M, so "about 2M"
+# from the smoke-test target is read as "as small as sensible above that floor" — d=128/2 enc/1 dec
 # keeps the rest of the network small relative to the embedding.
 model:
   vocab_size: 16000

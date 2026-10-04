@@ -50,11 +50,17 @@ jobs:
 
       # The scorer-encoding tests guard the Windows/UTF-8 scoring path; a silent skip would hide a
       # regression, so show every test as PASSED/FAILED in the log and fail on any SKIPPED line.
+      # The challenge's evaluation package (official/score.py) is not redistributed, so a checkout
+      # without it (the public repo) skips this step; where the package exists it must run.
       - name: Scorer-encoding tests, verbose (must run, not skip)
         if: matrix.python-version == '3.12'
         shell: bash
         run: |
           set -eo pipefail
+          if [ ! -f official/score.py ]; then
+            echo "official/score.py absent (public checkout): scorer-encoding step not applicable"
+            exit 0
+          fi
           uv run pytest tests/test_scorer_encoding.py tests/test_official_scorer.py -v -rs \
             | tee "$RUNNER_TEMP/scorer_encoding.log"
           if grep -q " SKIPPED" "$RUNNER_TEMP/scorer_encoding.log"; then
@@ -169,7 +175,7 @@ jobs:
               || { echo "final_all dry run lacks: $needle" >&2; exit 1; }
           done
 
-      # CONFIG="extend_l4" (PREREG rule 4: stable 19k -> 40k, Branch A, Branch B in one Colab
+      # CONFIG="extend_l4" (stable 19k -> 40k, Branch A, Branch B in one Colab
       # session) executed end to end as a DRY RUN: the input-checkpoint check (MISSING on this
       # host, reported not fatal in a dry run), each run's plan and exact argv (--init-from only on
       # a fresh run) and the labelled ESTIMATE are printed; nothing is trained.

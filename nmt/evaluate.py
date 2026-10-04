@@ -5,7 +5,7 @@ from __future__ import annotations
 # bootstrap resampling, without ever modifying official/score.py), sacreBLEU BLEU/chrF/chrF++
 # with signatures, optional COMET-22 (eval-only, isolated env, never used for selection),
 # bootstrap 95% CIs and paired bootstrap A/B comparisons, reported by slice / length bucket /
-# E-set. Spec §8.
+# E-set.
 import importlib.util
 import json
 import math
@@ -45,7 +45,7 @@ _official_module_cache: ModuleType | None = None
 
 def load_official_module() -> ModuleType:
     """Import `official/score.py`'s functions in-process via `importlib`, without ever editing
-    the vendored file (spec §2/§8: run it "exactly as shipped"; sha256-checked separately in
+    the vendored file (run "exactly as shipped"; sha256-checked separately in
     `tests/test_official_scorer.py`). Cached after first import.
     """
     global _official_module_cache
@@ -95,8 +95,8 @@ def run_official_scorer(
 
 
 def run_official_scorer_cli(gold_path: Path, pred_path: Path, out_path: Path) -> dict[str, Any]:
-    """Run `official/score.py` exactly as shipped via `run_official_scorer` (the primary metric,
-    spec §8), parsing the `--out` JSON report it writes."""
+    """Run `official/score.py` exactly as shipped via `run_official_scorer` (the primary metric),
+    parsing the `--out` JSON report it writes."""
     run_official_scorer(gold_path, pred_path, out_path)
     return json.loads(out_path.read_text(encoding="utf-8"))
 
@@ -105,7 +105,7 @@ def compute_official_metrics(pred: dict[str, str], gold_rows: list[dict]) -> dic
     """In-process re-derivation of `official/score.py::main`'s report (same `{"all", "OVERALL",
     "by_slice"}` shape), calling the *same* imported functions on the *same* inputs the CLI would
     see -- `tests/test_evaluate.py` checks this equals `run_official_scorer_cli`'s output exactly
-    on a fixed prediction set (spec §12).
+    on a fixed prediction set.
     """
     module = load_official_module()
     gold = {r["id"]: r for r in gold_rows}
@@ -132,7 +132,7 @@ def compute_official_metrics(pred: dict[str, str], gold_rows: list[dict]) -> dic
 
 
 def sacrebleu_metrics(hyps: list[str], refs: list[str]) -> dict[str, Any]:
-    """sacreBLEU BLEU, chrF and chrF++ with their reproducibility signatures (spec §8)."""
+    """sacreBLEU BLEU, chrF and chrF++ with their reproducibility signatures."""
     bleu = sacrebleu.BLEU()
     chrf = sacrebleu.CHRF()
     chrfpp = sacrebleu.CHRF(word_order=2)
@@ -158,8 +158,7 @@ def sacrebleu_metrics(hyps: list[str], refs: list[str]) -> dict[str, Any]:
 # Bootstrap CIs resample *sentence indices* with replacement and recompute a corpus-level metric
 # on each resample. Recomputing BLEU/chrF from raw strings (retokenizing, rebuilding n-gram
 # Counters) on every resample is what made 1000 resamples on E1 (1940 sentences) take several
-# minutes per split per metric (see PLAN.md's smoke-gate deviation note -- `n_bootstrap` had to be
-# cut to 200/100 there). The fix: compute per-sentence *sufficient statistics* ONCE, using
+# minutes per split per metric. The fix: compute per-sentence *sufficient statistics* ONCE, using
 # `official/score.py`'s own `wtok`/`ngrams`/`chrf_sentence` (via `load_official_module`, never
 # reimplemented), then each resample is a vectorized numpy gather-and-sum/mean over those
 # precomputed statistics instead of a re-tokenization.
@@ -299,7 +298,7 @@ def _chrf_resample(chrf_vals: np.ndarray, idx: np.ndarray) -> np.ndarray:
 class _VectorizableMetric:
     """A metric function paired with the sufficient-statistics machinery needed to vectorize its
     own bootstrap resampling. `bootstrap_ci`/`paired_bootstrap` use the fast numpy path below
-    whenever `metric_fn` is one of these (the official BLEU/chrF metrics, spec §8); any other
+    whenever `metric_fn` is one of these (the official BLEU/chrF metrics); any other
     callable (e.g. a caller's own ad hoc scorer, as used directly in some tests) falls back to the
     generic, slower, always-correct per-resample Python loop -- the public bootstrap API is
     unchanged either way.
@@ -346,7 +345,7 @@ def _official_metric_fn(metric: str) -> _VectorizableMetric:
 
 
 def _resample_indices(n: int, n_resamples: int, seed: int) -> np.ndarray:
-    """`(n_resamples, n)` sentence indices drawn with replacement (spec §8)."""
+    """`(n_resamples, n)` sentence indices drawn with replacement."""
     return np.random.default_rng(seed).integers(0, n, size=(n_resamples, n))
 
 
@@ -357,7 +356,7 @@ def bootstrap_ci(
     n_resamples: int = 1000,
     seed: int = 1234,
 ) -> dict[str, Any]:
-    """Bootstrap 95% CI (spec §8: 1000 resamples, seeded) for a corpus-level metric. Resamples
+    """Bootstrap 95% CI (1000 resamples, seeded) for a corpus-level metric. Resamples
     *sentence indices* (paired hyp/ref) with replacement and recomputes the corpus metric on each
     resample -- correct for non-additive corpus metrics like BLEU, unlike averaging per-sentence
     values. When `metric_fn` is a `_VectorizableMetric` (the official BLEU/chrF), resampling is
@@ -418,9 +417,9 @@ def bootstrap_ci_by_group(
     n_resamples: int = 1000,
     seed: int = 1234,
 ) -> dict[str, dict[str, Any]]:
-    """Per-group bootstrap 95% CI for an official BLEU/chrF metric (spec §8: "per slice and
-    metric"). `groups[i]` labels `hyps[i]`/`refs[i]`'s official slice, E-set or length bucket;
-    each group's CI resamples only that group's own sentence indices (not the pooled corpus), so
+    """Per-group bootstrap 95% CI for an official BLEU/chrF metric.
+    `groups[i]` labels `hyps[i]`/`refs[i]`'s official slice, E-set or length bucket; each
+    group's CI resamples only that group's own sentence indices (not the pooled corpus), so
     it reflects that slice's own sample size -- not a decomposition of one pooled CI. The point
     estimate per group is `official/score.py`'s own metric on that group (identical to
     `compute_official_metrics`'s `by_slice` values, just with a CI attached).
@@ -468,7 +467,7 @@ def bootstrap_official_overall(
     bleu_samples = _bleu_resample(bleu_stats, idx)
     chrf_gathered = chrf_vals[idx]  # (n_resamples, n)
     chrf_all_samples = chrf_gathered.mean(axis=1)
-    unseen_mask = is_unseen[idx]  # (n_resamples, n) -- same resample indices, per spec §8
+    unseen_mask = is_unseen[idx]  # (n_resamples, n) -- same resample indices
     unseen_count = unseen_mask.sum(axis=1)
     with np.errstate(divide="ignore", invalid="ignore"):
         chrf_unseen_masked = (chrf_gathered * unseen_mask).sum(axis=1) / np.where(
@@ -494,7 +493,7 @@ def paired_bootstrap(
     """Paired bootstrap resampling (Koehn 2004) for an A/B comparison: Delta = metric(A) -
     metric(B), a 95% CI on Delta, and a one-sided p-value (the fraction of resamples where B's
     score meets or exceeds A's -- evidence *against* "A is better"). Used for ablations and
-    decoding-option comparisons (spec §8/§9). The SAME resample indices are used for both systems
+    decoding-option comparisons. The SAME resample indices are used for both systems
     in every resample (required for a valid paired test) -- true of both the vectorized and the
     generic fallback path below. Fast-pathed via sufficient statistics when `metric_fn` is a
     `_VectorizableMetric` (the official BLEU/chrF); any other callable falls back to a plain
@@ -555,7 +554,7 @@ def paired_bootstrap(
 
 
 def length_bucket_label(n_words: int) -> str:
-    """Source-length-in-words bucket label (spec §8: <=10, 11-20, 21-40, 41-80, >80)."""
+    """Source-length-in-words bucket label: <=10, 11-20, 21-40, 41-80, >80."""
     if n_words <= 10:
         return "<=10"
     if n_words <= 20:
@@ -573,9 +572,8 @@ def length_bucket_view(
     n_resamples: int = 1000,
     seed: int = 1234,
 ) -> dict[str, Any]:
-    """`rows`: [{id, source, reference}, ...] pooled across E1+E2+E3 (spec §8). Returns official
-    BLEU/chrF per non-empty length bucket, each with a bootstrap 95% CI (`bleu_ci`/`chrf_ci`,
-    spec §8: "per slice and metric" -- length buckets are a reported view alongside slices/E-sets)
+    """`rows`: [{id, source, reference}, ...] pooled across E1+E2+E3. Returns official
+    BLEU/chrF per non-empty length bucket, each with a bootstrap 95% CI (`bleu_ci`/`chrf_ci`)
     computed on that bucket's own sentences."""
     buckets: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for row in rows:
@@ -602,7 +600,7 @@ def length_bucket_view(
 
 
 # -------------------------------------------------------------------------------------------
-# COMET (eval-only; isolated env via envs/comet, spec §8)
+# COMET (eval-only; isolated env via envs/comet)
 # -------------------------------------------------------------------------------------------
 
 COMET_ENV_DIR = REPO_ROOT / "envs" / "comet"
@@ -618,7 +616,7 @@ def run_comet(
     """Score `triples` (each `{"src", "mt", "ref"}`) with COMET-22 (`Unbabel/wmt22-comet-da`) by
     shelling out to the isolated `envs/comet` uv project (`unbabel-comet` does not co-resolve
     with this repo's pinned torch/numpy -- see pyproject.toml). Eval-only: never used for
-    checkpoint/decoding selection (spec §8, §15). Raises `RuntimeError` with the subprocess's
+    checkpoint/decoding selection. Raises `RuntimeError` with the subprocess's
     stderr on failure -- never silently fabricates a score. `gpus` forces the device
     (0 = CPU, 1 = one GPU).
     """
@@ -660,7 +658,7 @@ def run_comet(
 @dataclass
 class EvalRunConfig:
     """Decoding + statistics config for one `run_evaluation` call. Recorded verbatim in eval.json
-    ("decoding config", spec §8)."""
+    ("decoding config")."""
 
     beam_size: int = 5
     alpha: float = 0.6
@@ -726,7 +724,7 @@ def score_split_predictions(
         "official": official,
         "official_bleu_ci": bootstrap_ci_official(hyps, refs, "bleu", n_bootstrap, seed),
         "official_chrf_ci": bootstrap_ci_official(hyps, refs, "chrf", n_bootstrap, seed),
-        # Per-slice CIs (spec §8: "per slice and metric") -- every official dev slice
+        # Per-slice CIs -- every official dev slice
         # (seen/long/unseen_domain), and, for e1/e2/e3, the (single) E-set slice itself.
         "official_ci_by_slice": {
             "bleu": bootstrap_ci_by_group(hyps, refs, slices, "bleu", n_bootstrap, seed),
@@ -755,7 +753,7 @@ def run_evaluation(
 ) -> dict[str, Any]:
     """Translate every `splits` entry with `translator`, score it (official + sacreBLEU +
     bootstrap CIs), build the length-bucket view over E1+E2+E3, optionally run COMET, and write
-    `reports/<run_name>/<ckpt_name>/eval.json` + each split's predictions (spec §8 output shape).
+    `reports/<run_name>/<ckpt_name>/eval.json` + each split's predictions.
     """
     out_dir = out_dir or (REPO_ROOT / "reports" / run_name / ckpt_name)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -852,14 +850,14 @@ def run_evaluation(
 
 
 # -------------------------------------------------------------------------------------------
-# nmt.train's periodic eval hook (spec §11)
+# nmt.train's periodic eval hook
 # -------------------------------------------------------------------------------------------
 
 
 @dataclass
 class TrainEvalConfig:
     """Config for the cheap, periodic eval hook `nmt.train.train`'s loop calls every
-    `eval.eval_every` steps (spec §11). Fixed, seeded subsets (not full splits) keep this
+    `eval.eval_every` steps. Fixed, seeded subsets (not full splits) keep this
     affordable during training; `smoke.yaml`-style configs pass small `*_n` values.
     """
 
@@ -876,7 +874,7 @@ class TrainEvalConfig:
 
 
 def build_train_eval_fn(cfg: TrainEvalConfig) -> Callable[[Any, int, Any], dict[str, Any]]:
-    """Build an `nmt.train.EvalFn`: greedy BLEU/chrF (the official §8 functions, via
+    """Build an `nmt.train.EvalFn`: greedy BLEU/chrF (the official scoring functions, via
     `load_official_module`) on fixed seeded subsets of E1[cfg.e1_n]/E2[cfg.e2_n], the *whole*
     official dev set by slice, and E3[cfg.e3_n] (reporting only -- every E3 metric key is
     prefixed `e3_reporting_only_` so it can never be mistaken for a selection signal downstream).

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# GPU micro-batch probe (spec §14 P5): on CUDA, builds the main architecture (spec §5 / configs/
+# GPU micro-batch probe: on CUDA, builds the main architecture (configs/
 # main.yaml's model section) and tries increasing micro-batch token counts with autocast at the
 # training precision (default `auto` = bf16 on the 3070, fp16 on a T4; same resolution and TF32 /
 # deterministic-cuBLAS setup as nmt.train, so the measured memory matches a real run)
@@ -39,7 +39,7 @@ from nmt.train import (  # noqa: E402
     seed_everything,
 )
 
-DEFAULT_HEADROOM = 0.15  # spec §14 P5: "reports the max that fits with 15% headroom" -- real
+DEFAULT_HEADROOM = 0.15  # "reports the max that fits with 15% headroom" -- real
 # training also carries dataloader/CUDA-context/fragmentation overhead beyond a single probed
 # forward+backward, so the reported safe max deliberately undershoots the raw OOM boundary.
 DEFAULT_CANDIDATE_TOKEN_COUNTS = (1024, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576, 32768)
@@ -65,7 +65,7 @@ class ProbeResult:
 
 
 def build_main_model(vocab_size: int = 16000) -> Transformer:
-    """Main architecture (spec §5 / configs/main.yaml): 8 enc / 4 dec, d=512, 8 heads, FFN 2048."""
+    """Main architecture (configs/main.yaml): 8 enc / 4 dec, d=512, 8 heads, FFN 2048."""
     cfg = ModelConfig(
         vocab_size=vocab_size,
         d_model=512,
@@ -188,7 +188,7 @@ def write_result(result: ProbeResult, out_path: str | Path) -> Path:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Probe the largest micro-batch (in tokens) that fits on this GPU for the "
-        "main architecture at the training precision, with a memory headroom margin (spec §14 P5)."
+        "main architecture at the training precision, with a memory headroom margin."
     )
     parser.add_argument("--out", type=Path, default=None, help="Optional path to write probe.json.")
     parser.add_argument("--headroom", type=float, default=DEFAULT_HEADROOM)

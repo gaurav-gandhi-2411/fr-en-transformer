@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-# Synthetic copy-task shard generator: writes shard npz files that conform exactly to the P2
-# shard contract (PLAN.md "Interface contracts") without requiring real prepared/tokenized data.
-# Used by `nmt.train --synthetic` for CPU dry runs before real shards exist (spec §14 P3 gate:
-# "smoke config shows loss decreasing"), and by tests/fixtures.py for fast, deterministic unit
-# tests against nmt/data/loader.py and nmt/model/transformer.py.
+# Synthetic copy-task shard generator: writes shard npz files that conform exactly to the real
+# shard format without requiring prepared/tokenized data. Used by `nmt.train --synthetic` for
+# CPU dry runs, and by tests/fixtures.py for fast, deterministic unit tests against
+# nmt/data/loader.py and nmt/model/transformer.py.
 from pathlib import Path
 
 import numpy as np
 
-# Content token ids start after the 4 special ids (pad=0, unk=1, bos=2, eos=3), per PLAN.md's
-# SentencePiece id contract — synthetic examples must never accidentally emit a special id as
-# "real" content, or the loader's BOS/EOS bookkeeping would be ambiguous.
+# Content token ids start after the 4 special ids (pad=0, unk=1, bos=2, eos=3) —
+# synthetic examples must never accidentally emit a special id as "real" content, or the
+# loader's BOS/EOS bookkeeping would be ambiguous.
 _FIRST_CONTENT_ID = 4
 
 

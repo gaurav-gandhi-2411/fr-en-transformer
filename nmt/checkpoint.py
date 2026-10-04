@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 # Checkpoint averaging: average model weights across the last N checkpoints (Vaswani et al.
-# 2017), typically the decay-phase checkpoints saved during the WSD schedule's cooldown. Spec §6,
-# §9. Kept separate from nmt/train.py so `nmt.evaluate`/`nmt.hub` (P4/export) can average and
-# load a champion checkpoint without importing the training loop.
+# 2017), typically the decay-phase checkpoints saved during the WSD schedule's cooldown.
+# Kept separate from nmt/train.py so `nmt.evaluate`/`nmt.hub` can average and load a checkpoint
+# without importing the training loop.
 from pathlib import Path
 
 import torch

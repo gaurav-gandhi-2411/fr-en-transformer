@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # Public production API and CLI: `Translator.from_pretrained(path_or_repo_id).translate(...)`.
 # Applies the same normalization as training, calls decode.py, and reports batched inference
-# latency/throughput. Spec §7.
+# latency/throughput.
 #
 # CLI: `python -m nmt.translate --model DIR --input data/test/inputs.jsonl --output preds.json
 # [--beam 5 --alpha 0.6 --batch-size 32 --segment-threshold T]`.
@@ -25,11 +25,17 @@ from nmt.mbr import MBRConfig, beam_pool, mbr_select, sample_pool
 
 FallbackKind = str  # "beam" | "greedy" | "copy"
 
+# Defaults are the shipped configuration: the decoding settings chosen on E1 + E2 for the
+# released model (alpha 1.2 is the top of the grid that was searched).
+DEFAULT_BEAM = 5
+DEFAULT_ALPHA = 1.2
+DEFAULT_SEGMENT_THRESHOLD = 192
+
 
 @dataclass
 class TranslatorStats:
-    """Running counts of how each output was produced (spec §7: "never emit an empty string",
-    counts of each fallback logged)."""
+    """Running counts of how each output was produced (an output is never empty; each fallback
+    is counted)."""
 
     n_total: int = 0
     n_beam: int = 0
@@ -71,7 +77,7 @@ class Translator:
     """The production translation API: `Translator.from_pretrained(dir_or_repo_id).translate(...)`.
     Applies `normalize_text` to every input (the same normalization used at train time),
     length-sorts for efficient batching, restores input order, and guarantees a non-empty output
-    per input via the beam -> greedy -> normalized-source-copy fallback chain (spec §7).
+    per input via the beam -> greedy -> normalized-source-copy fallback chain.
     """
 
     def __init__(self, model: NMTModel, sp: spm.SentencePieceProcessor, device: torch.device):
@@ -146,10 +152,8 @@ class Translator:
                     outputs[i], kinds[i] = text, "greedy"
                 else:
                     # Final fallback: the normalized source itself, flagged so callers can count
-                    # it (spec §7: "output the normalized source with a copy flag ... logged and
-                    # counted"). If even the normalized source is empty/whitespace (a pathological
-                    # empty input), a single space is the only way to honor "never emit an empty
-                    # string" -- documented here since spec §7 does not cover empty-input inputs.
+                    # it. If even that is empty/whitespace (an empty input), a single space is
+                    # the only way to honor "never emit an empty string".
                     outputs[i] = texts[i].strip() or " "
                     kinds[i] = "copy"
 
@@ -206,9 +210,9 @@ class Translator:
         self,
         texts: list[str],
         batch_size: int = 32,
-        beam: int = 5,
-        alpha: float = 0.6,
-        segment_threshold: int | None = None,
+        beam: int = DEFAULT_BEAM,
+        alpha: float = DEFAULT_ALPHA,
+        segment_threshold: int | None = DEFAULT_SEGMENT_THRESHOLD,
         no_repeat_ngram_size: int = 3,
         mbr: MBRConfig | None = None,
     ) -> list[str]:
@@ -216,9 +220,10 @@ class Translator:
 
         `segment_threshold`: sources whose subword token count exceeds this are split on
         sentence punctuation (`nmt.decode.split_sentences`), each segment translated
-        independently, and the results joined with a space (spec §7). `None` (default) disables
-        segmentation entirely. `mbr` (default None = plain beam search, unchanged) switches each
-        segment to MBR decoding over the pool it describes; `beam` is then unused.
+        independently, and the results joined with a space. `None` disables segmentation.
+        The defaults (beam 5, alpha 1.2, threshold 192) are the shipped configuration.
+        `mbr` (default None = plain beam search) switches each segment to MBR decoding over the
+        pool it describes; `beam` is then unused.
         """
         normalized = [normalize_text(t) for t in texts]
 
@@ -266,11 +271,11 @@ def model_size_mb(model: NMTModel) -> float:
 
 @dataclass
 class BenchmarkResult:
-    """Production benchmark (spec §7): throughput, per-batch latency percentiles, peak memory
+    """Production benchmark: throughput, per-batch latency percentiles, peak memory
     and model size. `memory_metric` documents which proxy was used for peak memory: CUDA reports
     true `max_memory_allocated`; CPU falls back to `tracemalloc`'s peak Python-tracked allocation
     (not full process RSS -- no cross-platform, stdlib-only RSS reader exists on Windows without
-    adding `psutil`, which is out of scope for this phase without an explicit ask).
+    adding `psutil`).
     """
 
     device: str
@@ -308,7 +313,9 @@ def benchmark_translator(
     t0 = time.perf_counter()
     for batch in batches:
         b0 = time.perf_counter()
-        translator.translate(batch, batch_size=len(batch), beam=beam, alpha=alpha)
+        translator.translate(
+            batch, batch_size=len(batch), beam=beam, alpha=alpha, segment_threshold=None
+        )
         latencies_ms.append((time.perf_counter() - b0) * 1000.0)
     wall = time.perf_counter() - t0
 
@@ -359,18 +366,21 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Translate inputs.jsonl with a trained model (spec §7)."
-    )
+    parser = argparse.ArgumentParser(description="Translate inputs.jsonl with a trained model.")
     parser.add_argument("--model", required=True, help="Local export dir or HF Hub repo id.")
     parser.add_argument("--input", required=True, type=Path, help="JSONL with {id, source} rows.")
     parser.add_argument(
         "--output", required=True, type=Path, help="Output JSON: {id: translation}."
     )
-    parser.add_argument("--beam", type=int, default=5)
-    parser.add_argument("--alpha", type=float, default=0.6)
+    parser.add_argument("--beam", type=int, default=DEFAULT_BEAM)
+    parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--segment-threshold", type=int, default=None)
+    parser.add_argument(
+        "--segment-threshold",
+        type=int,
+        default=DEFAULT_SEGMENT_THRESHOLD,
+        help="Split sources longer than this many subword tokens; 0 disables segmentation.",
+    )
     parser.add_argument("--device", default=None)
     return parser.parse_args(argv)
 
@@ -386,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
         batch_size=args.batch_size,
         beam=args.beam,
         alpha=args.alpha,
-        segment_threshold=args.segment_threshold,
+        segment_threshold=args.segment_threshold or None,
     )
     result = dict(zip(ids, translations, strict=True))
     args.output.parent.mkdir(parents=True, exist_ok=True)
