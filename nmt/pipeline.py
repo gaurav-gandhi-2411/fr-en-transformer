@@ -19,7 +19,12 @@ from nmt import tune as tune_mod
 from nmt.analysis import run_analysis
 from nmt.hub import export_checkpoint
 from nmt.train import _build_model_config, build_eval_fn, default_eval_fn, load_config, train
-from nmt.translate import Translator
+from nmt.translate import (
+    DEFAULT_ALPHA,
+    DEFAULT_BEAM,
+    DEFAULT_SEGMENT_THRESHOLD,
+    Translator,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STAGES = (
@@ -175,9 +180,9 @@ def stage_evaluate(
     run_name: str,
     ckpt_name: str,
     seed: int,
-    beam: int = 5,
-    alpha: float = 0.6,
-    segment_threshold: int | None = None,
+    beam: int = DEFAULT_BEAM,
+    alpha: float = DEFAULT_ALPHA,
+    segment_threshold: int | None = DEFAULT_SEGMENT_THRESHOLD,
     batch_size: int = 16,
     n_bootstrap: int = 1000,
     comet: bool = False,
@@ -214,10 +219,10 @@ def stage_predict(
     model_dir: Path,
     input_path: Path,
     output_path: Path,
-    beam: int = 5,
-    alpha: float = 0.6,
+    beam: int = DEFAULT_BEAM,
+    alpha: float = DEFAULT_ALPHA,
     batch_size: int = 32,
-    segment_threshold: int | None = None,
+    segment_threshold: int | None = DEFAULT_SEGMENT_THRESHOLD,
     validate: bool = True,
 ) -> dict[str, Any]:
     translator = Translator.from_pretrained(str(model_dir))
@@ -289,10 +294,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", type=Path, default=None, help="Export dir for evaluate/predict.")
     parser.add_argument("--input", type=Path, default=REPO_ROOT / "data" / "test" / "inputs.jsonl")
     parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--beam", type=int, default=5)
-    parser.add_argument("--alpha", type=float, default=0.6)
+    parser.add_argument("--beam", type=int, default=DEFAULT_BEAM)
+    parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--segment-threshold", type=int, default=None)
+    parser.add_argument("--segment-threshold", type=int, default=DEFAULT_SEGMENT_THRESHOLD)
     parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--comet", action="store_true")
     parser.add_argument("--eval-dir", type=Path, default=None, help="For --stage analyze.")
@@ -368,14 +373,18 @@ def main(argv: list[str] | None = None) -> int:
         if model_dir is None:
             raise ValueError("--stage predict requires --model (or run --stage export/all first)")
         out_path = args.output or (report_root / "test_predictions.json")
+        beam, alpha, segment_threshold = args.beam, args.alpha, args.segment_threshold
+        if tune_result is not None:  # as for `evaluate`: predict at the config tuning chose
+            w = tune_result["winner"]
+            beam, alpha, segment_threshold = w["beam"], w["alpha"], w["segment_threshold"]
         info = stage_predict(
             model_dir,
             args.input,
             out_path,
-            beam=args.beam,
-            alpha=args.alpha,
+            beam=beam,
+            alpha=alpha,
             batch_size=args.batch_size,
-            segment_threshold=args.segment_threshold,
+            segment_threshold=segment_threshold,
         )
         print(f"predict: wrote {out_path} ({info['n_ids']} ids), validated OK")
     if args.stage in ("analyze", "all"):

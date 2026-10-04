@@ -49,7 +49,7 @@ def test_translate_returns_nonempty_strings_in_input_order(tmp_path: Path) -> No
     outputs = translator.translate(texts, batch_size=2, beam=2, alpha=0.6)
     assert len(outputs) == len(texts)
     assert all(isinstance(o, str) and o.strip() != "" for o in outputs)
-    assert translator.stats.n_total == len(texts)  # no segmentation: 1 work item per input
+    assert translator.stats.n_total == len(texts)  # all inputs are below the threshold
 
 
 def test_translate_never_emits_empty_string_for_empty_input(tmp_path: Path) -> None:
@@ -93,3 +93,36 @@ def test_benchmark_translator_reports_positive_throughput_and_model_size(tmp_pat
     assert result.batch_latency_p95_ms >= result.batch_latency_p50_ms - 1e-6
     assert result.model_size_mb == pytest.approx(model_size_mb(translator.model))
     assert result.memory_metric in {"tracemalloc_python_peak_mb", "cuda_max_memory_allocated_mb"}
+
+
+def test_translate_defaults_are_the_shipped_configuration(tmp_path: Path) -> None:
+    import inspect
+
+    from nmt.translate import (
+        DEFAULT_ALPHA,
+        DEFAULT_BEAM,
+        DEFAULT_SEGMENT_THRESHOLD,
+    )
+
+    params = inspect.signature(Translator.translate).parameters
+    assert (params["beam"].default, params["alpha"].default) == (5, 1.2)
+    assert params["segment_threshold"].default == 192
+    assert (DEFAULT_BEAM, DEFAULT_ALPHA, DEFAULT_SEGMENT_THRESHOLD) == (5, 1.2, 192)
+
+    export_dir = _export_tiny_model(tmp_path, seed=5)
+    translator = Translator.from_pretrained(str(export_dir), device="cpu")
+    texts = ["Bonjour le monde.", "Merci beaucoup pour votre aide."]
+    default = translator.translate(texts, batch_size=2)
+    explicit = translator.translate(texts, batch_size=2, beam=5, alpha=1.2, segment_threshold=192)
+    assert default == explicit
+
+
+def test_default_segmentation_splits_long_sources_and_none_disables_it(tmp_path: Path) -> None:
+    export_dir = _export_tiny_model(tmp_path, seed=6)
+    translator = Translator.from_pretrained(str(export_dir), device="cpu")
+    long_text = " ".join(["Bonjour tout le monde, voici une phrase."] * 60)
+    translator.translate([long_text], batch_size=1, beam=1)
+    assert translator.stats.n_total > 1  # split above the default threshold of 192 tokens
+    before = translator.stats.n_total
+    translator.translate([long_text], batch_size=1, beam=1, segment_threshold=None)
+    assert translator.stats.n_total == before + 1

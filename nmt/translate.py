@@ -25,6 +25,12 @@ from nmt.mbr import MBRConfig, beam_pool, mbr_select, sample_pool
 
 FallbackKind = str  # "beam" | "greedy" | "copy"
 
+# Defaults are the shipped configuration: the decoding settings chosen on E1 + E2 for the
+# released model (alpha 1.2 is the top of the grid that was searched).
+DEFAULT_BEAM = 5
+DEFAULT_ALPHA = 1.2
+DEFAULT_SEGMENT_THRESHOLD = 192
+
 
 @dataclass
 class TranslatorStats:
@@ -204,9 +210,9 @@ class Translator:
         self,
         texts: list[str],
         batch_size: int = 32,
-        beam: int = 5,
-        alpha: float = 0.6,
-        segment_threshold: int | None = None,
+        beam: int = DEFAULT_BEAM,
+        alpha: float = DEFAULT_ALPHA,
+        segment_threshold: int | None = DEFAULT_SEGMENT_THRESHOLD,
         no_repeat_ngram_size: int = 3,
         mbr: MBRConfig | None = None,
     ) -> list[str]:
@@ -214,9 +220,10 @@ class Translator:
 
         `segment_threshold`: sources whose subword token count exceeds this are split on
         sentence punctuation (`nmt.decode.split_sentences`), each segment translated
-        independently, and the results joined with a space. `None` (default) disables
-        segmentation entirely. `mbr` (default None = plain beam search, unchanged) switches each
-        segment to MBR decoding over the pool it describes; `beam` is then unused.
+        independently, and the results joined with a space. `None` disables segmentation.
+        The defaults (beam 5, alpha 1.2, threshold 192) are the shipped configuration.
+        `mbr` (default None = plain beam search) switches each segment to MBR decoding over the
+        pool it describes; `beam` is then unused.
         """
         normalized = [normalize_text(t) for t in texts]
 
@@ -306,7 +313,9 @@ def benchmark_translator(
     t0 = time.perf_counter()
     for batch in batches:
         b0 = time.perf_counter()
-        translator.translate(batch, batch_size=len(batch), beam=beam, alpha=alpha)
+        translator.translate(
+            batch, batch_size=len(batch), beam=beam, alpha=alpha, segment_threshold=None
+        )
         latencies_ms.append((time.perf_counter() - b0) * 1000.0)
     wall = time.perf_counter() - t0
 
@@ -363,10 +372,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--output", required=True, type=Path, help="Output JSON: {id: translation}."
     )
-    parser.add_argument("--beam", type=int, default=5)
-    parser.add_argument("--alpha", type=float, default=0.6)
+    parser.add_argument("--beam", type=int, default=DEFAULT_BEAM)
+    parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--segment-threshold", type=int, default=None)
+    parser.add_argument(
+        "--segment-threshold",
+        type=int,
+        default=DEFAULT_SEGMENT_THRESHOLD,
+        help="Split sources longer than this many subword tokens; 0 disables segmentation.",
+    )
     parser.add_argument("--device", default=None)
     return parser.parse_args(argv)
 
@@ -382,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
         batch_size=args.batch_size,
         beam=args.beam,
         alpha=args.alpha,
-        segment_threshold=args.segment_threshold,
+        segment_threshold=args.segment_threshold or None,
     )
     result = dict(zip(ids, translations, strict=True))
     args.output.parent.mkdir(parents=True, exist_ok=True)
