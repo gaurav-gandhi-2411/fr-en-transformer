@@ -611,9 +611,11 @@ def test_check_needles_reports_exactly_the_missing_ones() -> None:
 
 
 class _FakeCtx:
-    def __init__(self, rc: int, lines: list[str]) -> None:
+    def __init__(self, rc: int, lines: list[str], checkout: Path | None = None) -> None:
         self.rc, self.lines, self.said = rc, lines, []
         self.venv_python = Path("py")
+        self.dry = False
+        self.checkout = checkout if checkout is not None else Path("no-such-checkout")
 
     def run(self, argv, **_env):  # noqa: ANN001, ANN201
         return self.rc, self.lines
@@ -622,12 +624,44 @@ class _FakeCtx:
         self.said.append(line)
 
 
-def test_final_all_handler_fails_on_a_missing_needle_or_a_notebook_failure() -> None:
+def _package_checkout(tmp_path: Path) -> Path:
+    (tmp_path / "official").mkdir()
+    (tmp_path / "official" / "score.py").write_text("# stand-in\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_final_all_handler_fails_on_a_missing_needle_or_a_notebook_failure(
+    tmp_path: Path,
+) -> None:
+    pkg = _package_checkout(tmp_path)
     full = list(local_ci.FINAL_ALL_DRY_RUN_NEEDLES)
-    ok = _FakeCtx(0, full)
+    ok = _FakeCtx(0, full, pkg)
     assert local_ci.h_nb_final_all(ok)[0] == 0  # type: ignore[arg-type]
-    short = _FakeCtx(0, full[:-1])
+    short = _FakeCtx(0, full[:-1], pkg)
     rc, info = local_ci.h_nb_final_all(short)  # type: ignore[arg-type]
     assert rc == 1 and info["missing_needles"] == [full[-1]]
     assert any("lacks" in s for s in short.said)
-    assert local_ci.h_nb_final_all(_FakeCtx(1, full))[0] == 1  # type: ignore[arg-type]
+    assert local_ci.h_nb_final_all(_FakeCtx(1, full, pkg))[0] == 1  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        local_ci.h_nb_smoke,
+        local_ci.h_nb_ablations,
+        local_ci.h_nb_eval_all,
+        local_ci.h_nb_final_all,
+        local_ci.h_nb_extend,
+    ],
+)
+def test_notebook_steps_skip_without_the_evaluation_package(
+    handler: local_ci.Handler, tmp_path: Path
+) -> None:
+    """A checkout without official/score.py (the public repo) skips every notebook step with a
+    message, like ci.yml; with the file present the handler really runs (here: a failing run)."""
+    absent = _FakeCtx(1, [], tmp_path)
+    rc, info = handler(absent)  # type: ignore[arg-type]
+    assert rc == 0 and info == {"applicable": False}
+    assert any("not applicable" in line for line in absent.said)
+    present = _FakeCtx(1, [], _package_checkout(tmp_path))
+    assert handler(present)[0] == 1  # type: ignore[arg-type]

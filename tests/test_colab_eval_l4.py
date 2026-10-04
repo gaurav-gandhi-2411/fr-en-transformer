@@ -409,9 +409,8 @@ def test_the_run_summary_records_the_hf_revision_and_the_private_flag(tmp_path: 
     )
     assert summary["status"] == "completed" and summary["hf_revision"] == "b" * 40
     assert summary["private"] is True and summary["git_sha"] == "deadbeef"
-    assert (
-        summary["run"] == "main" and summary["hf_repo"] == "OWNER/fr-en-transformer-eval"
-    )
+    assert summary["run"] == "main"
+    assert summary["hf_repo"] == "OWNER/fr-en-transformer-eval"
 
 
 def test_a_run_without_a_recorded_private_revision_is_a_failure(tmp_path: Path) -> None:
