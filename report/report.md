@@ -4,7 +4,7 @@ Gaurav Gandhi · 4 October 2026
 
 Dev OVERALL is 42.29 [38.72, 45.82] against 16.10 for copying the source; long inputs hold up (dev long chrF 63.16); literature (E3) is 12.67 chrF below the in-domain proxy.
 
-I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool. The submitted model ("v1") is run `main`, checkpoint `final`, decoded with beam 5, GNMT length penalty alpha 1.2, 3-gram block and segmentation above 192 source tokens. Every number comes from a file in the repository; paths are relative to `reports/`.
+I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool. The submitted model ("v1") is run `main`, checkpoint `final`, decoded with beam 5, GNMT length penalty alpha 1.2, 3-gram block and segmentation above 192 source tokens. Every number except my hands-on hours comes from a file in the repository. Result paths are relative to `reports/`; other paths are from the repository root.
 
 ## 1. Architecture decisions and why
 
@@ -13,7 +13,7 @@ I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with
 | Encoder-decoder [1] | Decoder-only (prefix LM) | The encoder reads the whole source bidirectionally and cross-attention gives an explicit alignment, the standard sample-efficient shape for 0.9M pairs. I did not train a decoder-only model, so this is a prior, not a measurement |
 | 8 encoder / 4 decoder layers, d=512, 8 heads (head dim 64), FFN 2048, pre-LN [3], GELU, tied embeddings: 50,229,248 parameters (`main_l4/run_meta.json`) | Transformer-big; symmetric 6/6 | A shallow decoder makes autoregressive decoding cheaper [4]. I trained no symmetric baseline, so the speed gain is the paper's, not mine. Size set by the budget: 24,645 steps (8.86 epochs, `epoch_accounting.json`) took 3.3 h on one L4 |
 | Attention written by hand on `F.scaled_dot_product_attention`, KV cache for decoding | `torch.nn.Transformer` | `nn.MultiheadAttention` has no hook to rotate queries and keys (RoPE) and `nn.Transformer` has no incremental KV cache, so every beam step would recompute the prefix |
-| RoPE [2], 4,107-step ablation against sinusoidal | Sinusoidal; ALiBi [9], cited and not run | H1 supported: E2 chrF +0.89 [+0.66, +1.14], E2-synth +3.11 [+2.40, +3.85] (`final/compare/H1_*_seg_off.json`). The ablation is 1.8 epochs, so it says little about 24k steps |
+| RoPE [2], 4,107-step ablation against sinusoidal | Sinusoidal; ALiBi [9], cited and not run | H1 supported: E2 chrF +0.89 [+0.66, +1.14], E2-synth +3.11 [+2.40, +3.85] (`final/compare/H1_*_seg_off.json`). The ablation is 1.8 epochs, so its transfer to the 24k-step run is assumed, not shown |
 | Concatenation augmentation [6], p=0.15 (2 to 4 pairs) | None | H2 not supported (Section 5). `main` was trained with it before that result |
 | Joint SentencePiece BPE, 16k, byte fallback | Separate vocabularies, Unigram, BPE-dropout | A small joint vocabulary suits 0.9M pairs [7], copies names and allows three-way tying. UNK and byte-fallback rate 0 on dev, test, E1, E2, E3 (`tokenizer_stats.json`). No vocabulary sweep |
 | WSD schedule: warmup 4,000, peak 7e-4, linear decay over the last 20% [5] | Cosine, inverse-sqrt | Any stable checkpoint can start a cooldown. Averaging the last 5 checkpoints (includes step 19,000, before decay) or the 4 decay-phase ones did not beat `final` (objective 48.66, 48.69 against 48.75; `final/main/selection.json`) |
@@ -51,7 +51,7 @@ Official scorer, 1,000-resample bootstrap 95% CIs [8] (`final/main/seg_tuned/eva
 | E2-synth | 300 | 37.73 [36.31, 39.07] | 63.31 [62.31, 64.29] | 5.42 [4.46, 6.46] | 34.79 [34.22, 35.44] |
 | E3 | 1,000 | 19.45 [18.42, 20.52] | 42.31 [41.29, 43.27] | 1.25 [0.95, 1.54] | 20.47 [20.00, 20.98] |
 
-The 30 and 60 sentence slices have wide intervals, so I draw conclusions from E1, E2 and E3. E2 comes from the training pool and E2-synth is built from E2, so neither tests unseen content. E3 chrF lies inside the dev-unseen interval, so E3 is a fair proxy for it. COMET was not measured.
+The 30 and 60 sentence slices have wide intervals, so I draw conclusions from E1, E2 and E3. E2 comes from the training pool and E2-synth is built from E2, so neither tests unseen content. E3 chrF (42.31) lies inside the dev-unseen interval [40.74, 48.39], consistent with it being a reasonable proxy. COMET was not measured.
 
 **Where it fails** (`final/main/seg_tuned/diagnostics.json`, `eval.json`). By source length, chrF is lowest for short inputs (48.16 at 10 words or fewer, 60.89 at 41 to 80, 60.32 above 80; E1+E2+E3 pooled). By source rarity, chrF is 55.19 and 56.05 in the two most common quintiles and 50.45 in the rarest. Failure rates on E1: truncation (hypothesis under half the reference length) 2.2%, overlong (over 1.5x) 4.0%, repeated 3-gram 0.5%; on E2 the repeated-3-gram rate is 3.0% but the references have 14.7%, so repetition is mostly legitimate. A strict untranslated-copy rate is 0.0% in every set.
 

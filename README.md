@@ -1,6 +1,6 @@
 # fr-en-transformer
 
-A French-to-English encoder-decoder Transformer trained from scratch on OPUS-100 en-fr: hand-written model code (RoPE, SDPA attention, KV cache), a joint 16k SentencePiece BPE tokenizer, a leakage-guarded data pipeline, resumable single-GPU training, beam-search decoding with a length penalty, and a sliced evaluation with bootstrap confidence intervals. No pretrained model, tokenizer or language-ID tool is used anywhere. The 50.2M-parameter model trained for 3.3 h on one NVIDIA L4 (bf16, seed 1234) and scores 42.29 [38.72, 45.82] on the 150-sentence official dev OVERALL, against 16.10 for copying the French source. Decisions, the generalization analysis and the failures are in [`report/report.md`](report/report.md) (the PDF is attached to the release); the analysis plan fixed before the results is [`PREREG.md`](PREREG.md).
+A French-to-English encoder-decoder Transformer trained from scratch on OPUS-100 en-fr: hand-written model code (RoPE, SDPA attention, KV cache), a joint 16k SentencePiece BPE tokenizer, a leakage-guarded data pipeline, resumable single-GPU training, beam-search decoding with a length penalty, and a sliced evaluation with bootstrap confidence intervals. No pretrained model, tokenizer or language-ID tool is used anywhere. The 50.2M-parameter model trained for 3.3 h on one NVIDIA L4 (bf16, seed 1234) and scores 42.29 [38.72, 45.82] on the 150-sentence official dev OVERALL, against 16.10 for copying the French source. Decisions, the generalization analysis and the failures are in [`report/report.md`](report/report.md) (PDF attached to the v1.0 GitHub release); the analysis plan fixed before the results is [`PREREG.md`](PREREG.md).
 
 ## Results
 
@@ -27,7 +27,7 @@ Install (Python 3.12 or 3.13):
 uv sync --frozen          # or: pip install -r requirements.txt
 ```
 
-The data pipeline needs the evaluation package files that were provided for the challenge; they are not in this repository. Place them at `data/dev/inputs.jsonl`, `data/dev/labels.jsonl`, `data/test/inputs.jsonl`, `data/test/sample_submission.json` and `official/score.py`, then check them from the repository root with `sha256sum -c official/SHA256SUMS` (the hashes are published). Without them the pipeline stops at the `prepare` stage and the tests that depend on them are skipped.
+The data pipeline needs the evaluation package files that were provided for the challenge; they are not in this repository. Place them at `data/dev/inputs.jsonl`, `data/dev/labels.jsonl`, `data/test/inputs.jsonl`, `data/test/sample_submission.json` and `official/score.py`, then check them from the repository root with `sha256sum -c official/SHA256SUMS` (the hashes are published). Without them the pipeline stops at the `prepare` stage and the tests that depend on them are skipped. Run the tests with `uv run pytest`; tests that need the provided package files are skipped when they are absent.
 
 The one seeded reproduce command:
 
@@ -72,7 +72,7 @@ Checkpoints and decoding settings (beam, alpha, segmentation threshold) are chos
 
 ## Links
 
-Report: [`report/report.md`](report/report.md) (PDF in the release). Model: <https://huggingface.co/gauravgandhi2411/fr-en-transformer>. W&B: see the report. Pre-registration: [`PREREG.md`](PREREG.md).
+Report: [`report/report.md`](report/report.md) (PDF attached to the v1.0 GitHub release). Model: <https://huggingface.co/gauravgandhi2411/fr-en-transformer>. W&B: <https://wandb.ai/gauravgandhi429-gaurav-gandhi/fr-en-transformer-public>. Pre-registration: [`PREREG.md`](PREREG.md).
 
 ## Licence and data
 
