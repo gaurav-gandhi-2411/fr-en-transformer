@@ -163,25 +163,41 @@ _RUN_PYTEST_313 = """\
 "$RUNNER_TEMP/venv/bin/python" -m pytest -q
 """
 
-_RUN_SMOKE = """\
+_NB_GUARD = """\
+if [ ! -f official/score.py ]; then
+  echo "official/score.py absent (public checkout): notebook step not applicable"
+  exit 0
+fi
+"""
+
+_RUN_SMOKE = (
+    _NB_GUARD
+    + """\
 PY="$RUNNER_TEMP/venv/bin/python"
 "$PY" colab/make_synthetic_shards.py .
 # The notebook's defaults are the real L4 main run; say "smoke" explicitly here.
 "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \\
   --set CONFIG='"smoke"' --set PLANNED_STEPS=None --set RESUME_TEST=False
 """
+)
 
-_RUN_ABL = """\
+_RUN_ABL = (
+    _NB_GUARD
+    + """\
 PY="$RUNNER_TEMP/venv/bin/python"
 "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \\
   --set CONFIG='"ablations_l4"' --set DRY_RUN=True
 """
+)
 
-_RUN_EVAL_ALL = """\
+_RUN_EVAL_ALL = (
+    _NB_GUARD
+    + """\
 PY="$RUNNER_TEMP/venv/bin/python"
 "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \\
   --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"all"'
 """
+)
 
 # The COMET section the final_all dry run must print (ci.yml's `for needle in` loop). ONE copy
 # here; tests/test_local_ci.py parses the loop out of ci.yml and compares it with this tuple.
@@ -201,8 +217,12 @@ FINAL_ALL_DRY_RUN_NEEDLES: tuple[str, ...] = (
     "NO L4 COMET rate has been measured",
 )
 
-_RUN_FINAL_ALL = """\
+_RUN_FINAL_ALL = (
+    """\
 set -eo pipefail
+"""
+    + _NB_GUARD
+    + """\
 PY="$RUNNER_TEMP/venv/bin/python"
 "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \\
   --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"final_all"' \\
@@ -218,12 +238,16 @@ for needle in \\
     || { echo "final_all dry run lacks: $needle" >&2; exit 1; }
 done
 """
+)
 
-_RUN_EXTEND = """\
+_RUN_EXTEND = (
+    _NB_GUARD
+    + """\
 PY="$RUNNER_TEMP/venv/bin/python"
 "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \\
   --set CONFIG='"extend_l4"' --set DRY_RUN=True
 """
+)
 
 STEPS: tuple[Step, ...] = (
     Step("*", "actions/checkout@v4", "checkout", ci_uses="actions/checkout@v4"),
@@ -1119,7 +1143,18 @@ def _nb_argv(ctx: Ctx, *sets: str) -> list[str]:
     return argv
 
 
+def _package_absent(ctx: Ctx) -> bool:
+    """Like ci.yml: a checkout without official/score.py (the public repo) skips the
+    notebook steps, which need the provided evaluation package."""
+    if ctx.dry or (ctx.checkout / "official" / "score.py").is_file():
+        return False
+    ctx.say("official/score.py absent (public checkout): notebook step not applicable")
+    return True
+
+
 def h_nb_smoke(ctx: Ctx) -> tuple[int, dict[str, object]]:
+    if _package_absent(ctx):
+        return 0, {"applicable": False}
     rc, _ = ctx.run([str(ctx.venv_python), "colab/make_synthetic_shards.py", "."])
     if rc != 0:
         return rc, {}
@@ -1129,10 +1164,14 @@ def h_nb_smoke(ctx: Ctx) -> tuple[int, dict[str, object]]:
 
 
 def h_nb_ablations(ctx: Ctx) -> tuple[int, dict[str, object]]:
+    if _package_absent(ctx):
+        return 0, {"applicable": False}
     return _tail_step(ctx, _nb_argv(ctx, 'CONFIG="ablations_l4"', "DRY_RUN=True"))
 
 
 def h_nb_eval_all(ctx: Ctx) -> tuple[int, dict[str, object]]:
+    if _package_absent(ctx):
+        return 0, {"applicable": False}
     return _tail_step(ctx, _nb_argv(ctx, 'CONFIG="eval_l4"', "DRY_RUN=True", 'RUN="all"'))
 
 
@@ -1146,6 +1185,8 @@ def check_needles(lines: Sequence[str], needles: Sequence[str]) -> list[str]:
 def h_nb_final_all(ctx: Ctx) -> tuple[int, dict[str, object]]:
     """ci.yml: run the notebook, `tee` the log, then `grep -qF` every COMET needle. Here the output
     is captured by ctx.run and the needles are asserted with Python (no bash/tee/grep)."""
+    if _package_absent(ctx):
+        return 0, {"applicable": False}
     rc, lines = ctx.run(
         _nb_argv(ctx, 'CONFIG="eval_l4"', "DRY_RUN=True", 'RUN="final_all"'),
     )
@@ -1158,6 +1199,8 @@ def h_nb_final_all(ctx: Ctx) -> tuple[int, dict[str, object]]:
 
 
 def h_nb_extend(ctx: Ctx) -> tuple[int, dict[str, object]]:
+    if _package_absent(ctx):
+        return 0, {"applicable": False}
     return _tail_step(ctx, _nb_argv(ctx, 'CONFIG="extend_l4"', "DRY_RUN=True"))
 
 

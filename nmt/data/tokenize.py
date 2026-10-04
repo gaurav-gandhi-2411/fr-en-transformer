@@ -678,7 +678,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--num-threads", type=int, default=None)
     parser.add_argument("--push-to-hub", action="store_true")
     parser.add_argument(
-        "--hub-repo-id", type=str, default="OWNER/fr-en-transformer-data"
+        "--hub-repo-id",
+        type=str,
+        default="OWNER/fr-en-transformer-data",
     )
     return parser.parse_args(argv)
 

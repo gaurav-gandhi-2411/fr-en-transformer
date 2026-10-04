@@ -115,6 +115,10 @@ jobs:
       - name: Execute colab/train.ipynb in smoke mode (synthetic shards, Python 3.13)
         if: matrix.python-version == '3.13'
         run: |
+          if [ ! -f official/score.py ]; then
+            echo "official/score.py absent (public checkout): notebook step not applicable"
+            exit 0
+          fi
           PY="$RUNNER_TEMP/venv/bin/python"
           "$PY" colab/make_synthetic_shards.py .
           # The notebook's defaults are the real L4 main run; say "smoke" explicitly here.
@@ -129,6 +133,10 @@ jobs:
       - name: Execute colab/train.ipynb in ablations_l4 DRY_RUN mode (synthetic shards, 3.13)
         if: matrix.python-version == '3.13'
         run: |
+          if [ ! -f official/score.py ]; then
+            echo "official/score.py absent (public checkout): notebook step not applicable"
+            exit 0
+          fi
           PY="$RUNNER_TEMP/venv/bin/python"
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
             --set CONFIG='"ablations_l4"' --set DRY_RUN=True
@@ -142,6 +150,10 @@ jobs:
       - name: Execute colab/train.ipynb in eval_l4 RUN=all DRY_RUN mode (Python 3.13)
         if: matrix.python-version == '3.13'
         run: |
+          if [ ! -f official/score.py ]; then
+            echo "official/score.py absent (public checkout): notebook step not applicable"
+            exit 0
+          fi
           PY="$RUNNER_TEMP/venv/bin/python"
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
             --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"all"'
@@ -160,6 +172,10 @@ jobs:
         shell: bash
         run: |
           set -eo pipefail
+          if [ ! -f official/score.py ]; then
+            echo "official/score.py absent (public checkout): notebook step not applicable"
+            exit 0
+          fi
           PY="$RUNNER_TEMP/venv/bin/python"
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
             --set CONFIG='"eval_l4"' --set DRY_RUN=True --set RUN='"final_all"' \
@@ -183,6 +199,10 @@ jobs:
       - name: Execute colab/train.ipynb in extend_l4 DRY_RUN mode (synthetic shards, 3.13)
         if: matrix.python-version == '3.13'
         run: |
+          if [ ! -f official/score.py ]; then
+            echo "official/score.py absent (public checkout): notebook step not applicable"
+            exit 0
+          fi
           PY="$RUNNER_TEMP/venv/bin/python"
           "$PY" colab/execute_notebook.py colab/train.ipynb 1800 \
             --set CONFIG='"extend_l4"' --set DRY_RUN=True
