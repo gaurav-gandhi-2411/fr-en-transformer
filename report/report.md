@@ -74,7 +74,7 @@ OPUS-100 en-fr (revision `805090dc`): 1,000,000 raw pairs; 37,122 duplicates, 13
 
 ## 8. Effort and compute
 
-About 8 to 9 hours of my hands-on time over about three days; 10.1 GPU-hours of training on one L4 (main 3.3 h, ablations 1.6 h, extension 5.0 h, pilot 0.3 h; `final/effort_compute.json`).
+About 8 to 9 hours of my hands-on time over about three days; 10.1 GPU-hours of training on one L4 (main 3.3 h, ablations 1.6 h, extension 5.0 h, pilot 0.3 h, each rounded; `final/effort_compute.json`).
 
 Built with AI coding assistance; design, experiments and analysis are mine.
 

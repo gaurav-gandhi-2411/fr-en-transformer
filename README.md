@@ -1,6 +1,6 @@
 # fr-en-transformer
 
-A French-to-English encoder-decoder Transformer trained from scratch on OPUS-100 en-fr: hand-written model code (RoPE, SDPA attention, KV cache), a joint 16k SentencePiece BPE tokenizer, a leakage-guarded data pipeline, resumable single-GPU training, beam-search decoding with a length penalty, and a sliced evaluation with bootstrap confidence intervals. No pretrained model, tokenizer or language-ID tool is used anywhere. The 50.2M-parameter model trained for 3.3 h on one NVIDIA L4 (bf16, seed 1234) and scores 42.29 [38.72, 45.82] on the 150-sentence official dev OVERALL, against 16.10 for copying the French source. Decisions, the generalization analysis and the failures are in [`report/report.pdf`](report/report.md); the analysis plan fixed before the results is [`PREREG.md`](PREREG.md).
+A French-to-English encoder-decoder Transformer trained from scratch on OPUS-100 en-fr: hand-written model code (RoPE, SDPA attention, KV cache), a joint 16k SentencePiece BPE tokenizer, a leakage-guarded data pipeline, resumable single-GPU training, beam-search decoding with a length penalty, and a sliced evaluation with bootstrap confidence intervals. No pretrained model, tokenizer or language-ID tool is used anywhere. The 50.2M-parameter model trained for 3.3 h on one NVIDIA L4 (bf16, seed 1234) and scores 42.29 [38.72, 45.82] on the 150-sentence official dev OVERALL, against 16.10 for copying the French source. Decisions, the generalization analysis and the failures are in [`report/report.md`](report/report.md) (the PDF is attached to the release); the analysis plan fixed before the results is [`PREREG.md`](PREREG.md).
 
 ## Results
 
@@ -35,7 +35,7 @@ The one seeded reproduce command:
 python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234
 ```
 
-This downloads OPUS-100 and `opus_books`, prepares the data, trains the tokenizer and model, tunes decoding on E1 and E2, evaluates and analyses. The published model was trained with exactly this configuration on one L4 (24,645 steps, 8.86 epochs, about 3.3 h) through [`colab/train.ipynb`](colab/train.ipynb), which also streams checkpoints to Drive. A CPU smoke run of the same command: `python -m nmt.pipeline --config configs/smoke.yaml --stage all --seed 1234`.
+This downloads OPUS-100 and `opus_books`, prepares the data, trains the tokenizer and model, tunes decoding on E1 and E2, evaluates and analyses. The published model was trained on one L4 with the same schedule (24,645 steps, 8.86 epochs, about 3.3 h) through [`colab/train.ipynb`](colab/train.ipynb), which also streams checkpoints to Drive. A CPU smoke run of the same command: `python -m nmt.pipeline --config configs/smoke.yaml --stage all --seed 1234`.
 
 On Windows set `PYTHONUTF8=1`: the official scorer reads files in the platform encoding (cp1252), which turns accented UTF-8 into mojibake. `nmt.evaluate.run_official_scorer` sets it for you.
 

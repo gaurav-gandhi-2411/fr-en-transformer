@@ -301,3 +301,7 @@ ablation and main-run selection results exist and states what was already known)
   ablations S1 to S3 and the extension runs all trained in **bf16 on one Colab L4**
   (`reports/main_l4/run_meta.json` `config.precision`; no GradScaler, no skipped optimizer step in
   24,645). The original text is left as written; this note is the correction of record.
+- **2026-10-04 — config correction.** The entry above stating that `configs/main.yaml` keeps a
+  50,000 placeholder describes the config the main run used. The file now carries
+  `planned_steps: 24645`, the value the run was given on the command line, so the one documented
+  command resolves the same WSD schedule (decay start 19,716). No result changed.
