@@ -78,4 +78,4 @@ About 8 to 9 hours of my hands-on time over about three days; 10.1 GPU-hours of 
 
 Built with AI coding assistance; design, experiments and analysis are mine.
 
-Links: code https://github.com/gaurav-gandhi-2411/fr-en-transformer, model https://huggingface.co/gauravgandhi2411/fr-en-transformer, W&B https://wandb.ai/gauravgandhi429-gaurav-gandhi/fr-en-transformer-public. Reproduce: `python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234` (one L4, about 3.3 h of training).
+Links: code <https://github.com/gaurav-gandhi-2411/fr-en-transformer>, model <https://huggingface.co/gauravgandhi2411/fr-en-transformer>, W&B <https://wandb.ai/gauravgandhi429-gaurav-gandhi/fr-en-transformer-public>. Reproduce: `python -m nmt.pipeline --config configs/main.yaml --stage all --seed 1234` (one L4, about 3.3 h of training).

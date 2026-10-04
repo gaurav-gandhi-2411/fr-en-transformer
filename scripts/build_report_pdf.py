@@ -34,12 +34,21 @@ PLACEHOLDER_RE = re.compile(r"\{\{[A-Z][A-Z0-9_]*\}\}")
 # Print stylesheet. Sizes are the typography budget: 10 pt body, 8 pt tables, 1.8 cm margins.
 CSS = """
 @page { size: A4; margin: 1.8cm; }
+/* one muted blue accent (dark enough to print as a clear grey in greyscale) */
+:root { --accent: #2b4c7e; --tint: #eaf0f8; --zebra: #f4f6f9; }
 html { font-family: Calibri, "Segoe UI", "Liberation Sans", Arial, sans-serif; font-size: 10pt;
        line-height: 1.22; hyphens: auto; color: #111; }
 /* pandoc -s injects a 36em-wide centred body and scrolling tables: undo both for print */
 body { margin: 0; padding: 0; max-width: none; }
-h1 { font-size: 15pt; margin: 0 0 4pt 0; line-height: 1.15; }
-h2 { font-size: 11.5pt; margin: 8pt 0 3pt 0; }
+html, body { background: #fff; }
+h1 { font-size: 15pt; margin: 0 0 4pt 0; line-height: 1.15; color: var(--accent); }
+h2 { font-size: 11.5pt; margin: 6pt 0 2.5pt 0; color: var(--accent);
+     border-bottom: 0.5pt solid var(--accent); padding-bottom: 0.5pt; }
+/* author/date line, then the headline sentence as a shaded callout */
+h1 + p { color: #444; margin-bottom: 3pt; }
+h1 + p + p { background: var(--tint); border-left: 3pt solid var(--accent);
+             padding: 2pt 6pt; margin: 0 0 4pt 0; }
+a { color: var(--accent); text-decoration: underline; }
 p { margin: 0 0 3pt 0; text-align: left; }
 ol, ul { margin: 0 0 4pt 0; padding-left: 16pt; }
 li { margin: 0; }
@@ -47,10 +56,11 @@ ol { font-size: 8.5pt; line-height: 1.15; }
 code { font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 8.5pt;
        white-space: normal; overflow-wrap: anywhere; }
 table { display: table; overflow: visible; border-collapse: collapse; width: 100%;
-        font-size: 8pt; line-height: 1.18; margin: 2pt 0 4pt 0; }
+        font-size: 8pt; line-height: 1.16; margin: 2pt 0 4pt 0; }
 td code, th code { font-size: 7pt; }
-th, td { border: 0.4pt solid #888; padding: 1.5pt 3pt; vertical-align: top; text-align: left; }
-th { background: #eee; }
+th, td { border: 0.4pt solid #9aa5b5; padding: 1.4pt 4pt; vertical-align: top; text-align: left; }
+th { background: #d7e2f0; color: #14284b; font-weight: 700; }
+tbody tr:nth-child(even) td { background: var(--zebra); }
 tr { page-break-inside: avoid; }
 header, #title-block-header { display: none; }
 """
