@@ -4,7 +4,7 @@ Gaurav Gandhi · 4 October 2026
 
 **In one line:** the model scores 42.29 [38.72, 45.82] OVERALL on dev, against 16.10 for simply copying the French; it holds up on long sentences (dev long chrF 63.16), and it loses 12.67 chrF moving from in-domain text to literature.
 
-I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool anywhere. The model I'm submitting ("v1") is the final checkpoint of the main run, decoded with beam 5, a GNMT length penalty of 1.2, a 3-gram repeat block, and sentence-level splitting for inputs longer than 192 tokens. Every number below except my own hours comes from a result file in the repository (`reports/`).
+I trained a 50.2M-parameter encoder-decoder from scratch on OPUS-100 en-fr, with no pretrained model, tokenizer or language-ID tool anywhere. The model I'm submitting ("v1") is the final checkpoint of the main run, decoded with beam 5, a GNMT length penalty of 1.2, a 3-gram repeat block, and sentence-level splitting for inputs longer than 192 tokens. Every number below except my own hours comes from a file in the repository (mostly under `reports/`).
 
 ## 1. Architecture: what I chose and why
 
@@ -53,7 +53,7 @@ Official scorer, with 95% bootstrap intervals from 1,000 resamples [8]. "Copy" i
 
 The dev slices are small (30 to 60 sentences), so their intervals are wide and I lean on the larger sets. Two caveats: E2 comes from the training distribution, and E2-synth is stitched from E2, so neither tests new content. E3 chrF (42.31) sits inside the dev-unseen interval [40.74, 48.39], which makes it a reasonable proxy. I didn't run COMET.
 
-**Where it breaks.** Short inputs are the hardest: chrF is 48.16 for 10 words or fewer, against 60.89 at 41 to 80 words and 60.32 above 80. The rarest fifth of sentences scores 50.45, against 55.19 and 56.05 for the two most common fifths. On E1, 2.2% of outputs are truncated (under half the reference length), 4.0% run long (over 1.5x), and 0.5% repeat a 3-gram. On E2 the repetition rate is 3.0%, but the references themselves repeat 14.7% of the time, so most of it is legitimate. I found no untranslated copies.
+**Where it breaks.** Short inputs are the hardest: chrF is 48.16 for 10 words or fewer, against 60.89 at 41 to 80 words and 60.32 above 80. The rarest fifth of sentences scores 50.45, against 55.19 and 56.05 for the two most common fifths. On E1, 2.2% of outputs are truncated (under half the reference length), 4.0% run long (over 1.5x), and 0.5% repeat a 3-gram. On E2 the repetition rate is 3.0%, but the references themselves repeat 14.7% of the time, so most of it is legitimate. My strict check for untranslated copies found none.
 
 ## 5. Generalization: the honest picture
 
