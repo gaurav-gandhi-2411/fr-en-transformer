@@ -24,7 +24,7 @@ data:
   eval_split: e1
 
 batch:
-  max_tokens: 4096  # overridden by the notebook with the pilot's measured value
+  max_tokens: 4096  # micro-batch token budget measured on the L4 pilot
   tokens_per_step: 25000  # ~25k target tokens per optimizer step
   concat_prob: 0.15  # default, s3/main only
   concat_max_len: 256
@@ -38,9 +38,9 @@ optim:
   weight_decay: 0.01
   grad_clip: 1.0
   warmup_steps: 4000  # 
-  planned_steps: 50000  # placeholder; the real runs set it with --planned-steps (main: 24645)
+  planned_steps: 24645  # the L4 pilot's plan (8.86 epochs, 3.3 h); decay starts at step 19,716
   cooldown_frac: 0.2  # final 20% of planned_steps
-  max_minutes: 240  # ~4h main-run budget, as a wall-clock safety cap alongside planned_steps
+  max_minutes: 240  # wall-clock safety cap; the planned steps take about 200 min on an L4
 
 ckpt:
   dir: runs/main/ckpt  # Drive path on Colab; overridden via the colab notebook, not here (P5)

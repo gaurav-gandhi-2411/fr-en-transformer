@@ -123,7 +123,7 @@ class OptimSection:
     weight_decay: float = 0.01
     grad_clip: float = 1.0
     warmup_steps: int = 4000
-    planned_steps: int = 300  # TBD from pilot for pilot/ablation/main configs; see configs/*.yaml
+    planned_steps: int = 300  # set per run in configs/*.yaml (main: 24,645)
     cooldown_frac: float = 0.2  # final fraction of planned_steps spent decaying to 0
     # Explicit WSD decay window (extension runs, pre-registered in PREREG.md): LR is stable until
     # `decay_start`, then decays linearly to 0 at `decay_end`; `cooldown_frac` is then unused.

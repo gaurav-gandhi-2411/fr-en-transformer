@@ -460,3 +460,20 @@ def test_wandb_summary_separates_flagged_ever_from_current(
     assert run.summary["overfit_flag_current"] is False
     assert run.summary["overfit_flag"] is True  # legacy sticky field, unchanged semantics
     assert (run.summary["overfit_flag_first_step"], run.summary["overfit_flag_last_step"]) == (6, 8)
+
+
+def test_main_config_resolves_the_submitted_schedule() -> None:
+    """The documented one command reads planned_steps from configs/main.yaml: the WSD decay
+    must start at step 19,716, as in the submitted run."""
+    from nmt.train import wsd_decay_window
+
+    main = load_config(CONFIGS / "main.yaml")
+    assert main.optim.planned_steps == 24645
+    start, length = wsd_decay_window(
+        main.optim.warmup_steps,
+        main.optim.planned_steps,
+        main.optim.cooldown_frac,
+        main.optim.decay_start,
+        main.optim.decay_end,
+    )
+    assert (start, length) == (19716, 4929)
